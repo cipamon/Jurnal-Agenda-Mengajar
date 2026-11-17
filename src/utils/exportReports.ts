@@ -5,14 +5,23 @@ import {
   AttendanceStatus,
   GradeRecord,
   JournalEntry,
+  KopSuratTextStyle,
   PaperOrientation,
   PrintFontFamily,
   ReportType,
   Student,
   SystemSettings,
 } from '../types';
+import { getStudentPhotoUrl } from './defaultAvatars';
 import { dataUrlToPngBase64 } from './defaultLogos';
-import { formatTanggalID, formatTanggalShort, getTodayIso } from './helpers';
+import {
+  ATTENDANCE_META,
+  formatTanggalID,
+  formatTanggalShort,
+  getTodayIso,
+  normalizeKopSurat,
+  ROW_MARKER_META,
+} from './helpers';
 
 export interface ReportFilterOptions {
   reportType: ReportType;
@@ -345,56 +354,66 @@ export async function exportReportToPdf(
   const drawHeader = (): number => {
     let cursorY = 12;
     if (opts.showKopSurat) {
-      const logoSize = 20;
+      const normKop = normalizeKopSurat(settings.kopSurat);
+      const kopFont = mapPrintFontToJsPdf(normKop.fontFamily);
+
+      // Convert px (36-120) to mm (~11mm - 37mm, default 64px -> 20mm)
+      const leftLogoMm = Math.round((normKop.leftLogoSize / 64) * 20 * 10) / 10;
+      const rightLogoMm = Math.round((normKop.rightLogoSize / 64) * 20 * 10) / 10;
+      const maxLogoMm = Math.max(leftLogoMm, rightLogoMm, 20);
+
       if (leftPng) {
-        doc.addImage(leftPng, 'PNG', marginX + 2, cursorY, logoSize, logoSize);
+        doc.addImage(leftPng, 'PNG', marginX + 2, cursorY, leftLogoMm, leftLogoMm);
       }
       if (rightPng) {
         doc.addImage(
           rightPng,
           'PNG',
-          pageWidth - marginX - logoSize - 2,
+          pageWidth - marginX - rightLogoMm - 2,
           cursorY,
-          logoSize,
-          logoSize
+          rightLogoMm,
+          rightLogoMm
         );
       }
 
-      const centerX = pageWidth / 2;
-      doc.setFont(pdfFont, 'bold');
-      doc.setFontSize(10.5);
-      if (settings.kopSurat.line1) {
-        doc.text(settings.kopSurat.line1, centerX, cursorY + 3, { align: 'center' });
-      }
-      doc.setFontSize(12);
-      if (settings.kopSurat.line2) {
-        doc.text(settings.kopSurat.line2, centerX, cursorY + 7.8, { align: 'center' });
-      }
-      doc.setFont(pdfFont, 'normal');
-      doc.setFontSize(9.5);
-      if (settings.kopSurat.line3) {
-        doc.text(settings.kopSurat.line3, centerX, cursorY + 12.2, { align: 'center' });
-      }
-      doc.setFont(pdfFont, 'bold');
-      doc.setFontSize(13.5);
-      if (settings.kopSurat.line4) {
-        doc.text(settings.kopSurat.line4, centerX, cursorY + 17.2, { align: 'center' });
-      }
-      doc.setFont(pdfFont, 'normal');
-      doc.setFontSize(8.2);
-      if (settings.kopSurat.line5) {
-        doc.text(settings.kopSurat.line5, centerX, cursorY + 21.4, { align: 'center' });
-      }
-      if (settings.kopSurat.line6) {
-        doc.text(settings.kopSurat.line6, centerX, cursorY + 25.0, { align: 'center' });
-      }
+      const pxToPt = (px: number) => Math.round(px * 0.85 * 10) / 10;
+      const toJsPdfStyle = (st: KopSuratTextStyle) =>
+        st.bold && st.italic ? 'bolditalic' : st.bold ? 'bold' : st.italic ? 'italic' : 'normal';
 
-      cursorY += 27.5;
+      const drawStyledCenteredLine = (
+        text: string,
+        yPos: number,
+        fontSizePx: number,
+        st: KopSuratTextStyle
+      ) => {
+        if (!text) return;
+        const pt = pxToPt(fontSizePx);
+        doc.setFont(kopFont, toJsPdfStyle(st));
+        doc.setFontSize(pt);
+        doc.text(text, centerX, yPos, { align: 'center' });
+        if (st.underline) {
+          const w = doc.getTextWidth(text);
+          doc.setLineWidth(0.25);
+          doc.line(centerX - w / 2, yPos + 0.7, centerX + w / 2, yPos + 0.7);
+        }
+      };
+
+      const centerX = pageWidth / 2;
+      drawStyledCenteredLine(normKop.line1, cursorY + 3, normKop.lineSizes.line1, normKop.lineStyles.line1);
+      drawStyledCenteredLine(normKop.line2, cursorY + 7.8, normKop.lineSizes.line2, normKop.lineStyles.line2);
+      drawStyledCenteredLine(normKop.line3, cursorY + 12.2, normKop.lineSizes.line3, normKop.lineStyles.line3);
+      drawStyledCenteredLine(normKop.line4, cursorY + 17.2, normKop.lineSizes.line4, normKop.lineStyles.line4);
+      drawStyledCenteredLine(normKop.line5, cursorY + 21.4, normKop.lineSizes.line5, normKop.lineStyles.line5);
+      drawStyledCenteredLine(normKop.line6, cursorY + 25.0, normKop.lineSizes.line6, normKop.lineStyles.line6);
+
+      const headerHeight = Math.max(27.5, maxLogoMm + 3);
+      cursorY += headerHeight;
       doc.setLineWidth(0.8);
       doc.line(marginX, cursorY, pageWidth - marginX, cursorY);
       doc.setLineWidth(0.25);
       doc.line(marginX, cursorY + 1.1, pageWidth - marginX, cursorY + 1.1);
       cursorY += 6;
+      doc.setFont(pdfFont, 'normal');
     }
     return cursorY;
   };
@@ -649,4 +668,226 @@ export async function exportReportToPdf(
   }
 
   doc.save(`Laporan_Resmi_${opts.reportType.toUpperCase()}_${getTodayIso()}.pdf`);
+}
+
+// =========================================================================
+// INDIVIDUAL STUDENT REPORT PDF
+// =========================================================================
+export async function exportStudentIndividualPdf(
+  student: Student,
+  journals: JournalEntry[],
+  grades: GradeRecord[],
+  settings: SystemSettings
+) {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const normKop = normalizeKopSurat(settings.kopSurat);
+  const kopFont = mapPrintFontToJsPdf(normKop.fontFamily);
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginX = 14;
+
+  const leftPng = await dataUrlToPngBase64(normKop.leftLogoDataUrl);
+  const rightPng = await dataUrlToPngBase64(normKop.rightLogoDataUrl);
+  let photoPng = await dataUrlToPngBase64(getStudentPhotoUrl(student), 240);
+  if (!photoPng && student.photoDataUrl) {
+    photoPng = await dataUrlToPngBase64(
+      getStudentPhotoUrl({ photoDataUrl: '', gender: student.gender }),
+      240
+    );
+  }
+
+  let y = 12;
+  const leftLogoMm = Math.round((normKop.leftLogoSize / 64) * 20 * 10) / 10;
+  const rightLogoMm = Math.round((normKop.rightLogoSize / 64) * 20 * 10) / 10;
+  const maxLogoMm = Math.max(leftLogoMm, rightLogoMm, 20);
+
+  if (leftPng) doc.addImage(leftPng, 'PNG', marginX + 2, y, leftLogoMm, leftLogoMm);
+  if (rightPng) {
+    doc.addImage(rightPng, 'PNG', pageWidth - marginX - rightLogoMm - 2, y, rightLogoMm, rightLogoMm);
+  }
+
+  const pxToPt = (px: number) => Math.round(px * 0.85 * 10) / 10;
+  const toJsPdfStyle = (st: KopSuratTextStyle) =>
+    st.bold && st.italic ? 'bolditalic' : st.bold ? 'bold' : st.italic ? 'italic' : 'normal';
+  const centerX = pageWidth / 2;
+
+  const drawKopLine = (text: string, yPos: number, sizePx: number, st: KopSuratTextStyle) => {
+    if (!text) return;
+    doc.setFont(kopFont, toJsPdfStyle(st));
+    doc.setFontSize(pxToPt(sizePx));
+    doc.text(text, centerX, yPos, { align: 'center' });
+    if (st.underline) {
+      const w = doc.getTextWidth(text);
+      doc.setLineWidth(0.25);
+      doc.line(centerX - w / 2, yPos + 0.7, centerX + w / 2, yPos + 0.7);
+    }
+  };
+
+  drawKopLine(normKop.line1, y + 3, normKop.lineSizes.line1, normKop.lineStyles.line1);
+  drawKopLine(normKop.line2, y + 7.8, normKop.lineSizes.line2, normKop.lineStyles.line2);
+  drawKopLine(normKop.line3, y + 12.2, normKop.lineSizes.line3, normKop.lineStyles.line3);
+  drawKopLine(normKop.line4, y + 17.2, normKop.lineSizes.line4, normKop.lineStyles.line4);
+  drawKopLine(normKop.line5, y + 21.4, normKop.lineSizes.line5, normKop.lineStyles.line5);
+  drawKopLine(normKop.line6, y + 25.0, normKop.lineSizes.line6, normKop.lineStyles.line6);
+
+  y += Math.max(27.5, maxLogoMm + 3);
+  doc.setLineWidth(0.8);
+  doc.line(marginX, y, pageWidth - marginX, y);
+  doc.setLineWidth(0.25);
+  doc.line(marginX, y + 1.1, pageWidth - marginX, y + 1.1);
+  y += 7;
+
+  doc.setFont(kopFont, 'bold');
+  doc.setFontSize(11.5);
+  doc.text('PROFIL & LAPORAN AKTIVITAS INDIVIDU SISWA', centerX, y, { align: 'center' });
+  doc.setFont(kopFont, 'normal');
+  doc.setFontSize(9);
+  doc.text(
+    `Tahun Ajaran ${settings.academicYear}  |  Semester ${settings.semester}`,
+    centerX,
+    y + 4.8,
+    { align: 'center' }
+  );
+  y += 10;
+
+  // Biodata box + photo
+  if (photoPng) {
+    doc.setDrawColor(203, 213, 225);
+    doc.rect(marginX, y, 28, 34);
+    doc.addImage(photoPng, 'PNG', marginX + 1, y + 1, 26, 32);
+  }
+
+  const infoX = marginX + 33;
+  const infoRows: [string, string][] = [
+    ['Nama Lengkap', student.name],
+    ['Kelas / No. Absen', `${student.className}  /  No. ${student.absenNo || '-'}`],
+    ['NIS', student.nis],
+    ['Jenis Kelamin', student.gender === 'L' ? 'Laki-laki' : 'Perempuan'],
+    ['Tempat, Tgl Lahir', student.ttl || '-'],
+    ['Email', student.email || '-'],
+    ['Alamat', student.address || '-'],
+  ];
+
+  doc.setFontSize(9);
+  infoRows.forEach(([lbl, val], idx) => {
+    const rowY = y + 3.5 + idx * 5.2;
+    doc.setFont(kopFont, 'bold');
+    doc.text(lbl, infoX, rowY);
+    doc.setFont(kopFont, 'normal');
+    doc.text(`: ${val}`, infoX + 34, rowY, { maxWidth: pageWidth - marginX - (infoX + 34) });
+  });
+
+  y += 42;
+
+  const studentJournals = journals
+    .filter((j) => j.className === student.className)
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  const studentGrades = grades
+    .filter((g) => g.studentId === student.id && g.score !== null)
+    .sort((a, b) => a.subject.localeCompare(b.subject));
+
+  doc.setFont(kopFont, 'bold');
+  doc.setFontSize(10);
+  doc.text(`A. Riwayat Aktivitas & Kehadiran di Kelas (${studentJournals.length} Sesi)`, marginX, y);
+  y += 2.5;
+
+  autoTable(doc, {
+    startY: y,
+    margin: { left: marginX, right: marginX },
+    head: [['No', 'Tanggal', 'Jam', 'Mata Pelajaran', 'Materi & Kegiatan', 'Status', 'Catatan']],
+    body:
+      studentJournals.length > 0
+        ? studentJournals.map((j, idx) => {
+            const att = j.attendance[student.id] ?? { status: 'H', note: '' };
+            const meta = ATTENDANCE_META[att.status];
+            return [
+              String(idx + 1),
+              formatTanggalID(j.date),
+              j.period,
+              j.subject,
+              `${j.topic}\n${j.activities}`,
+              `${meta.shortLabel} (${meta.label})`,
+              att.note || '-',
+            ];
+          })
+        : [['-', '-', '-', '-', 'Belum ada catatan pertemuan kelas', '-', '-']],
+    styles: {
+      font: kopFont,
+      fontSize: 8,
+      cellPadding: 1.8,
+      textColor: [15, 23, 42],
+      lineColor: [203, 213, 225],
+      lineWidth: 0.15,
+    },
+    headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold' },
+  });
+
+  const afterActY =
+    (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y + 20;
+  y = afterActY + 8;
+  if (y > pageHeight - 40) {
+    doc.addPage();
+    y = 18;
+  }
+
+  doc.setFont(kopFont, 'bold');
+  doc.setFontSize(10);
+  doc.text(`B. Riwayat Penilaian & Evaluasi (KKM ${settings.kkm})`, marginX, y);
+  y += 2.5;
+
+  autoTable(doc, {
+    startY: y,
+    margin: { left: marginX, right: marginX },
+    head: [['No', 'Mata Pelajaran', 'Jenis Ujian', 'Nilai', 'Status', 'Catatan Guru']],
+    body:
+      studentGrades.length > 0
+        ? studentGrades.map((g, idx) => {
+            const mk = ROW_MARKER_META[g.marker || 'neutral'];
+            return [
+              String(idx + 1),
+              g.subject,
+              g.examType,
+              String(g.score ?? '-'),
+              mk.label,
+              g.note || '-',
+            ];
+          })
+        : [['-', '-', '-', '-', 'Belum ada nilai tercatat', '-']],
+    styles: {
+      font: kopFont,
+      fontSize: 8,
+      cellPadding: 1.8,
+      textColor: [15, 23, 42],
+      lineColor: [203, 213, 225],
+      lineWidth: 0.15,
+    },
+    headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold' },
+  });
+
+  const afterGradeY =
+    (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y + 20;
+  let sigY = afterGradeY + 10;
+  if (sigY + 32 > pageHeight - 10) {
+    doc.addPage();
+    sigY = 20;
+  }
+
+  doc.setFont(kopFont, 'normal');
+  doc.setFontSize(9.5);
+  const rightX = pageWidth - marginX - 68;
+  doc.text(`${settings.signatureCity}, ${formatTanggalID(getTodayIso())}`, rightX, sigY);
+  doc.text('Guru Mata Pelajaran,', rightX, sigY + 4.8);
+  doc.setFont(kopFont, 'bold');
+  doc.text(settings.teacherProfile.name, rightX, sigY + 23);
+  doc.setFont(kopFont, 'normal');
+  doc.text(`NIP. ${settings.teacherProfile.nip}`, rightX, sigY + 27.6);
+
+  const safeName = student.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+  doc.save(`Profil_Siswa_${safeName}_${getTodayIso()}.pdf`);
 }

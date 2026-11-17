@@ -1,14 +1,18 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCheck,
   Copy,
+  Download,
   FileEdit,
+  FileSpreadsheet,
   Plus,
   RotateCcw,
   Save,
   Search,
   Trash2,
+  Upload,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import {
   AttendanceStatus,
   JournalEntry,
@@ -31,8 +35,12 @@ interface JournalAttendanceViewProps {
   draftJournal: { mode: 'create' | 'edit' | 'duplicate'; entry: JournalEntry } | null;
   onClearDraft: () => void;
   onSaveJournal: (entry: JournalEntry, isEdit: boolean) => void;
+  onImportJournals?: (entries: JournalEntry[]) => void;
   onDeleteJournals: (ids: string[]) => void;
   onBulkUpdateLedger: (updatedJournals: JournalEntry[]) => void;
+  onViewStudent: (student: Student) => void;
+  onViewClass?: (className: string) => void;
+  onViewSubject?: (subject: string) => void;
   onNotify: (msg: string) => void;
 }
 
@@ -45,8 +53,12 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
   draftJournal,
   onClearDraft,
   onSaveJournal,
+  onImportJournals,
   onDeleteJournals,
   onBulkUpdateLedger,
+  onViewStudent,
+  onViewClass,
+  onViewSubject,
   onNotify,
 }) => {
   // =========================================================================
@@ -187,6 +199,9 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
   const [filterClass, setFilterClass] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [showImportPanel, setShowImportPanel] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const journalFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const filteredJournals = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -222,6 +237,156 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
     setSelectedIds([]);
   };
 
+  const handleDownloadJournalTemplate = () => {
+    const rows = [
+      {
+        Tanggal: getTodayIso(),
+        'Jam Ke-': '1 - 2',
+        Kelas: settings.classes[0] || 'X IPA 1',
+        'Mata Pelajaran': settings.subjects[0] || 'Matematika',
+        'Materi Pokok': 'Contoh Materi Pertemuan KBM',
+        'Kegiatan Pembelajaran': 'Penyampaian materi, diskusi kelompok, dan latihan soal.',
+      },
+    ];
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Template Jurnal');
+    XLSX.writeFile(wb, 'Template_Impor_Jurnal_EGuru.xlsx');
+    onNotify('Template Excel (.xlsx) Jurnal Mengajar berhasil diunduh.');
+  };
+
+  const handleExportJournals = () => {
+    const source =
+      selectedIds.length > 0
+        ? filteredJournals.filter((j) => selectedIds.includes(j.id))
+        : filteredJournals;
+    const rows = source.map((j, idx) => {
+      const cnt = { H: 0, S: 0, I: 0, A: 0, D: 0 };
+      Object.values(j.attendance).forEach((item) => {
+        cnt[item.status] = (cnt[item.status] || 0) + 1;
+      });
+      return {
+        No: idx + 1,
+        Tanggal: j.date,
+        'Jam Ke-': j.period,
+        Kelas: j.className,
+        'Mata Pelajaran': j.subject,
+        'Materi Pokok': j.topic,
+        'Kegiatan Pembelajaran': j.activities,
+        Hadir: cnt.H,
+        Sakit: cnt.S,
+        Izin: cnt.I,
+        Alpha: cnt.A,
+        Dispen: cnt.D,
+      };
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Riwayat Jurnal');
+    XLSX.writeFile(wb, 'Data_Jurnal_Mengajar_EGuru.xlsx');
+    onNotify(
+      `Berhasil mengekspor ${rows.length} jurnal${selectedIds.length > 0 ? ' terpilih' : ''} ke Excel.`
+    );
+  };
+
+  const parseAndImportJournalRows = (
+    rawRows: Array<{
+      date: string;
+      period: string;
+      className: string;
+      subject: string;
+      topic: string;
+      activities: string;
+    }>
+  ) => {
+    const nowIso = new Date().toISOString();
+    const valid: JournalEntry[] = [];
+    rawRows.forEach((r) => {
+      const cleanTopic = String(r.topic || '').trim();
+      const cleanDate = String(r.date || getTodayIso()).trim();
+      if (!cleanTopic || cleanDate.toLowerCase() === 'tanggal') return;
+      const cls = String(r.className || settings.classes[0] || 'X IPA 1').trim();
+      const subj = String(r.subject || settings.subjects[0] || 'Matematika').trim();
+      const att: Record<string, StudentAttendanceItem> = {};
+      students
+        .filter((s) => s.className === cls)
+        .forEach((s) => {
+          att[s.id] = { status: 'H', note: '' };
+        });
+      valid.push({
+        id: generateId('jrn'),
+        date: /^\d{4}-\d{2}-\d{2}$/.test(cleanDate) ? cleanDate : getTodayIso(),
+        period: String(r.period || '1 - 2').trim(),
+        className: cls,
+        subject: subj,
+        topic: cleanTopic,
+        activities: String(r.activities || '-').trim(),
+        attendance: att,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      });
+    });
+
+    if (valid.length === 0) {
+      onNotify('Tidak ditemukan baris jurnal valid untuk diimpor.');
+      return;
+    }
+
+    if (onImportJournals) {
+      onImportJournals(valid);
+    } else {
+      valid.forEach((entry) => onSaveJournal(entry, false));
+    }
+    setPasteText('');
+    setShowImportPanel(false);
+  };
+
+  const handleImportJournalPaste = () => {
+    const lines = pasteText
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const parsed = lines.map((line) => {
+      const delim = line.includes('\t') ? '\t' : line.includes(';') ? ';' : ',';
+      const cols = line.split(delim).map((c) => c.trim());
+      return {
+        date: cols[0] || getTodayIso(),
+        period: cols[1] || '1 - 2',
+        className: cols[2] || settings.classes[0] || 'X IPA 1',
+        subject: cols[3] || settings.subjects[0] || 'Matematika',
+        topic: cols[4] || '',
+        activities: cols[5] || '-',
+      };
+    });
+    parseAndImportJournalRows(parsed);
+  };
+
+  const handleJournalFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
+      const mapped = rows.map((row) => ({
+        date: String(row['Tanggal'] ?? row['tanggal'] ?? getTodayIso()),
+        period: String(row['Jam Ke-'] ?? row['Jam'] ?? row['jam'] ?? '1 - 2'),
+        className: String(row['Kelas'] ?? row['kelas'] ?? settings.classes[0] ?? 'X IPA 1'),
+        subject: String(
+          row['Mata Pelajaran'] ?? row['Mapel'] ?? row['mapel'] ?? settings.subjects[0] ?? 'Matematika'
+        ),
+        topic: String(row['Materi Pokok'] ?? row['Materi'] ?? row['materi'] ?? ''),
+        activities: String(row['Kegiatan Pembelajaran'] ?? row['Kegiatan'] ?? row['kegiatan'] ?? '-'),
+      }));
+      parseAndImportJournalRows(mapped);
+    } catch {
+      onNotify('Gagal membaca file Excel/CSV Jurnal. Pastikan format kolom sesuai template.');
+    } finally {
+      if (journalFileInputRef.current) journalFileInputRef.current.value = '';
+    }
+  };
+
   const loadEntryToForm = (entry: JournalEntry, mode: 'edit' | 'duplicate') => {
     setEditingId(mode === 'edit' ? entry.id : null);
     setDate(mode === 'duplicate' ? getTodayIso() : entry.date);
@@ -250,6 +415,30 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
   const [ledgerSubject, setLedgerSubject] = useState<string>('ALL');
   // Draft map: `${journalId}__${studentId}` -> AttendanceStatus
   const [ledgerEdits, setLedgerEdits] = useState<Record<string, AttendanceStatus>>({});
+
+  useEffect(() => {
+    if (className && !settings.classes.includes(className)) {
+      setClassName('');
+      setAttendanceMap({});
+    }
+    if (subject && !settings.subjects.includes(subject)) {
+      setSubject('');
+    }
+    if (filterClass !== 'ALL' && !settings.classes.includes(filterClass)) {
+      setFilterClass('ALL');
+    }
+    if (
+      (!ledgerClass && settings.classes.length > 0) ||
+      (ledgerClass && !settings.classes.includes(ledgerClass))
+    ) {
+      setLedgerClass(settings.classes[0] || '');
+      setLedgerEdits({});
+    }
+    if (ledgerSubject !== 'ALL' && !settings.subjects.includes(ledgerSubject)) {
+      setLedgerSubject('ALL');
+      setLedgerEdits({});
+    }
+  }, [settings.classes, settings.subjects, className, subject, filterClass, ledgerClass, ledgerSubject]);
 
   const ledgerStudents = useMemo(() => {
     return students
@@ -495,7 +684,14 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
                               {st.nis}
                             </td>
                             <td className="py-2 px-3 font-medium text-slate-900 text-xs sm:text-sm">
-                              {st.name}
+                              <button
+                                type="button"
+                                onClick={() => onViewStudent(st)}
+                                className="text-left font-semibold text-slate-900 hover:text-indigo-600 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer"
+                                title="Klik untuk lihat info siswa & aktivitas kelas"
+                              >
+                                {st.name}
+                              </button>
                             </td>
                             <td className="py-2 px-3">
                               <div className="flex items-center justify-center gap-1.5">
@@ -616,6 +812,35 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
               ))}
             </select>
 
+            <button
+              type="button"
+              onClick={handleDownloadJournalTemplate}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <Download className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Template</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowImportPanel((v) => !v)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <Upload className="w-3.5 h-3.5 text-indigo-300" />
+              <span>{showImportPanel ? 'Tutup Impor' : 'Impor'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleExportJournals}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>
+                {selectedIds.length > 0 ? `Ekspor (${selectedIds.length})` : 'Ekspor Excel'}
+              </span>
+            </button>
+
             {selectedIds.length > 0 && (
               <button
                 type="button"
@@ -628,6 +853,65 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
             )}
           </div>
         </div>
+
+        {showImportPanel && (
+          <div className="p-5 bg-indigo-50/50 border-b border-indigo-200 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h4 className="text-xs font-bold text-slate-900">Kotak Impor Jurnal Mengajar</h4>
+                <p className="text-[11px] text-slate-600">
+                  Urutan kolom:{' '}
+                  <span className="font-mono font-semibold">
+                    Tanggal (YYYY-MM-DD) [Tab] Jam Ke- [Tab] Kelas [Tab] Mata Pelajaran [Tab] Materi Pokok [Tab] Kegiatan
+                  </span>
+                </p>
+              </div>
+              <div>
+                <input
+                  ref={journalFileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={handleJournalFileUpload}
+                  className="hidden"
+                  id="upload-journal-excel"
+                />
+                <label
+                  htmlFor="upload-journal-excel"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-300 bg-white hover:bg-indigo-50 text-indigo-700 text-xs font-semibold cursor-pointer whitespace-nowrap"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Pilih File Excel / CSV</span>
+                </label>
+              </div>
+            </div>
+
+            <textarea
+              rows={4}
+              value={pasteText}
+              onChange={(e) => setPasteText(e.target.value)}
+              placeholder={`${getTodayIso()}\t1 - 2\t${settings.classes[0] || 'X IPA 1'}\t${settings.subjects[0] || 'Matematika'}\tPersamaan Kuadrat\tDiskusi kelompok & latihan soal`}
+              className="w-full p-2.5 text-xs font-mono rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+            />
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowImportPanel(false)}
+                className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleImportJournalPaste}
+                disabled={!pasteText.trim()}
+                className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold cursor-pointer"
+              >
+                Proses Impor Jurnal
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="max-h-[420px] overflow-auto eguru-scroll">
           <table className="w-full text-left border-collapse">
@@ -682,10 +966,32 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
                         <div className="text-slate-500">Jam {j.period}</div>
                       </td>
                       <td className="py-3 px-3 whitespace-nowrap font-semibold text-xs text-slate-900">
-                        {j.className}
+                        {onViewClass ? (
+                          <button
+                            type="button"
+                            onClick={() => onViewClass(j.className)}
+                            className="font-semibold text-slate-900 hover:text-indigo-600 hover:underline cursor-pointer"
+                            title={`Klik untuk lihat detail kelas ${j.className}`}
+                          >
+                            {j.className}
+                          </button>
+                        ) : (
+                          j.className
+                        )}
                       </td>
                       <td className="py-3 px-3 whitespace-nowrap text-xs font-medium text-indigo-700">
-                        {j.subject}
+                        {onViewSubject ? (
+                          <button
+                            type="button"
+                            onClick={() => onViewSubject(j.subject)}
+                            className="font-semibold text-indigo-700 hover:text-indigo-900 hover:underline cursor-pointer text-left"
+                            title={`Klik untuk lihat detail mata pelajaran ${j.subject}`}
+                          >
+                            {j.subject}
+                          </button>
+                        ) : (
+                          j.subject
+                        )}
                       </td>
                       <td className="py-3 px-3 min-w-[240px]">
                         <div className="text-xs font-semibold text-slate-900">{j.topic}</div>
@@ -851,7 +1157,14 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
                         {idx + 1}
                       </td>
                       <td className="sticky left-10 z-10 bg-white py-2 px-3 font-medium text-slate-900 border-r border-slate-200 whitespace-nowrap">
-                        {st.name}
+                        <button
+                          type="button"
+                          onClick={() => onViewStudent(st)}
+                          className="text-left font-semibold text-slate-900 hover:text-indigo-600 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer"
+                          title="Klik untuk lihat info siswa & aktivitas kelas"
+                        >
+                          {st.name}
+                        </button>
                       </td>
                       {ledgerJournals.map((j) => {
                         const code = getCellStatus(j, st.id);

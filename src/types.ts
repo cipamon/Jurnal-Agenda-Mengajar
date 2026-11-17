@@ -22,12 +22,35 @@ export type ReportType = 'jurnal' | 'kehadiran' | 'nilai' | 'semua';
 
 export type PaperOrientation = 'portrait' | 'landscape';
 
+export type UserRole = 'admin' | 'guru' | 'wali_kelas' | 'kepala_sekolah' | 'karyawan';
+
+export interface AppUser {
+  id: string;
+  name: string;
+  nip: string;
+  email: string;
+  password: string;
+  role: UserRole;
+  school: string;
+  gender: 'L' | 'P';
+  photoDataUrl?: string;
+  assignedClasses?: string[];
+  assignedSubjects?: string[];
+  active: boolean;
+  createdAt: string;
+}
+
 export interface Student {
   id: string;
   nis: string;
+  absenNo?: string;
   name: string;
   gender: 'L' | 'P';
   className: string;
+  photoDataUrl?: string;
+  email?: string;
+  ttl?: string;
+  address?: string;
 }
 
 export interface StudentAttendanceItem {
@@ -60,6 +83,30 @@ export interface GradeRecord {
   updatedAt: string;
 }
 
+export interface KopSuratLineSizes {
+  line1: number;
+  line2: number;
+  line3: number;
+  line4: number;
+  line5: number;
+  line6: number;
+}
+
+export interface KopSuratTextStyle {
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+}
+
+export interface KopSuratLineStyles {
+  line1: KopSuratTextStyle;
+  line2: KopSuratTextStyle;
+  line3: KopSuratTextStyle;
+  line4: KopSuratTextStyle;
+  line5: KopSuratTextStyle;
+  line6: KopSuratTextStyle;
+}
+
 export interface KopSuratConfig {
   line1: string;
   line2: string;
@@ -69,6 +116,17 @@ export interface KopSuratConfig {
   line6: string;
   leftLogoDataUrl: string;
   rightLogoDataUrl: string;
+  leftLogoSize?: number; // px (36 - 120)
+  rightLogoSize?: number; // px (36 - 120)
+  fontFamily?: PrintFontFamily;
+  lineSizes?: KopSuratLineSizes;
+  lineStyles?: KopSuratLineStyles;
+}
+
+export interface WebBrandConfig {
+  appName: string;
+  tabTitle: string;
+  webLogoDataUrl: string;
 }
 
 export interface TeacherProfile {
@@ -77,6 +135,10 @@ export interface TeacherProfile {
   school: string;
   email: string;
   password: string;
+  gender?: 'L' | 'P';
+  photoDataUrl?: string;
+  assignedClasses?: string[];
+  assignedSubjects?: string[];
 }
 
 export interface SystemSettings {
@@ -88,6 +150,7 @@ export interface SystemSettings {
   principalName: string;
   principalNip: string;
   sheetsWebAppUrl: string;
+  webBrand?: WebBrandConfig;
   kopSurat: KopSuratConfig;
   teacherProfile: TeacherProfile;
   classes: string[];
@@ -102,11 +165,14 @@ export interface PortalDatabase {
   students: Student[];
   journals: JournalEntry[];
   grades: GradeRecord[];
+  users?: AppUser[];
   settings: SystemSettings;
 }
 
 export interface SessionState {
   isAuthenticated: boolean;
   email: string;
+  userId?: string;
+  role?: UserRole;
   loggedInAt: string;
 }

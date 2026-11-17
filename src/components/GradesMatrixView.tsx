@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Award, CheckCircle2, Save } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Award, CheckCircle2, Download, FileSpreadsheet, Save, Trash2, Upload } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { GradeRecord, RowMarkerColor, Student, SystemSettings } from '../types';
 import { ROW_MARKER_META } from '../utils/helpers';
 
@@ -8,6 +9,10 @@ interface GradesMatrixViewProps {
   grades: GradeRecord[];
   settings: SystemSettings;
   onSaveGradesBatch: (records: GradeRecord[]) => void;
+  onDeleteGrades?: (ids: string[]) => void;
+  onViewStudent: (student: Student) => void;
+  onViewClass?: (className: string) => void;
+  onViewSubject?: (subject: string) => void;
   onNotify: (msg: string) => void;
 }
 
@@ -18,6 +23,10 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
   grades,
   settings,
   onSaveGradesBatch,
+  onDeleteGrades,
+  onViewStudent,
+  onViewClass,
+  onViewSubject,
   onNotify,
 }) => {
   // =========================================================================
@@ -30,6 +39,10 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
   const [draftScores, setDraftScores] = useState<
     Record<string, { score: string; note: string; marker: RowMarkerColor }>
   >({});
+  const [selectedInputIds, setSelectedInputIds] = useState<string[]>([]);
+  const [showInputImport, setShowInputImport] = useState(false);
+  const [inputPasteText, setInputPasteText] = useState('');
+  const inputFileRef = useRef<HTMLInputElement | null>(null);
 
   const classStudents = useMemo(() => {
     return students
@@ -117,12 +130,226 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
     onSaveGradesBatch(batch);
   };
 
+  const toggleSelectInputRow = (studentId: string) => {
+    setSelectedInputIds((prev) =>
+      prev.includes(studentId) ? prev.filter((id) => id !== studentId) : [...prev, studentId]
+    );
+  };
+
+  const toggleSelectAllInput = () => {
+    const visible = classStudents.map((s) => s.id);
+    const allSelected = visible.length > 0 && visible.every((id) => selectedInputIds.includes(id));
+    setSelectedInputIds(allSelected ? [] : visible);
+  };
+
+  const handleDeleteInputGrades = (studentIds: string[]) => {
+    if (studentIds.length === 0) return;
+    const targetGradeIds = grades
+      .filter(
+        (g) =>
+          studentIds.includes(g.studentId) &&
+          g.className === selectedClass &&
+          g.subject === selectedSubject &&
+          g.examType === selectedExamType
+      )
+      .map((g) => g.id);
+
+    if (onDeleteGrades && targetGradeIds.length > 0) {
+      onDeleteGrades(targetGradeIds);
+    } else if (targetGradeIds.length === 0) {
+      onNotify(`Isian nilai sementara untuk ${studentIds.length} siswa dikosongkan.`);
+    }
+
+    setDraftScores((prev) => {
+      const next = { ...prev };
+      studentIds.forEach((id) => {
+        next[id] = { score: '', note: '', marker: 'neutral' };
+      });
+      return next;
+    });
+    setSelectedInputIds((prev) => prev.filter((id) => !studentIds.includes(id)));
+  };
+
+  const handleDownloadInputTemplate = () => {
+    const rows =
+      classStudents.length > 0
+        ? classStudents.map((st, idx) => ({
+            No: idx + 1,
+            NIS: st.nis,
+            'Nama Lengkap': st.name,
+            Kelas: selectedClass,
+            'Mata Pelajaran': selectedSubject,
+            'Jenis Ujian': selectedExamType,
+            Nilai: 80,
+            Catatan: '',
+          }))
+        : [
+            {
+              No: 1,
+              NIS: '25261001',
+              'Nama Lengkap': 'Contoh Siswa',
+              Kelas: selectedClass || 'X IPA 1',
+              'Mata Pelajaran': selectedSubject || 'Matematika',
+              'Jenis Ujian': selectedExamType || 'UH 1',
+              Nilai: 85,
+              Catatan: 'Sangat baik',
+            },
+          ];
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Template Nilai');
+    XLSX.writeFile(wb, `Template_Nilai_${selectedClass}_${selectedExamType}.xlsx`);
+    onNotify('Template Excel (.xlsx) Input Nilai berhasil diunduh.');
+  };
+
+  const handleExportInputGrades = () => {
+    const targetStudents =
+      selectedInputIds.length > 0
+        ? classStudents.filter((st) => selectedInputIds.includes(st.id))
+        : classStudents;
+    const rows = targetStudents.map((st, idx) => {
+      const row = draftScores[st.id] ?? { score: '', note: '', marker: 'neutral' };
+      return {
+        No: idx + 1,
+        NIS: st.nis,
+        'Nama Lengkap': st.name,
+        Kelas: selectedClass,
+        'Mata Pelajaran': selectedSubject,
+        'Jenis Ujian': selectedExamType,
+        Nilai: row.score === '' ? '-' : Number(row.score),
+        Status: ROW_MARKER_META[row.marker].label,
+        Catatan: row.note || '-',
+      };
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Nilai Ujian');
+    XLSX.writeFile(wb, `Nilai_${selectedClass}_${selectedSubject}_${selectedExamType}.xlsx`);
+    onNotify(
+      `Berhasil mengekspor ${rows.length} data nilai${selectedInputIds.length > 0 ? ' terpilih' : ''} ke Excel.`
+    );
+  };
+
+  const applyImportedInputRows = (
+    rawRows: Array<{ nis: string; name: string; score: string; note: string }>
+  ) => {
+    const nowIso = new Date().toISOString();
+    const toSave: GradeRecord[] = [];
+    const nextDraft = { ...draftScores };
+
+    rawRows.forEach((r) => {
+      const cleanNis = String(r.nis || '').trim();
+      const cleanName = String(r.name || '').trim().toLowerCase();
+      if (cleanNis.toLowerCase() === 'nis' || r.score === '') return;
+
+      const student = classStudents.find(
+        (s) => s.nis === cleanNis || (cleanName && s.name.toLowerCase() === cleanName)
+      );
+      if (!student) return;
+
+      const num = Number(r.score);
+      if (Number.isNaN(num)) return;
+      const clamped = Math.max(0, Math.min(100, num));
+      const marker: RowMarkerColor = clamped >= settings.kkm ? 'green' : 'yellow';
+
+      nextDraft[student.id] = {
+        score: String(clamped),
+        note: String(r.note || '').trim(),
+        marker,
+      };
+      toSave.push({
+        id: `grd-${student.id}-${selectedSubject.replace(/\s+/g, '')}-${selectedExamType.replace(/\s+/g, '')}`,
+        studentId: student.id,
+        className: selectedClass,
+        subject: selectedSubject,
+        examType: selectedExamType,
+        score: clamped,
+        note: String(r.note || '').trim(),
+        marker,
+        updatedAt: nowIso,
+      });
+    });
+
+    if (toSave.length === 0) {
+      onNotify('Tidak ada baris nilai yang cocok dengan NIS/Nama siswa di kelas ini.');
+      return;
+    }
+
+    setDraftScores(nextDraft);
+    onSaveGradesBatch(toSave);
+    setInputPasteText('');
+    setShowInputImport(false);
+  };
+
+  const handleImportInputPaste = () => {
+    const lines = inputPasteText
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const parsed = lines.map((line) => {
+      const delim = line.includes('\t') ? '\t' : line.includes(';') ? ';' : ',';
+      const cols = line.split(delim).map((c) => c.trim());
+      return {
+        nis: cols[0] || '',
+        name: cols[1] || '',
+        score: cols[2] ?? '',
+        note: cols[3] || '',
+      };
+    });
+    applyImportedInputRows(parsed);
+  };
+
+  const handleImportInputFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
+      const mapped = rows.map((row) => ({
+        nis: String(row['NIS'] ?? row['nis'] ?? ''),
+        name: String(row['Nama Lengkap'] ?? row['Nama'] ?? row['Nama Siswa'] ?? ''),
+        score: String(row['Nilai'] ?? row['Skor'] ?? row['nilai'] ?? ''),
+        note: String(row['Catatan'] ?? row['Keterangan'] ?? ''),
+      }));
+      applyImportedInputRows(mapped);
+    } catch {
+      onNotify('Gagal membaca file Excel/CSV nilai. Pastikan format kolom sesuai template.');
+    } finally {
+      if (inputFileRef.current) inputFileRef.current.value = '';
+    }
+  };
+
   // =========================================================================
   // BAGIAN 2: RIWAYAT MATRIKS NILAI PER KELAS (LEGER MENDATAR)
   // =========================================================================
   const [matrixClass, setMatrixClass] = useState<string>(settings.classes[0] || '');
   const [matrixSubject, setMatrixSubject] = useState<string>(settings.subjects[0] || '');
   const [matrixEdits, setMatrixEdits] = useState<Record<string, string>>({}); // `${studentId}__${examType}` -> string
+  const [selectedMatrixIds, setSelectedMatrixIds] = useState<string[]>([]);
+  const [showMatrixImport, setShowMatrixImport] = useState(false);
+  const [matrixPasteText, setMatrixPasteText] = useState('');
+  const matrixFileRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!selectedClass || !settings.classes.includes(selectedClass)) {
+      setSelectedClass(settings.classes[0] || '');
+      setSelectedInputIds([]);
+    }
+    if (!selectedSubject || !settings.subjects.includes(selectedSubject)) {
+      setSelectedSubject(settings.subjects[0] || '');
+    }
+    if (!matrixClass || !settings.classes.includes(matrixClass)) {
+      setMatrixClass(settings.classes[0] || '');
+      setMatrixEdits({});
+      setSelectedMatrixIds([]);
+    }
+    if (!matrixSubject || !settings.subjects.includes(matrixSubject)) {
+      setMatrixSubject(settings.subjects[0] || '');
+      setMatrixEdits({});
+    }
+  }, [settings.classes, settings.subjects, selectedClass, selectedSubject, matrixClass, matrixSubject]);
 
   const matrixStudents = useMemo(() => {
     return students
@@ -196,6 +423,201 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
 
   const pendingMatrixCount = Object.keys(matrixEdits).length;
 
+  const toggleSelectMatrixRow = (studentId: string) => {
+    setSelectedMatrixIds((prev) =>
+      prev.includes(studentId) ? prev.filter((id) => id !== studentId) : [...prev, studentId]
+    );
+  };
+
+  const toggleSelectAllMatrix = () => {
+    const visible = matrixStudents.map((s) => s.id);
+    const allSelected = visible.length > 0 && visible.every((id) => selectedMatrixIds.includes(id));
+    setSelectedMatrixIds(allSelected ? [] : visible);
+  };
+
+  const handleDeleteMatrixSelected = () => {
+    if (selectedMatrixIds.length === 0) return;
+    const idsToDelete = grades
+      .filter(
+        (g) =>
+          selectedMatrixIds.includes(g.studentId) &&
+          g.className === matrixClass &&
+          g.subject === matrixSubject
+      )
+      .map((g) => g.id);
+    if (onDeleteGrades && idsToDelete.length > 0) {
+      onDeleteGrades(idsToDelete);
+    } else if (idsToDelete.length === 0) {
+      onNotify('Tidak ada nilai tersimpan pada siswa yang dipilih.');
+    }
+    setMatrixEdits((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((k) => {
+        const [sid] = k.split('__');
+        if (selectedMatrixIds.includes(sid)) delete next[k];
+      });
+      return next;
+    });
+    setSelectedMatrixIds([]);
+  };
+
+  const handleDownloadMatrixTemplate = () => {
+    const rows = (matrixStudents.length > 0
+      ? matrixStudents
+      : [{ nis: '25261001', name: 'Contoh Siswa' }]
+    ).map((st, idx) => {
+      const row: Record<string, string | number> = {
+        No: idx + 1,
+        NIS: st.nis,
+        'Nama Siswa': st.name,
+      };
+      settings.examTypes.forEach((ex) => {
+        row[ex] = 80;
+      });
+      return row;
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Template Matriks');
+    XLSX.writeFile(wb, `Template_Matriks_${matrixClass}_${matrixSubject}.xlsx`);
+    onNotify('Template Excel (.xlsx) Matriks Nilai berhasil diunduh.');
+  };
+
+  const handleExportMatrix = () => {
+    const targetStudents =
+      selectedMatrixIds.length > 0
+        ? matrixStudents.filter((st) => selectedMatrixIds.includes(st.id))
+        : matrixStudents;
+    const rows = targetStudents.map((st, idx) => {
+      let sum = 0;
+      let cnt = 0;
+      const row: Record<string, string | number> = {
+        No: idx + 1,
+        NIS: st.nis,
+        'Nama Siswa': st.name,
+      };
+      settings.examTypes.forEach((ex) => {
+        const val = getMatrixCellValue(st.id, ex);
+        row[ex] = val === '' ? '-' : Number(val);
+        if (val !== '' && !Number.isNaN(Number(val))) {
+          sum += Number(val);
+          cnt++;
+        }
+      });
+      const avg = cnt > 0 ? Math.round((sum / cnt) * 10) / 10 : null;
+      row['Rata-Rata'] = avg !== null ? avg : '-';
+      row['Status KKM'] = avg !== null ? (avg >= settings.kkm ? 'Tuntas' : 'Remedial') : '-';
+      return row;
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Matriks Nilai');
+    XLSX.writeFile(wb, `Matriks_Nilai_${matrixClass}_${matrixSubject}.xlsx`);
+    onNotify(
+      `Berhasil mengekspor ${rows.length} baris matriks nilai${selectedMatrixIds.length > 0 ? ' terpilih' : ''} ke Excel.`
+    );
+  };
+
+  const handleMatrixFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
+      const nowIso = new Date().toISOString();
+      const batch: GradeRecord[] = [];
+
+      rows.forEach((row) => {
+        const cleanNis = String(row['NIS'] ?? row['nis'] ?? '').trim();
+        const cleanName = String(row['Nama Siswa'] ?? row['Nama Lengkap'] ?? row['Nama'] ?? '')
+          .trim()
+          .toLowerCase();
+        const st = matrixStudents.find(
+          (s) => s.nis === cleanNis || (cleanName && s.name.toLowerCase() === cleanName)
+        );
+        if (!st) return;
+        settings.examTypes.forEach((ex) => {
+          const raw = row[ex];
+          if (raw === undefined || raw === null || String(raw).trim() === '' || String(raw) === '-') {
+            return;
+          }
+          const num = Number(raw);
+          if (Number.isNaN(num)) return;
+          const clamped = Math.max(0, Math.min(100, num));
+          batch.push({
+            id: `grd-${st.id}-${matrixSubject.replace(/\s+/g, '')}-${ex.replace(/\s+/g, '')}`,
+            studentId: st.id,
+            className: matrixClass,
+            subject: matrixSubject,
+            examType: ex,
+            score: clamped,
+            note: '',
+            marker: clamped >= settings.kkm ? 'green' : 'yellow',
+            updatedAt: nowIso,
+          });
+        });
+      });
+
+      if (batch.length === 0) {
+        onNotify('Tidak ada sel nilai matriks yang cocok untuk diimpor.');
+        return;
+      }
+      onSaveGradesBatch(batch);
+      setMatrixEdits({});
+      setShowMatrixImport(false);
+    } catch {
+      onNotify('Gagal membaca file Excel matriks nilai.');
+    } finally {
+      if (matrixFileRef.current) matrixFileRef.current.value = '';
+    }
+  };
+
+  const handleImportMatrixPaste = () => {
+    const lines = matrixPasteText
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const nowIso = new Date().toISOString();
+    const batch: GradeRecord[] = [];
+    lines.forEach((line) => {
+      const delim = line.includes('\t') ? '\t' : line.includes(';') ? ';' : ',';
+      const cols = line.split(delim).map((c) => c.trim());
+      const cleanNis = cols[0] || '';
+      const cleanName = (cols[1] || '').toLowerCase();
+      const st = matrixStudents.find(
+        (s) => s.nis === cleanNis || (cleanName && s.name.toLowerCase() === cleanName)
+      );
+      if (!st) return;
+      settings.examTypes.forEach((ex, idx) => {
+        const raw = cols[2 + idx];
+        if (!raw || raw === '-') return;
+        const num = Number(raw);
+        if (Number.isNaN(num)) return;
+        const clamped = Math.max(0, Math.min(100, num));
+        batch.push({
+          id: `grd-${st.id}-${matrixSubject.replace(/\s+/g, '')}-${ex.replace(/\s+/g, '')}`,
+          studentId: st.id,
+          className: matrixClass,
+          subject: matrixSubject,
+          examType: ex,
+          score: clamped,
+          note: '',
+          marker: clamped >= settings.kkm ? 'green' : 'yellow',
+          updatedAt: nowIso,
+        });
+      });
+    });
+    if (batch.length === 0) {
+      onNotify('Tidak ditemukan baris matriks nilai valid untuk diimpor.');
+      return;
+    }
+    onSaveGradesBatch(batch);
+    setMatrixPasteText('');
+    setShowMatrixImport(false);
+  };
+
   return (
     <div className="space-y-8">
       {/* ===================================================================== */}
@@ -228,7 +650,18 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
         <div className="p-5 bg-slate-50 border-b border-slate-200 flex flex-col lg:flex-row lg:items-end justify-between gap-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 flex-1">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Kelas</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-slate-700">Kelas</label>
+                {onViewClass && selectedClass && (
+                  <button
+                    type="button"
+                    onClick={() => onViewClass(selectedClass)}
+                    className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer"
+                  >
+                    Detail Kelas
+                  </button>
+                )}
+              </div>
               <select
                 value={selectedClass}
                 onChange={(e) => setSelectedClass(e.target.value)}
@@ -243,7 +676,18 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Mata Pelajaran</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-slate-700">Mata Pelajaran</label>
+                {onViewSubject && selectedSubject && (
+                  <button
+                    type="button"
+                    onClick={() => onViewSubject(selectedSubject)}
+                    className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer"
+                  >
+                    Detail Mapel
+                  </button>
+                )}
+              </div>
               <select
                 value={selectedSubject}
                 onChange={(e) => setSelectedSubject(e.target.value)}
@@ -273,11 +717,49 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleDownloadInputTemplate}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <Download className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Template</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowInputImport((v) => !v)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <Upload className="w-3.5 h-3.5 text-indigo-300" />
+              <span>{showInputImport ? 'Tutup Impor' : 'Impor'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleExportInputGrades}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>
+                {selectedInputIds.length > 0
+                  ? `Ekspor (${selectedInputIds.length})`
+                  : 'Ekspor Excel'}
+              </span>
+            </button>
+            {selectedInputIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => handleDeleteInputGrades(selectedInputIds)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Hapus Terpilih ({selectedInputIds.length})</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={handleAutoKKM}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
             >
               <Award className="w-4 h-4" />
               <span>Auto KKM {settings.kkm || 75}</span>
@@ -292,6 +774,65 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
             </button>
           </div>
         </div>
+
+        {showInputImport && (
+          <div className="p-5 bg-indigo-50/50 border-b border-indigo-200 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h4 className="text-xs font-bold text-slate-900">
+                  Kotak Impor Nilai ({selectedClass} · {selectedSubject} · {selectedExamType})
+                </h4>
+                <p className="text-[11px] text-slate-600">
+                  Urutan kolom:{' '}
+                  <span className="font-mono font-semibold">
+                    NIS [Tab] Nama Lengkap [Tab] Nilai (0-100) [Tab] Catatan
+                  </span>
+                </p>
+              </div>
+              <div>
+                <input
+                  ref={inputFileRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={handleImportInputFile}
+                  className="hidden"
+                  id="upload-input-grades-excel"
+                />
+                <label
+                  htmlFor="upload-input-grades-excel"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-300 bg-white hover:bg-indigo-50 text-indigo-700 text-xs font-semibold cursor-pointer whitespace-nowrap"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Pilih File Excel / CSV</span>
+                </label>
+              </div>
+            </div>
+            <textarea
+              rows={4}
+              value={inputPasteText}
+              onChange={(e) => setInputPasteText(e.target.value)}
+              placeholder={`25261001\tAhmad Fauzan\t88\tTuntas dengan baik`}
+              className="w-full p-2.5 text-xs font-mono rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+            />
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowInputImport(false)}
+                className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleImportInputPaste}
+                disabled={!inputPasteText.trim()}
+                className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold cursor-pointer"
+              >
+                Proses Impor Nilai
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Marker Legend */}
         <div className="px-5 py-2.5 bg-white border-b border-slate-200 flex flex-wrap items-center gap-4 text-xs text-slate-600">
@@ -314,12 +855,25 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
             <table className="w-full text-left border-collapse">
               <thead className="sticky top-0 z-10 bg-slate-900 text-white text-xs">
                 <tr>
+                  <th className="py-2.5 px-3 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={
+                        classStudents.length > 0 &&
+                        classStudents.every((s) => selectedInputIds.includes(s.id))
+                      }
+                      onChange={toggleSelectAllInput}
+                      aria-label="Pilih semua siswa untuk input nilai"
+                      className="rounded border-slate-400 cursor-pointer"
+                    />
+                  </th>
                   <th className="py-2.5 px-3 font-semibold w-12 text-center">No</th>
                   <th className="py-2.5 px-3 font-semibold w-28">NIS</th>
                   <th className="py-2.5 px-3 font-semibold min-w-[180px]">Nama Siswa</th>
                   <th className="py-2.5 px-3 font-semibold w-28 text-center">Nilai (0–100)</th>
                   <th className="py-2.5 px-3 font-semibold min-w-[200px]">Catatan Evaluasi</th>
                   <th className="py-2.5 px-4 font-semibold min-w-[210px]">Penanda Status Baris</th>
+                  <th className="py-2.5 px-3 font-semibold w-16 text-right">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 text-sm">
@@ -328,6 +882,15 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
                   const markerMeta = ROW_MARKER_META[row.marker];
                   return (
                     <tr key={st.id} className={`${markerMeta.rowBgClass} transition-colors`}>
+                      <td className="py-2.5 px-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedInputIds.includes(st.id)}
+                          onChange={() => toggleSelectInputRow(st.id)}
+                          aria-label={`Pilih nilai ${st.name}`}
+                          className="rounded border-slate-300 cursor-pointer"
+                        />
+                      </td>
                       <td className="py-2.5 px-3 text-center text-xs text-slate-500 tabular-nums">
                         {idx + 1}
                       </td>
@@ -335,7 +898,14 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
                         {st.nis}
                       </td>
                       <td className="py-2.5 px-3 font-medium text-slate-900 text-xs sm:text-sm">
-                        {st.name}
+                        <button
+                          type="button"
+                          onClick={() => onViewStudent(st)}
+                          className="text-left font-semibold text-slate-900 hover:text-indigo-600 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer"
+                          title="Klik untuk lihat info siswa & aktivitas kelas"
+                        >
+                          {st.name}
+                        </button>
                       </td>
                       <td className="py-2.5 px-3 text-center">
                         <input
@@ -400,6 +970,17 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
                           </span>
                         </div>
                       </td>
+                      <td className="py-2.5 px-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteInputGrades([st.id])}
+                          className="inline-flex items-center justify-center p-1.5 rounded-md border border-rose-200 text-rose-700 hover:bg-rose-50 cursor-pointer"
+                          title={`Kosongkan / hapus nilai ${st.name}`}
+                          aria-label={`Hapus nilai ${st.name}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -456,6 +1037,48 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
 
             <button
               type="button"
+              onClick={handleDownloadMatrixTemplate}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <Download className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Template</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowMatrixImport((v) => !v)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <Upload className="w-3.5 h-3.5 text-indigo-300" />
+              <span>{showMatrixImport ? 'Tutup Impor' : 'Impor'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleExportMatrix}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>
+                {selectedMatrixIds.length > 0
+                  ? `Ekspor (${selectedMatrixIds.length})`
+                  : 'Ekspor Excel'}
+              </span>
+            </button>
+
+            {selectedMatrixIds.length > 0 && (
+              <button
+                type="button"
+                onClick={handleDeleteMatrixSelected}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Hapus Terpilih ({selectedMatrixIds.length})</span>
+              </button>
+            )}
+
+            <button
+              type="button"
               onClick={handleSaveMatrixEdits}
               disabled={pendingMatrixCount === 0}
               className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
@@ -472,6 +1095,65 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
           </div>
         </div>
 
+        {showMatrixImport && (
+          <div className="p-5 bg-indigo-50/50 border-b border-indigo-200 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h4 className="text-xs font-bold text-slate-900">
+                  Kotak Impor Matriks Nilai ({matrixClass} · {matrixSubject})
+                </h4>
+                <p className="text-[11px] text-slate-600">
+                  Urutan kolom:{' '}
+                  <span className="font-mono font-semibold">
+                    NIS [Tab] Nama Siswa [Tab] {settings.examTypes.join(' [Tab] ')}
+                  </span>
+                </p>
+              </div>
+              <div>
+                <input
+                  ref={matrixFileRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={handleMatrixFileUpload}
+                  className="hidden"
+                  id="upload-matrix-excel"
+                />
+                <label
+                  htmlFor="upload-matrix-excel"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-300 bg-white hover:bg-indigo-50 text-indigo-700 text-xs font-semibold cursor-pointer whitespace-nowrap"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Pilih File Excel / CSV</span>
+                </label>
+              </div>
+            </div>
+            <textarea
+              rows={4}
+              value={matrixPasteText}
+              onChange={(e) => setMatrixPasteText(e.target.value)}
+              placeholder={`25261001\tAhmad Fauzan\t${settings.examTypes.map(() => '85').join('\t')}`}
+              className="w-full p-2.5 text-xs font-mono rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+            />
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowMatrixImport(false)}
+                className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleImportMatrixPaste}
+                disabled={!matrixPasteText.trim()}
+                className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold cursor-pointer"
+              >
+                Proses Impor Matriks
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="max-h-[460px] overflow-auto eguru-scroll">
           {matrixStudents.length === 0 ? (
             <div className="p-10 text-center text-sm text-slate-500">
@@ -481,10 +1163,22 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
             <table className="w-full text-left border-collapse">
               <thead className="sticky top-0 z-20 bg-slate-900 text-white text-xs">
                 <tr>
-                  <th className="sticky left-0 z-30 bg-slate-900 py-2.5 px-3 font-semibold w-10 text-center border-r border-slate-800">
+                  <th className="sticky left-0 z-30 bg-slate-900 py-2.5 px-3 w-10 text-center border-r border-slate-800">
+                    <input
+                      type="checkbox"
+                      checked={
+                        matrixStudents.length > 0 &&
+                        matrixStudents.every((s) => selectedMatrixIds.includes(s.id))
+                      }
+                      onChange={toggleSelectAllMatrix}
+                      aria-label="Pilih semua siswa di matriks nilai"
+                      className="rounded border-slate-400 cursor-pointer"
+                    />
+                  </th>
+                  <th className="sticky left-10 z-30 bg-slate-900 py-2.5 px-3 font-semibold w-10 text-center border-r border-slate-800">
                     No
                   </th>
-                  <th className="sticky left-10 z-30 bg-slate-900 py-2.5 px-3 font-semibold min-w-[180px] border-r border-slate-800">
+                  <th className="sticky left-20 z-30 bg-slate-900 py-2.5 px-3 font-semibold min-w-[180px] border-r border-slate-800">
                     Nama Siswa
                   </th>
                   {settings.examTypes.map((ex) => (
@@ -519,11 +1213,27 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
 
                   return (
                     <tr key={st.id} className="hover:bg-slate-50">
-                      <td className="sticky left-0 z-10 bg-white py-2 px-3 text-center text-slate-500 tabular-nums border-r border-slate-200">
+                      <td className="sticky left-0 z-10 bg-white py-2 px-3 text-center border-r border-slate-200">
+                        <input
+                          type="checkbox"
+                          checked={selectedMatrixIds.includes(st.id)}
+                          onChange={() => toggleSelectMatrixRow(st.id)}
+                          aria-label={`Pilih baris matriks ${st.name}`}
+                          className="rounded border-slate-300 cursor-pointer"
+                        />
+                      </td>
+                      <td className="sticky left-10 z-10 bg-white py-2 px-3 text-center text-slate-500 tabular-nums border-r border-slate-200">
                         {idx + 1}
                       </td>
-                      <td className="sticky left-10 z-10 bg-white py-2 px-3 font-medium text-slate-900 border-r border-slate-200 whitespace-nowrap">
-                        {st.name}
+                      <td className="sticky left-20 z-10 bg-white py-2 px-3 font-medium text-slate-900 border-r border-slate-200 whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => onViewStudent(st)}
+                          className="text-left font-semibold text-slate-900 hover:text-indigo-600 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer"
+                          title="Klik untuk lihat info siswa & aktivitas kelas"
+                        >
+                          {st.name}
+                        </button>
                       </td>
                       {settings.examTypes.map((ex) => {
                         const cellVal = getMatrixCellValue(st.id, ex);

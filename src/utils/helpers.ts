@@ -1,4 +1,90 @@
-import { AttendanceStatus, RowMarkerColor } from '../types';
+import {
+  AppUser,
+  AttendanceStatus,
+  GradeRecord,
+  JournalEntry,
+  KopSuratConfig,
+  KopSuratLineSizes,
+  KopSuratLineStyles,
+  PortalDatabase,
+  PrintFontFamily,
+  RowMarkerColor,
+  Student,
+  SystemSettings,
+  UserRole,
+  WebBrandConfig,
+} from '../types';
+import { DEFAULT_WEB_LOGO } from './defaultAvatars';
+
+export const PRINT_FONT_OPTIONS: PrintFontFamily[] = [
+  'Times New Roman',
+  'Tahoma',
+  'Arial',
+  'Verdana',
+  'Calibri',
+  'Georgia',
+];
+
+export const USER_ROLE_LABELS: Record<UserRole, string> = {
+  admin: 'Admin Sistem',
+  guru: 'Guru Mapel',
+  wali_kelas: 'Wali Kelas',
+  kepala_sekolah: 'Kepala Sekolah',
+  karyawan: 'Karyawan / Staff',
+};
+
+export const DEFAULT_KOP_LINE_SIZES: KopSuratLineSizes = {
+  line1: 12,
+  line2: 14,
+  line3: 12,
+  line4: 16,
+  line5: 11,
+  line6: 11,
+};
+
+export const DEFAULT_KOP_LINE_STYLES: KopSuratLineStyles = {
+  line1: { bold: true, italic: false, underline: false },
+  line2: { bold: true, italic: false, underline: false },
+  line3: { bold: false, italic: false, underline: false },
+  line4: { bold: true, italic: false, underline: false },
+  line5: { bold: false, italic: false, underline: false },
+  line6: { bold: false, italic: false, underline: false },
+};
+
+export function getPrintFontCss(fontFamily?: PrintFontFamily): string {
+  const f = fontFamily || 'Times New Roman';
+  if (f === 'Calibri') return 'Calibri, "Segoe UI", Arial, sans-serif';
+  if (f === 'Times New Roman') return '"Times New Roman", Times, serif';
+  if (f === 'Georgia') return 'Georgia, "Times New Roman", serif';
+  return `"${f}", Arial, sans-serif`;
+}
+
+export function normalizeKopSurat(kop: KopSuratConfig): Required<KopSuratConfig> {
+  return {
+    ...kop,
+    leftLogoSize: kop.leftLogoSize ?? 64,
+    rightLogoSize: kop.rightLogoSize ?? 64,
+    fontFamily: kop.fontFamily ?? 'Times New Roman',
+    lineSizes: {
+      ...DEFAULT_KOP_LINE_SIZES,
+      ...(kop.lineSizes || {}),
+    },
+    lineStyles: {
+      ...DEFAULT_KOP_LINE_STYLES,
+      ...(kop.lineStyles || {}),
+    },
+  };
+}
+
+export function normalizeWebBrand(settings: SystemSettings): WebBrandConfig {
+  return {
+    appName: settings.webBrand?.appName || 'Portal E-Guru v10.2',
+    tabTitle:
+      settings.webBrand?.tabTitle ||
+      'Portal E-Guru v10.2 — Sistem Jurnal Mengajar, Presensi & Penilaian Guru Terpadu',
+    webLogoDataUrl: settings.webBrand?.webLogoDataUrl || DEFAULT_WEB_LOGO,
+  };
+}
 
 export function generateId(prefix = 'id'): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -140,3 +226,114 @@ export const ROW_MARKER_META: Record<
     textClass: 'text-blue-700',
   },
 };
+
+export interface ScopedPortalData {
+  isScoped: boolean;
+  hasClassRestriction: boolean;
+  hasSubjectRestriction: boolean;
+  allowedClasses: string[];
+  allowedSubjects: string[];
+  scopedSettings: SystemSettings;
+  scopedStudents: Student[];
+  scopedJournals: JournalEntry[];
+  scopedGrades: GradeRecord[];
+  scopeSummaryText: string | null;
+}
+
+export function formatAssignmentSummary(
+  assignedClasses?: string[],
+  assignedSubjects?: string[]
+): string {
+  const clsPart =
+    assignedClasses && assignedClasses.length > 0
+      ? `Kelas: ${assignedClasses.join(', ')}`
+      : 'Kelas: Semua';
+  const subjPart =
+    assignedSubjects && assignedSubjects.length > 0
+      ? `Mapel: ${assignedSubjects.join(', ')}`
+      : 'Mapel: Semua';
+  return `${clsPart} · ${subjPart}`;
+}
+
+export function getScopedPortalData(
+  db: PortalDatabase,
+  activeUser?: AppUser,
+  role?: UserRole
+): ScopedPortalData {
+  const effectiveRole: UserRole = activeUser?.role || role || 'guru';
+  const canBeScoped = effectiveRole === 'guru' || effectiveRole === 'wali_kelas';
+
+  const rawAssignedClasses = canBeScoped
+    ? activeUser
+      ? activeUser.assignedClasses || []
+      : db.settings.teacherProfile.assignedClasses || []
+    : [];
+
+  const rawAssignedSubjects = canBeScoped
+    ? activeUser
+      ? activeUser.assignedSubjects || []
+      : db.settings.teacherProfile.assignedSubjects || []
+    : [];
+
+  const hasClassRestriction = canBeScoped && rawAssignedClasses.length > 0;
+  const hasSubjectRestriction = canBeScoped && rawAssignedSubjects.length > 0;
+  const isScoped = hasClassRestriction || hasSubjectRestriction;
+
+  const allowedClasses = hasClassRestriction
+    ? db.settings.classes.filter((c) => rawAssignedClasses.includes(c))
+    : db.settings.classes;
+
+  const allowedSubjects = hasSubjectRestriction
+    ? db.settings.subjects.filter((s) => rawAssignedSubjects.includes(s))
+    : db.settings.subjects;
+
+  const classSet = new Set(allowedClasses);
+  const subjectSet = new Set(allowedSubjects);
+
+  const scopedStudents = hasClassRestriction
+    ? db.students.filter((s) => classSet.has(s.className))
+    : db.students;
+
+  const scopedJournals = isScoped
+    ? db.journals.filter(
+        (j) =>
+          (!hasClassRestriction || classSet.has(j.className)) &&
+          (!hasSubjectRestriction || subjectSet.has(j.subject))
+      )
+    : db.journals;
+
+  const scopedGrades = isScoped
+    ? db.grades.filter(
+        (g) =>
+          (!hasClassRestriction || classSet.has(g.className)) &&
+          (!hasSubjectRestriction || subjectSet.has(g.subject))
+      )
+    : db.grades;
+
+  const scopedSettings: SystemSettings = {
+    ...db.settings,
+    classes: allowedClasses,
+    subjects: allowedSubjects,
+  };
+
+  const scopeSummaryText = isScoped
+    ? formatAssignmentSummary(
+        hasClassRestriction ? allowedClasses : [],
+        hasSubjectRestriction ? allowedSubjects : []
+      )
+    : null;
+
+  return {
+    isScoped,
+    hasClassRestriction,
+    hasSubjectRestriction,
+    allowedClasses,
+    allowedSubjects,
+    scopedSettings,
+    scopedStudents,
+    scopedJournals,
+    scopedGrades,
+    scopeSummaryText,
+  };
+}
+

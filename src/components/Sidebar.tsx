@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   BarChart3,
-  BookOpenCheck,
   ClipboardCheck,
   FileSpreadsheet,
   LogOut,
@@ -10,12 +9,21 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { MenuId, TeacherProfile } from '../types';
+import { MenuId, TeacherProfile, UserRole, WebBrandConfig } from '../types';
+import { getUserPhotoUrl } from '../utils/defaultAvatars';
+import { USER_ROLE_LABELS } from '../utils/helpers';
 
 interface SidebarProps {
   activeMenu: MenuId;
   onSelectMenu: (menu: MenuId) => void;
   teacherProfile: TeacherProfile;
+  webBrand: WebBrandConfig;
+  currentUserName: string;
+  currentUserNip: string;
+  currentUserRole: UserRole;
+  currentUserGender: 'L' | 'P';
+  currentUserPhoto?: string;
+  onOpenProfileModal?: () => void;
   onLogout: () => void;
   mobileOpen: boolean;
   onCloseMobile: () => void;
@@ -34,10 +42,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeMenu,
   onSelectMenu,
   teacherProfile,
+  webBrand,
+  currentUserName,
+  currentUserNip,
+  currentUserRole,
+  currentUserGender,
+  currentUserPhoto,
+  onOpenProfileModal,
   onLogout,
   mobileOpen,
   onCloseMobile,
 }) => {
+  const userAvatarSrc = getUserPhotoUrl({
+    photoDataUrl: currentUserPhoto,
+    role: currentUserRole,
+    gender: currentUserGender,
+  });
+  const fallbackUserAvatarSrc = getUserPhotoUrl({
+    photoDataUrl: '',
+    role: currentUserRole,
+    gender: currentUserGender,
+  });
   const handlePick = (id: MenuId) => {
     onSelectMenu(id);
     onCloseMobile();
@@ -48,11 +73,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Brand Header */}
       <div className="px-5 py-5 border-b border-slate-800 flex items-center justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0">
-            <BookOpenCheck className="w-5 h-5 text-white" />
+          <div className="w-9 h-9 rounded-lg bg-white p-1 flex items-center justify-center shrink-0 overflow-hidden">
+            <img
+              src={webBrand.webLogoDataUrl}
+              alt={webBrand.appName}
+              className="w-full h-full object-contain"
+            />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-bold text-white truncate">Portal E-Guru v10.2</p>
+            <p className="text-sm font-bold text-white truncate">{webBrand.appName}</p>
             <p className="text-xs text-slate-400 truncate">{teacherProfile.school}</p>
           </div>
         </div>
@@ -89,12 +118,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </nav>
 
-      {/* Teacher Account Footer */}
+      {/* Account Footer */}
       <div className="p-4 border-t border-slate-800 space-y-3">
-        <div className="px-2">
-          <p className="text-xs font-semibold text-white truncate">{teacherProfile.name}</p>
-          <p className="text-xs text-slate-400 font-mono truncate mt-0.5">NIP. {teacherProfile.nip}</p>
-        </div>
+        <button
+          type="button"
+          onClick={() => {
+            onOpenProfileModal?.();
+            onCloseMobile();
+          }}
+          className="w-full flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-slate-800/80 transition-colors text-left cursor-pointer"
+          title="Klik untuk buka Pop-up Profil & Sinkronisasi"
+        >
+          <img
+            src={userAvatarSrc}
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = fallbackUserAvatarSrc;
+            }}
+            alt={currentUserName}
+            className="w-10 h-10 rounded-full object-cover object-top border border-slate-700 bg-white shrink-0"
+          />
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold text-indigo-300 uppercase tracking-wider truncate">
+              {USER_ROLE_LABELS[currentUserRole]}
+            </p>
+            <p className="text-xs font-semibold text-white truncate">{currentUserName}</p>
+            <p className="text-[11px] text-slate-400 font-mono truncate">NIP. {currentUserNip}</p>
+          </div>
+        </button>
         <button
           type="button"
           onClick={onLogout}

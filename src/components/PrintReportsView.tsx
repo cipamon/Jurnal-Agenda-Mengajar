@@ -29,7 +29,9 @@ import {
   formatTanggalID,
   formatTanggalShort,
   getMonthRange,
+  getPrintFontCss,
   getTodayIso,
+  normalizeKopSurat,
 } from '../utils/helpers';
 
 interface PrintReportsViewProps {
@@ -83,6 +85,22 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
   }, []);
+
+  useEffect(() => {
+    setSelectedClasses((prev) => {
+      const filtered = prev.filter((c) => settings.classes.includes(c));
+      if (filtered.length === 0 && settings.classes.length > 0) {
+        return [...settings.classes];
+      }
+      return filtered.length === prev.length ? prev : filtered;
+    });
+  }, [settings.classes]);
+
+  useEffect(() => {
+    if (selectedSubject !== 'ALL' && !settings.subjects.includes(selectedSubject)) {
+      setSelectedSubject('ALL');
+    }
+  }, [settings.subjects, selectedSubject]);
 
   const toggleClassOption = (cls: string) => {
     setSelectedClasses((prev) =>
@@ -190,42 +208,78 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
 
   const KopSuratPreviewBlock = () => {
     if (!showKopSurat) return null;
+    const normKop = normalizeKopSurat(settings.kopSurat);
+    const getLineCss = (
+      size: number,
+      st: { bold: boolean; italic: boolean; underline: boolean }
+    ): React.CSSProperties => ({
+      fontSize: size,
+      fontWeight: st.bold ? 700 : 400,
+      fontStyle: st.italic ? 'italic' : 'normal',
+      textDecoration: st.underline ? 'underline' : 'none',
+    });
     return (
       <div className="mb-5 pb-2 border-b-[3px] border-double border-slate-900">
         <div className="flex items-center justify-between gap-4 pb-2 border-b border-slate-900">
-          <div className="w-16 h-16 shrink-0 flex items-center justify-center">
-            {settings.kopSurat.leftLogoDataUrl && (
+          <div
+            style={{ width: normKop.leftLogoSize, height: normKop.leftLogoSize }}
+            className="shrink-0 flex items-center justify-center"
+          >
+            {normKop.leftLogoDataUrl && (
               <img
-                src={settings.kopSurat.leftLogoDataUrl}
+                src={normKop.leftLogoDataUrl}
                 alt="Logo Kiri Instansi"
-                className="max-w-full max-h-full object-contain"
+                className="w-full h-full object-contain"
               />
             )}
           </div>
-          <div className="flex-1 text-center leading-snug text-slate-950">
-            {settings.kopSurat.line1 && (
-              <p className="text-xs font-bold uppercase tracking-wide">{settings.kopSurat.line1}</p>
-            )}
-            {settings.kopSurat.line2 && (
-              <p className="text-sm font-bold uppercase">{settings.kopSurat.line2}</p>
-            )}
-            {settings.kopSurat.line3 && (
-              <p className="text-xs font-medium">{settings.kopSurat.line3}</p>
-            )}
-            {settings.kopSurat.line4 && (
-              <p className="text-base font-extrabold uppercase tracking-wide mt-0.5">
-                {settings.kopSurat.line4}
+          <div
+            style={{ fontFamily: getPrintFontCss(normKop.fontFamily) }}
+            className="flex-1 text-center leading-snug text-slate-950"
+          >
+            {normKop.line1 && (
+              <p style={getLineCss(normKop.lineSizes.line1, normKop.lineStyles.line1)} className="tracking-wide">
+                {normKop.line1}
               </p>
             )}
-            {settings.kopSurat.line5 && <p className="text-[11px]">{settings.kopSurat.line5}</p>}
-            {settings.kopSurat.line6 && <p className="text-[11px]">{settings.kopSurat.line6}</p>}
+            {normKop.line2 && (
+              <p style={getLineCss(normKop.lineSizes.line2, normKop.lineStyles.line2)}>
+                {normKop.line2}
+              </p>
+            )}
+            {normKop.line3 && (
+              <p style={getLineCss(normKop.lineSizes.line3, normKop.lineStyles.line3)}>
+                {normKop.line3}
+              </p>
+            )}
+            {normKop.line4 && (
+              <p
+                style={getLineCss(normKop.lineSizes.line4, normKop.lineStyles.line4)}
+                className="tracking-wide mt-0.5"
+              >
+                {normKop.line4}
+              </p>
+            )}
+            {normKop.line5 && (
+              <p style={getLineCss(normKop.lineSizes.line5, normKop.lineStyles.line5)}>
+                {normKop.line5}
+              </p>
+            )}
+            {normKop.line6 && (
+              <p style={getLineCss(normKop.lineSizes.line6, normKop.lineStyles.line6)}>
+                {normKop.line6}
+              </p>
+            )}
           </div>
-          <div className="w-16 h-16 shrink-0 flex items-center justify-center">
-            {settings.kopSurat.rightLogoDataUrl && (
+          <div
+            style={{ width: normKop.rightLogoSize, height: normKop.rightLogoSize }}
+            className="shrink-0 flex items-center justify-center"
+          >
+            {normKop.rightLogoDataUrl && (
               <img
-                src={settings.kopSurat.rightLogoDataUrl}
+                src={normKop.rightLogoDataUrl}
                 alt="Logo Kanan Sekolah"
-                className="max-w-full max-h-full object-contain"
+                className="w-full h-full object-contain"
               />
             )}
           </div>

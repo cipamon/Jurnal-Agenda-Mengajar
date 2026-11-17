@@ -1,4 +1,5 @@
 import {
+  AppUser,
   AttendanceStatus,
   GradeRecord,
   JournalEntry,
@@ -7,6 +8,7 @@ import {
   Student,
   SystemSettings,
 } from '../types';
+import { DEFAULT_WEB_LOGO } from './defaultAvatars';
 import { DEFAULT_LEFT_LOGO, DEFAULT_RIGHT_LOGO } from './defaultLogos';
 
 export function createDefaultSettings(overrides?: Partial<SystemSettings>): SystemSettings {
@@ -19,6 +21,11 @@ export function createDefaultSettings(overrides?: Partial<SystemSettings>): Syst
     principalName: 'Drs. H. Ahmad Fauzi, M.Pd.',
     principalNip: '19680412 199403 1 008',
     sheetsWebAppUrl: '',
+    webBrand: {
+      appName: 'Portal E-Guru v10.2',
+      tabTitle: 'Portal E-Guru v10.2 — Sistem Jurnal Mengajar, Presensi & Penilaian Guru Terpadu',
+      webLogoDataUrl: DEFAULT_WEB_LOGO,
+    },
     kopSurat: {
       line1: 'PEMERINTAH DAERAH PROVINSI JAWA BARAT',
       line2: 'DINAS PENDIDIKAN',
@@ -28,6 +35,25 @@ export function createDefaultSettings(overrides?: Partial<SystemSettings>): Syst
       line6: 'Website: www.sman1nusantara.sch.id  |  Email: info@sman1nusantara.sch.id',
       leftLogoDataUrl: DEFAULT_LEFT_LOGO,
       rightLogoDataUrl: DEFAULT_RIGHT_LOGO,
+      leftLogoSize: 64,
+      rightLogoSize: 64,
+      fontFamily: 'Times New Roman',
+      lineSizes: {
+        line1: 12,
+        line2: 14,
+        line3: 12,
+        line4: 16,
+        line5: 11,
+        line6: 11,
+      },
+      lineStyles: {
+        line1: { bold: true, italic: false, underline: false },
+        line2: { bold: true, italic: false, underline: false },
+        line3: { bold: false, italic: false, underline: false },
+        line4: { bold: true, italic: false, underline: false },
+        line5: { bold: false, italic: false, underline: false },
+        line6: { bold: false, italic: false, underline: false },
+      },
     },
     teacherProfile: {
       name: 'Rina Kusumawardani, S.Pd., M.Pd.',
@@ -35,6 +61,9 @@ export function createDefaultSettings(overrides?: Partial<SystemSettings>): Syst
       school: 'SMA Negeri 1 Nusantara',
       email: 'guru@sman1nusantara.sch.id',
       password: 'guru123',
+      gender: 'P',
+      assignedClasses: ['X IPA 1', 'X IPA 2', 'XI IPA 1'],
+      assignedSubjects: ['Matematika Wajib', 'Matematika Peminatan'],
     },
     classes: ['X IPA 1', 'X IPA 2', 'XI IPA 1', 'XII IPA 1'],
     subjects: ['Matematika Wajib', 'Matematika Peminatan', 'Informatika', 'Fisika'],
@@ -62,40 +91,40 @@ export function createSeedDatabase(
 
   const students: Student[] = [
     // X IPA 1 (7 siswa)
-    { id: 'std-101', nis: '25261001', name: 'Aditya Pratama Putra', gender: 'L', className: 'X IPA 1' },
-    { id: 'std-102', nis: '25261002', name: 'Aulia Rahmawati', gender: 'P', className: 'X IPA 1' },
-    { id: 'std-103', nis: '25261003', name: 'Bagas Kurniawan', gender: 'L', className: 'X IPA 1' },
-    { id: 'std-104', nis: '25261004', name: 'Citra Dewi Lestari', gender: 'P', className: 'X IPA 1' },
-    { id: 'std-105', nis: '25261005', name: 'Dimas Arya Saputra', gender: 'L', className: 'X IPA 1' },
-    { id: 'std-106', nis: '25261006', name: 'Fadhilah Nurul Azmi', gender: 'P', className: 'X IPA 1' },
-    { id: 'std-107', nis: '25261007', name: 'Gilang Ramadhan', gender: 'L', className: 'X IPA 1' },
+    { id: 'std-101', absenNo: '01', nis: '25261001', name: 'Aditya Pratama Putra', gender: 'L', className: 'X IPA 1', email: 'aditya.pratama@siswa.sman1nusantara.sch.id', ttl: 'Bandung, 14 Mei 2010', address: 'Jl. Merdeka No. 18, Sumur Bandung, Kota Bandung' },
+    { id: 'std-102', absenNo: '02', nis: '25261002', name: 'Aulia Rahmawati', gender: 'P', className: 'X IPA 1', email: 'aulia.rahmawati@siswa.sman1nusantara.sch.id', ttl: 'Cimahi, 03 Agustus 2010', address: 'Komplek Taman Cibeunying Blok C-4, Kota Bandung' },
+    { id: 'std-103', absenNo: '03', nis: '25261003', name: 'Bagas Kurniawan', gender: 'L', className: 'X IPA 1', email: 'bagas.kurniawan@siswa.sman1nusantara.sch.id', ttl: 'Bandung, 21 Januari 2010', address: 'Jl. Buah Batu No. 112, Lengkong, Kota Bandung' },
+    { id: 'std-104', absenNo: '04', nis: '25261004', name: 'Citra Dewi Lestari', gender: 'P', className: 'X IPA 1', email: 'citra.dewi@siswa.sman1nusantara.sch.id', ttl: 'Garut, 09 September 2010', address: 'Jl. Antapani Lama No. 27, Antapani, Kota Bandung' },
+    { id: 'std-105', absenNo: '05', nis: '25261005', name: 'Dimas Arya Saputra', gender: 'L', className: 'X IPA 1', email: 'dimas.arya@siswa.sman1nusantara.sch.id', ttl: 'Bandung, 17 Maret 2010', address: 'Jl. Setiabudi No. 89, Sukasari, Kota Bandung' },
+    { id: 'std-106', absenNo: '06', nis: '25261006', name: 'Fadhilah Nurul Azmi', gender: 'P', className: 'X IPA 1', email: 'fadhilah.azmi@siswa.sman1nusantara.sch.id', ttl: 'Sumedang, 28 November 2009', address: 'Jl. Dipatiukur No. 54, Coblong, Kota Bandung' },
+    { id: 'std-107', absenNo: '07', nis: '25261007', name: 'Gilang Ramadhan', gender: 'L', className: 'X IPA 1', email: 'gilang.ramadhan@siswa.sman1nusantara.sch.id', ttl: 'Bandung, 05 Juli 2010', address: 'Jl. Soekarno Hatta No. 310, Rancasari, Kota Bandung' },
 
     // X IPA 2 (7 siswa)
-    { id: 'std-201', nis: '25262001', name: 'Hana Safitri', gender: 'P', className: 'X IPA 2' },
-    { id: 'std-202', nis: '25262002', name: 'Irfan Hakim Wijaya', gender: 'L', className: 'X IPA 2' },
-    { id: 'std-203', nis: '25262003', name: 'Jihan Nabila Putri', gender: 'P', className: 'X IPA 2' },
-    { id: 'std-204', nis: '25262004', name: 'Kevin Mahendra', gender: 'L', className: 'X IPA 2' },
-    { id: 'std-205', nis: '25262005', name: 'Larasati Permata', gender: 'P', className: 'X IPA 2' },
-    { id: 'std-206', nis: '25262006', name: 'Muhammad Rizky Fauzan', gender: 'L', className: 'X IPA 2' },
-    { id: 'std-207', nis: '25262007', name: 'Nadia Khairunnisa', gender: 'P', className: 'X IPA 2' },
+    { id: 'std-201', absenNo: '01', nis: '25262001', name: 'Hana Safitri', gender: 'P', className: 'X IPA 2', email: 'hana.safitri@siswa.sman1nusantara.sch.id', ttl: 'Bandung, 12 Februari 2010', address: 'Jl. Ahmad Yani No. 204, Kiaracondong, Kota Bandung' },
+    { id: 'std-202', absenNo: '02', nis: '25262002', name: 'Irfan Hakim Wijaya', gender: 'L', className: 'X IPA 2', email: 'irfan.hakim@siswa.sman1nusantara.sch.id', ttl: 'Tasikmalaya, 19 April 2010', address: 'Jl. Kopo Permai Blok B-11, Bojongloa, Kota Bandung' },
+    { id: 'std-203', absenNo: '03', nis: '25262003', name: 'Jihan Nabila Putri', gender: 'P', className: 'X IPA 2', email: 'jihan.nabila@siswa.sman1nusantara.sch.id', ttl: 'Bandung, 30 Oktober 2009', address: 'Jl. Dago Asri III No. 9, Coblong, Kota Bandung' },
+    { id: 'std-204', absenNo: '04', nis: '25262004', name: 'Kevin Mahendra', gender: 'L', className: 'X IPA 2', email: 'kevin.mahendra@siswa.sman1nusantara.sch.id', ttl: 'Jakarta, 07 Juni 2010', address: 'Jl. Riau No. 76, Bandung Wetan, Kota Bandung' },
+    { id: 'std-205', absenNo: '05', nis: '25262005', name: 'Larasati Permata', gender: 'P', className: 'X IPA 2', email: 'larasati.permata@siswa.sman1nusantara.sch.id', ttl: 'Bandung, 22 Desember 2009', address: 'Jl. Turangga No. 15, Lengkong, Kota Bandung' },
+    { id: 'std-206', absenNo: '06', nis: '25262006', name: 'Muhammad Rizky Fauzan', gender: 'L', className: 'X IPA 2', email: 'rizky.fauzan@siswa.sman1nusantara.sch.id', ttl: 'Cianjur, 11 Mei 2010', address: 'Jl. Pasir Kaliki No. 43, Cicendo, Kota Bandung' },
+    { id: 'std-207', absenNo: '07', nis: '25262007', name: 'Nadia Khairunnisa', gender: 'P', className: 'X IPA 2', email: 'nadia.khairunnisa@siswa.sman1nusantara.sch.id', ttl: 'Bandung, 25 Agustus 2010', address: 'Jl. Cihampelas No. 160, Coblong, Kota Bandung' },
 
     // XI IPA 1 (7 siswa)
-    { id: 'std-301', nis: '24251001', name: 'Oka Wijaya Kusuma', gender: 'L', className: 'XI IPA 1' },
-    { id: 'std-302', nis: '24251002', name: 'Putri Amelia Sari', gender: 'P', className: 'XI IPA 1' },
-    { id: 'std-303', nis: '24251003', name: 'Raka Surya Pratama', gender: 'L', className: 'XI IPA 1' },
-    { id: 'std-304', nis: '24251004', name: 'Salsa Bila Azzahra', gender: 'P', className: 'XI IPA 1' },
-    { id: 'std-305', nis: '24251005', name: 'Taufik Hidayatullah', gender: 'L', className: 'XI IPA 1' },
-    { id: 'std-306', nis: '24251006', name: 'Vina Oktaviani', gender: 'P', className: 'XI IPA 1' },
-    { id: 'std-307', nis: '24251007', name: 'Yoga Pradana', gender: 'L', className: 'XI IPA 1' },
+    { id: 'std-301', absenNo: '01', nis: '24251001', name: 'Oka Wijaya Kusuma', gender: 'L', className: 'XI IPA 1', email: 'oka.wijaya@siswa.sman1nusantara.sch.id', ttl: 'Bandung, 16 Maret 2009', address: 'Jl. Asia Afrika No. 92, Regol, Kota Bandung' },
+    { id: 'std-302', absenNo: '02', nis: '24251002', name: 'Putri Amelia Sari', gender: 'P', className: 'XI IPA 1', email: 'putri.amelia@siswa.sman1nusantara.sch.id', ttl: 'Subang, 04 Juli 2009', address: 'Jl. Supratman No. 31, Cibeunying Kaler, Kota Bandung' },
+    { id: 'std-303', absenNo: '03', nis: '24251003', name: 'Raka Surya Pratama', gender: 'L', className: 'XI IPA 1', email: 'raka.surya@siswa.sman1nusantara.sch.id', ttl: 'Bandung, 27 Januari 2009', address: 'Jl. Arcamanik Endah No. 19, Arcamanik, Kota Bandung' },
+    { id: 'std-304', absenNo: '04', nis: '24251004', name: 'Salsa Bila Azzahra', gender: 'P', className: 'XI IPA 1', email: 'salsa.azzahra@siswa.sman1nusantara.sch.id', ttl: 'Purwakarta, 13 September 2009', address: 'Jl. Ciumbuleuit No. 67, Cidadap, Kota Bandung' },
+    { id: 'std-305', absenNo: '05', nis: '24251005', name: 'Taufik Hidayatullah', gender: 'L', className: 'XI IPA 1', email: 'taufik.hidayat@siswa.sman1nusantara.sch.id', ttl: 'Bandung, 08 November 2008', address: 'Jl. Rajawali Timur No. 88, Andir, Kota Bandung' },
+    { id: 'std-306', absenNo: '06', nis: '24251006', name: 'Vina Oktaviani', gender: 'P', className: 'XI IPA 1', email: 'vina.oktaviani@siswa.sman1nusantara.sch.id', ttl: 'Bandung, 18 Oktober 2009', address: 'Jl. Pelajar Pejuang 45 No. 50, Lengkong, Kota Bandung' },
+    { id: 'std-307', absenNo: '07', nis: '24251007', name: 'Yoga Pradana', gender: 'L', className: 'XI IPA 1', email: 'yoga.pradana@siswa.sman1nusantara.sch.id', ttl: 'Cimahi, 02 Mei 2009', address: 'Jl. Sukajadi No. 134, Sukajadi, Kota Bandung' },
 
     // XII IPA 1 (7 siswa)
-    { id: 'std-401', nis: '23241001', name: 'Zahra Salsabila', gender: 'P', className: 'XII IPA 1' },
-    { id: 'std-402', nis: '23241002', name: 'Alvin Hendrawan', gender: 'L', className: 'XII IPA 1' },
-    { id: 'std-403', nis: '23241003', name: 'Bella Puspita Ningrum', gender: 'P', className: 'XII IPA 1' },
-    { id: 'std-404', nis: '23241004', name: 'Daffa Alfarizi', gender: 'L', className: 'XII IPA 1' },
-    { id: 'std-405', nis: '23241005', name: 'Eka Wulandari', gender: 'P', className: 'XII IPA 1' },
-    { id: 'std-406', nis: '23241006', name: 'Farhan Maulana', gender: 'L', className: 'XII IPA 1' },
-    { id: 'std-407', nis: '23241007', name: 'Gita Purnama Sari', gender: 'P', className: 'XII IPA 1' },
+    { id: 'std-401', absenNo: '01', nis: '23241001', name: 'Zahra Salsabila', gender: 'P', className: 'XII IPA 1', email: 'zahra.salsabila@siswa.sman1nusantara.sch.id', ttl: 'Bandung, 20 April 2008', address: 'Jl. Ganesha No. 14, Coblong, Kota Bandung' },
+    { id: 'std-402', absenNo: '02', nis: '23241002', name: 'Alvin Hendrawan', gender: 'L', className: 'XII IPA 1', email: 'alvin.hendrawan@siswa.sman1nusantara.sch.id', ttl: 'Bandung, 15 Agustus 2008', address: 'Jl. Talaga Bodas No. 23, Lengkong, Kota Bandung' },
+    { id: 'std-403', absenNo: '03', nis: '23241003', name: 'Bella Puspita Ningrum', gender: 'P', className: 'XII IPA 1', email: 'bella.puspita@siswa.sman1nusantara.sch.id', ttl: 'Bogor, 06 Desember 2007', address: 'Jl. Cipaganti No. 72, Coblong, Kota Bandung' },
+    { id: 'std-404', absenNo: '04', nis: '23241004', name: 'Daffa Alfarizi', gender: 'L', className: 'XII IPA 1', email: 'daffa.alfarizi@siswa.sman1nusantara.sch.id', ttl: 'Bandung, 29 Maret 2008', address: 'Jl. Gatot Subroto No. 145, Batununggal, Kota Bandung' },
+    { id: 'std-405', absenNo: '05', nis: '23241005', name: 'Eka Wulandari', gender: 'P', className: 'XII IPA 1', email: 'eka.wulandari@siswa.sman1nusantara.sch.id', ttl: 'Cirebon, 10 Januari 2008', address: 'Jl. Pahlawan No. 39, Cibeunying Kaler, Kota Bandung' },
+    { id: 'std-406', absenNo: '06', nis: '23241006', name: 'Farhan Maulana', gender: 'L', className: 'XII IPA 1', email: 'farhan.maulana@siswa.sman1nusantara.sch.id', ttl: 'Bandung, 24 Juni 2008', address: 'Jl. Margacinta No. 61, Buahbatu, Kota Bandung' },
+    { id: 'std-407', absenNo: '07', nis: '23241007', name: 'Gita Purnama Sari', gender: 'P', className: 'XII IPA 1', email: 'gita.purnama@siswa.sman1nusantara.sch.id', ttl: 'Bandung, 01 September 2008', address: 'Jl. Banda No. 28, Bandung Wetan, Kota Bandung' },
   ];
 
   // Build deterministic realistic attendance for a class
@@ -344,12 +373,82 @@ export function createSeedDatabase(
     });
   });
 
+  const users: AppUser[] = [
+    {
+      id: 'usr-admin-1',
+      name: 'Administrator Sistem',
+      nip: '19850101 201001 1 001',
+      email: 'admin@sman1nusantara.sch.id',
+      password: 'admin123',
+      role: 'admin',
+      school: settings.teacherProfile.school,
+      gender: 'L',
+      active: true,
+      createdAt: nowIso,
+    },
+    {
+      id: 'usr-guru-1',
+      name: settings.teacherProfile.name,
+      nip: settings.teacherProfile.nip,
+      email: settings.teacherProfile.email,
+      password: settings.teacherProfile.password,
+      role: 'guru',
+      school: settings.teacherProfile.school,
+      gender: 'P',
+      assignedClasses: ['X IPA 1', 'X IPA 2', 'XI IPA 1'],
+      assignedSubjects: ['Matematika Wajib', 'Matematika Peminatan'],
+      active: true,
+      createdAt: nowIso,
+    },
+    {
+      id: 'usr-guru-2',
+      name: 'Hendra Wijaya, S.Kom.',
+      nip: '19900521 201603 1 006',
+      email: 'guru2@sman1nusantara.sch.id',
+      password: 'guru123',
+      role: 'guru',
+      school: settings.teacherProfile.school,
+      gender: 'L',
+      assignedClasses: ['X IPA 2', 'XII IPA 1'],
+      assignedSubjects: ['Informatika', 'Fisika'],
+      active: true,
+      createdAt: nowIso,
+    },
+    {
+      id: 'usr-wali-1',
+      name: 'Budi Hartono, S.Pd.',
+      nip: '19890310 201402 1 003',
+      email: 'walikelas@sman1nusantara.sch.id',
+      password: 'wali123',
+      role: 'wali_kelas',
+      school: settings.teacherProfile.school,
+      gender: 'L',
+      assignedClasses: ['X IPA 1'],
+      assignedSubjects: [],
+      active: true,
+      createdAt: nowIso,
+    },
+    {
+      id: 'usr-staff-1',
+      name: 'Siti Aminah, A.Md.',
+      nip: '19920614 201903 2 009',
+      email: 'staff@sman1nusantara.sch.id',
+      password: 'staff123',
+      role: 'karyawan',
+      school: settings.teacherProfile.school,
+      gender: 'P',
+      active: true,
+      createdAt: nowIso,
+    },
+  ];
+
   return {
     version: '10.2.0',
     lastSyncedAt: nowIso,
     students,
     journals,
     grades,
+    users,
     settings,
   };
 }

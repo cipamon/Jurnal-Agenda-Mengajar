@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, X } from 'lucide-react';
+import { ClassDetailModal } from './components/ClassDetailModal';
 import { DashboardView } from './components/DashboardView';
 import { GradesMatrixView } from './components/GradesMatrixView';
 import { JournalAttendanceView } from './components/JournalAttendanceView';
@@ -12,9 +13,14 @@ import { LoginView } from './components/LoginView';
 import { PrintReportsView } from './components/PrintReportsView';
 import { SettingsView } from './components/SettingsView';
 import { Sidebar } from './components/Sidebar';
+import { StudentDetailModal } from './components/StudentDetailModal';
+import { StudentEditModal } from './components/StudentEditModal';
 import { StudentsView } from './components/StudentsView';
+import { SubjectDetailModal } from './components/SubjectDetailModal';
+import { TeacherProfileModal } from './components/TeacherProfileModal';
 import { Topbar } from './components/Topbar';
 import {
+  AppUser,
   GradeRecord,
   JournalEntry,
   MenuId,
@@ -22,7 +28,9 @@ import {
   SessionState,
   Student,
   SystemSettings,
+  UserRole,
 } from './types';
+import { getScopedPortalData, normalizeWebBrand, USER_ROLE_LABELS } from './utils/helpers';
 import { createSeedDatabase } from './utils/seedData';
 import {
   clearSession,
@@ -48,6 +56,14 @@ export default function App() {
     mode: 'create' | 'edit' | 'duplicate';
     entry: JournalEntry;
   } | null>(null);
+  const [selectedStudentModal, setSelectedStudentModal] = useState<Student | null>(null);
+  const [studentFormModal, setStudentFormModal] = useState<{
+    mode: 'create' | 'edit';
+    student: Student | null;
+  } | null>(null);
+  const [selectedClassModal, setSelectedClassModal] = useState<string | null>(null);
+  const [selectedSubjectModal, setSelectedSubjectModal] = useState<string | null>(null);
+  const [showTeacherProfileModal, setShowTeacherProfileModal] = useState(false);
 
   const notify = useCallback((message: string) => {
     setToast(message);
@@ -67,7 +83,12 @@ export default function App() {
       const storedSession = loadSession();
       if (!mounted) return;
       if (storedDb) {
-        setDb(storedDb);
+        const defaultUsers = createSeedDatabase().users ?? [];
+        const hydrated: PortalDatabase = {
+          ...storedDb,
+          users: storedDb.users && storedDb.users.length > 0 ? storedDb.users : defaultUsers,
+        };
+        setDb(hydrated);
       } else {
         const seeded = createSeedDatabase();
         setDb(seeded);
@@ -82,6 +103,21 @@ export default function App() {
       mounted = false;
     };
   }, []);
+
+  // Sync browser tab title & favicon whenever settings.webBrand changes
+  useEffect(() => {
+    if (!db) return;
+    const brand = normalizeWebBrand(db.settings);
+    document.title = brand.tabTitle;
+
+    let linkEl = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+    if (!linkEl) {
+      linkEl = document.createElement('link');
+      linkEl.rel = 'icon';
+      document.head.appendChild(linkEl);
+    }
+    linkEl.href = brand.webLogoDataUrl;
+  }, [db]);
 
   // Persist DB whenever modified
   const updateDatabase = useCallback((updater: (prev: PortalDatabase) => PortalDatabase) => {
@@ -100,72 +136,118 @@ export default function App() {
     academicYear: string;
     semester: 'Ganjil' | 'Genap';
     useDemoSeed: boolean;
+    demoAsAdmin?: boolean;
   }): string | null => {
     if (payload.useDemoSeed) {
       const seeded = createSeedDatabase(
-        payload.email,
+        payload.demoAsAdmin ? undefined : payload.email,
         payload.sheetsWebAppUrl,
         payload.academicYear,
         payload.semester
       );
       setDb(seeded);
       void saveDatabase(seeded);
+      const seedUsers = seeded.users ?? [];
+      const targetUser = payload.demoAsAdmin
+        ? seedUsers.find((u) => u.role === 'admin')
+        : seedUsers.find((u) => u.role === 'guru');
       const nextSession: SessionState = {
         isAuthenticated: true,
-        email: seeded.settings.teacherProfile.email,
+        email: targetUser?.email || seeded.settings.teacherProfile.email,
+        userId: targetUser?.id,
+        role: targetUser?.role || 'guru',
+        loggedInAt: new Date().toISOString(),
+      };
+      saveSession(nextSession);
+      setSession(nextSession);
+      setActiveMenu(payload.demoAsAdmin ? 'pengaturan' : 'dashboard');
+      notify(
+        payload.demoAsAdmin
+          ? 'Berhasil masuk sebagai Admin Sistem (Data Demo).'
+          : 'Berhasil masuk dengan data demo otomatis.'
+      );
+      return null;
+    }
+
+    const currentDb = db ?? createSeedDatabase();
+    const userList = currentDb.users && currentDb.users.length > 0 ? currentDb.users : createSeedDatabase().users ?? [];
+    const matchedUser = userList.find(
+      (u) => u.email.toLowerCase() === payload.email.toLowerCase()
+    );
+
+    if (matchedUser) {
+      if (!matchedUser.active) {
+        return 'Akun pengguna ini sedang dinonaktifkan oleh Admin Sistem.';
+      }
+      if (matchedUser.password !== payload.password) {
+        return 'Password tidak sesuai untuk akun tersebut.';
+      }
+      updateDatabase((prev) => ({
+        ...prev,
+        settings: {
+          ...prev.settings,
+          academicYear: payload.academicYear,
+          semester: payload.semester,
+          ...(payload.sheetsWebAppUrl ? { sheetsWebAppUrl: payload.sheetsWebAppUrl } : {}),
+        },
+      }));
+      const nextSession: SessionState = {
+        isAuthenticated: true,
+        email: matchedUser.email,
+        userId: matchedUser.id,
+        role: matchedUser.role,
         loggedInAt: new Date().toISOString(),
       };
       saveSession(nextSession);
       setSession(nextSession);
       setActiveMenu('dashboard');
-      notify('Berhasil masuk dengan data demo otomatis.');
+      notify(`Selamat datang, ${matchedUser.name} (${USER_ROLE_LABELS[matchedUser.role]}).`);
       return null;
     }
 
-    const currentDb = db ?? createSeedDatabase();
+    // Fallback check against legacy teacherProfile credentials
     const expectedEmail = currentDb.settings.teacherProfile.email.toLowerCase();
     const expectedPass = currentDb.settings.teacherProfile.password;
-
-    if (
-      payload.email.toLowerCase() !== expectedEmail &&
-      payload.email.toLowerCase() !== 'guru@sman1nusantara.sch.id'
-    ) {
-      // Allow custom email login if password matches default/configured password, updating teacher email smoothly
-      if (payload.password !== expectedPass && payload.password !== 'guru123') {
-        return 'Email atau password tidak sesuai. Gunakan tombol "Masuk dengan Data Demo Otomatis" untuk uji coba cepat.';
-      }
-    } else if (payload.password !== expectedPass && payload.password !== 'guru123') {
-      return 'Password tidak sesuai. Password default demo adalah guru123.';
+    if (payload.email.toLowerCase() === expectedEmail && payload.password === expectedPass) {
+      updateDatabase((prev) => ({
+        ...prev,
+        settings: {
+          ...prev.settings,
+          academicYear: payload.academicYear,
+          semester: payload.semester,
+          ...(payload.sheetsWebAppUrl ? { sheetsWebAppUrl: payload.sheetsWebAppUrl } : {}),
+        },
+      }));
+      const nextSession: SessionState = {
+        isAuthenticated: true,
+        email: payload.email,
+        role: 'guru',
+        loggedInAt: new Date().toISOString(),
+      };
+      saveSession(nextSession);
+      setSession(nextSession);
+      setActiveMenu('dashboard');
+      return null;
     }
 
-    updateDatabase((prev) => ({
-      ...prev,
-      settings: {
-        ...prev.settings,
-        academicYear: payload.academicYear,
-        semester: payload.semester,
-        ...(payload.sheetsWebAppUrl ? { sheetsWebAppUrl: payload.sheetsWebAppUrl } : {}),
-        teacherProfile: {
-          ...prev.settings.teacherProfile,
-          email: payload.email,
-        },
-      },
-    }));
-
-    const nextSession: SessionState = {
-      isAuthenticated: true,
-      email: payload.email,
-      loggedInAt: new Date().toISOString(),
-    };
-    saveSession(nextSession);
-    setSession(nextSession);
-    setActiveMenu('dashboard');
-    return null;
+    return 'Email atau password tidak terdaftar. Gunakan tombol Demo Otomatis atau cek daftar akun pada Pengaturan Admin.';
   };
 
   const handleLogout = () => {
     clearSession();
     setSession(null);
+  };
+
+  const handleSwitchUserSession = (user: AppUser) => {
+    const nextSession: SessionState = {
+      isAuthenticated: true,
+      email: user.email,
+      userId: user.id,
+      role: user.role,
+      loggedInAt: new Date().toISOString(),
+    };
+    saveSession(nextSession);
+    setSession(nextSession);
   };
 
   const handleManualSync = async () => {
@@ -192,14 +274,15 @@ export default function App() {
     }
   };
 
-  const handleSyncGoogleSheetsOnly = async () => {
-    if (!db || !db.settings.sheetsWebAppUrl.trim()) {
+  const handleSyncGoogleSheetsOnly = async (overrideUrl?: string) => {
+    const targetUrl = (overrideUrl ?? db?.settings.sheetsWebAppUrl ?? '').trim();
+    if (!db || !targetUrl) {
       notify('Masukkan Google Sheets Web App URL terlebih dahulu.');
       return;
     }
     setIsSyncing(true);
     try {
-      const res = await syncToGoogleSheets(db.settings.sheetsWebAppUrl, db);
+      const res = await syncToGoogleSheets(targetUrl, db);
       if (res.ok) {
         notify('Sinkronisasi ke Google Sheets berhasil.');
       } else {
@@ -228,6 +311,27 @@ export default function App() {
       journals: prev.journals.filter((j) => !ids.includes(j.id)),
     }));
     notify(`${ids.length} jurnal berhasil dihapus.`);
+  };
+
+  const handleImportJournals = (entries: JournalEntry[]) => {
+    updateDatabase((prev) => {
+      const extraClasses = new Set(prev.settings.classes);
+      const extraSubjects = new Set(prev.settings.subjects);
+      entries.forEach((e) => {
+        if (e.className) extraClasses.add(e.className);
+        if (e.subject) extraSubjects.add(e.subject);
+      });
+      return {
+        ...prev,
+        journals: [...entries, ...prev.journals],
+        settings: {
+          ...prev.settings,
+          classes: Array.from(extraClasses),
+          subjects: Array.from(extraSubjects),
+        },
+      };
+    });
+    notify(`Berhasil mengimpor ${entries.length} jurnal mengajar.`);
   };
 
   const handleBulkUpdateLedger = (updatedJournals: JournalEntry[]) => {
@@ -262,6 +366,15 @@ export default function App() {
     notify(`Berhasil menyimpan ${records.length} data nilai siswa.`);
   };
 
+  const handleDeleteGrades = (ids: string[]) => {
+    const delSet = new Set(ids);
+    updateDatabase((prev) => ({
+      ...prev,
+      grades: prev.grades.filter((g) => !delSet.has(g.id)),
+    }));
+    notify(`${ids.length} catatan nilai berhasil dihapus.`);
+  };
+
   // Student handlers
   const handleAddOrUpdateStudent = (student: Student, isEdit: boolean) => {
     updateDatabase((prev) => {
@@ -270,6 +383,9 @@ export default function App() {
         : [...prev.students, student];
       return { ...prev, students };
     });
+    if (isEdit && selectedStudentModal?.id === student.id) {
+      setSelectedStudentModal(student);
+    }
     notify(isEdit ? `Data siswa ${student.name} diperbarui.` : `Siswa ${student.name} ditambahkan.`);
   };
 
@@ -279,14 +395,29 @@ export default function App() {
       students: prev.students.filter((s) => s.id !== id),
       grades: prev.grades.filter((g) => g.studentId !== id),
     }));
+    if (selectedStudentModal?.id === id) setSelectedStudentModal(null);
+    if (studentFormModal?.student?.id === id) setStudentFormModal(null);
     notify('Data siswa dihapus.');
+  };
+
+  const handleDeleteStudentsBulk = (ids: string[]) => {
+    const delSet = new Set(ids);
+    updateDatabase((prev) => ({
+      ...prev,
+      students: prev.students.filter((s) => !delSet.has(s.id)),
+      grades: prev.grades.filter((g) => !delSet.has(g.studentId)),
+    }));
+    if (selectedStudentModal && delSet.has(selectedStudentModal.id)) setSelectedStudentModal(null);
+    if (studentFormModal?.student && delSet.has(studentFormModal.student.id)) {
+      setStudentFormModal(null);
+    }
+    notify(`${ids.length} data siswa berhasil dihapus.`);
   };
 
   const handleImportStudents = (newStudents: Student[]) => {
     updateDatabase((prev) => {
       const existingNis = new Set(prev.students.map((s) => s.nis));
       const merged = [...prev.students];
-      let addedCount = 0;
       const extraClasses = new Set(prev.settings.classes);
 
       newStudents.forEach((st) => {
@@ -294,7 +425,6 @@ export default function App() {
         if (!existingNis.has(st.nis)) {
           existingNis.add(st.nis);
           merged.push(st);
-          addedCount++;
         }
       });
 
@@ -310,12 +440,43 @@ export default function App() {
     notify(`Impor selesai: ${newStudents.length} baris diproses.`);
   };
 
-  // Settings handler
+  // Settings & Users handlers
   const handleUpdateSettings = (nextSettings: SystemSettings) => {
     updateDatabase((prev) => ({
       ...prev,
       settings: nextSettings,
     }));
+  };
+
+  const handleUpdateUsers = (nextUsers: AppUser[]) => {
+    updateDatabase((prev) => {
+      const matchedTeacher = nextUsers.find(
+        (u) =>
+          u.id === 'usr-guru-1' ||
+          u.email.toLowerCase() === prev.settings.teacherProfile.email.toLowerCase()
+      );
+      return {
+        ...prev,
+        users: nextUsers,
+        settings: matchedTeacher
+          ? {
+              ...prev.settings,
+              teacherProfile: {
+                ...prev.settings.teacherProfile,
+                name: matchedTeacher.name,
+                nip: matchedTeacher.nip,
+                school: matchedTeacher.school,
+                email: matchedTeacher.email,
+                password: matchedTeacher.password,
+                gender: matchedTeacher.gender,
+                photoDataUrl: matchedTeacher.photoDataUrl,
+                assignedClasses: matchedTeacher.assignedClasses,
+                assignedSubjects: matchedTeacher.assignedSubjects,
+              },
+            }
+          : prev.settings,
+      };
+    });
   };
 
   const handleResetDemoData = () => {
@@ -333,6 +494,9 @@ export default function App() {
     );
   }
 
+  const webBrand = normalizeWebBrand(db.settings);
+  const usersList = db.users && db.users.length > 0 ? db.users : createSeedDatabase().users ?? [];
+
   if (!session?.isAuthenticated) {
     return (
       <LoginView
@@ -341,26 +505,69 @@ export default function App() {
         defaultSemester={db.settings.semester}
         defaultSheetsUrl={db.settings.sheetsWebAppUrl}
         academicYears={db.settings.academicYears}
+        webBrand={webBrand}
         onLogin={handleLogin}
       />
     );
   }
+
+  const activeUser = usersList.find(
+    (u) =>
+      (session.userId && u.id === session.userId) ||
+      u.email.toLowerCase() === session.email.toLowerCase()
+  );
+  const currentUserRole: UserRole = activeUser?.role || session.role || 'guru';
+  const currentUserName = activeUser?.name || db.settings.teacherProfile.name;
+  const currentUserNip = activeUser?.nip || db.settings.teacherProfile.nip;
+  const currentUserGender: 'L' | 'P' =
+    activeUser?.gender || db.settings.teacherProfile.gender || 'P';
+  const currentUserPhoto =
+    activeUser?.photoDataUrl ||
+    (currentUserRole === 'guru' ? db.settings.teacherProfile.photoDataUrl : undefined);
+
+  const scoped = getScopedPortalData(db, activeUser, currentUserRole);
+  const effectiveScopedSettings: SystemSettings =
+    activeUser && (currentUserRole === 'guru' || currentUserRole === 'wali_kelas')
+      ? {
+          ...scoped.scopedSettings,
+          teacherProfile: {
+            ...scoped.scopedSettings.teacherProfile,
+            name: activeUser.name,
+            nip: activeUser.nip,
+            school: activeUser.school,
+            email: activeUser.email,
+            password: activeUser.password,
+            gender: activeUser.gender,
+            photoDataUrl: activeUser.photoDataUrl,
+            assignedClasses: activeUser.assignedClasses,
+            assignedSubjects: activeUser.assignedSubjects,
+          },
+        }
+      : scoped.scopedSettings;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <Sidebar
         activeMenu={activeMenu}
         onSelectMenu={setActiveMenu}
-        teacherProfile={db.settings.teacherProfile}
+        teacherProfile={effectiveScopedSettings.teacherProfile}
+        webBrand={webBrand}
+        currentUserName={currentUserName}
+        currentUserNip={currentUserNip}
+        currentUserRole={currentUserRole}
+        currentUserGender={currentUserGender}
+        currentUserPhoto={currentUserPhoto}
+        onOpenProfileModal={() => setShowTeacherProfileModal(true)}
         onLogout={handleLogout}
         mobileOpen={mobileMenuOpen}
         onCloseMobile={() => setMobileMenuOpen(false)}
       />
 
-      <div className="lg:pl-64 flex flex-col min-h-screen">
+      {/* When StudentDetailModal is open, mark workspace no-print so Cetak Individu prints ONLY the student sheet */}
+      <div className={`lg:pl-64 flex flex-col min-h-screen ${selectedStudentModal ? 'no-print' : ''}`}>
         <Topbar
           activeMenu={activeMenu}
-          settings={db.settings}
+          settings={effectiveScopedSettings}
           onOpenMobileMenu={() => setMobileMenuOpen(true)}
           onManualSync={handleManualSync}
           isSyncing={isSyncing}
@@ -369,11 +576,17 @@ export default function App() {
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1440px] w-full mx-auto">
           {activeMenu === 'dashboard' && (
             <DashboardView
-              students={db.students}
-              journals={db.journals}
-              grades={db.grades}
-              settings={db.settings}
+              students={scoped.scopedStudents}
+              journals={scoped.scopedJournals}
+              grades={scoped.scopedGrades}
+              settings={effectiveScopedSettings}
+              currentUserName={currentUserName}
+              currentUserRole={currentUserRole}
+              currentUserGender={currentUserGender}
+              currentUserPhoto={currentUserPhoto}
+              scopeSummary={scoped.scopeSummaryText}
               onNavigate={setActiveMenu}
+              onOpenProfileModal={() => setShowTeacherProfileModal(true)}
               onEditJournal={(entry) => {
                 setDraftJournal({ mode: 'edit', entry });
                 setActiveMenu('jurnal');
@@ -382,50 +595,64 @@ export default function App() {
                 setDraftJournal({ mode: 'duplicate', entry });
                 setActiveMenu('jurnal');
               }}
+              onViewClass={setSelectedClassModal}
+              onViewSubject={setSelectedSubjectModal}
             />
           )}
 
           {activeMenu === 'jurnal' && (
             <JournalAttendanceView
-              students={db.students}
-              journals={db.journals}
-              settings={db.settings}
+              students={scoped.scopedStudents}
+              journals={scoped.scopedJournals}
+              settings={effectiveScopedSettings}
               draftJournal={draftJournal}
               onClearDraft={() => setDraftJournal(null)}
               onSaveJournal={handleSaveJournal}
+              onImportJournals={handleImportJournals}
               onDeleteJournals={handleDeleteJournals}
               onBulkUpdateLedger={handleBulkUpdateLedger}
+              onViewStudent={setSelectedStudentModal}
+              onViewClass={setSelectedClassModal}
+              onViewSubject={setSelectedSubjectModal}
               onNotify={notify}
             />
           )}
 
           {activeMenu === 'nilai' && (
             <GradesMatrixView
-              students={db.students}
-              grades={db.grades}
-              settings={db.settings}
+              students={scoped.scopedStudents}
+              grades={scoped.scopedGrades}
+              settings={effectiveScopedSettings}
               onSaveGradesBatch={handleSaveGradesBatch}
+              onDeleteGrades={handleDeleteGrades}
+              onViewStudent={setSelectedStudentModal}
+              onViewClass={setSelectedClassModal}
+              onViewSubject={setSelectedSubjectModal}
               onNotify={notify}
             />
           )}
 
           {activeMenu === 'siswa' && (
             <StudentsView
-              students={db.students}
-              settings={db.settings}
-              onAddOrUpdateStudent={handleAddOrUpdateStudent}
+              students={scoped.scopedStudents}
+              settings={effectiveScopedSettings}
               onDeleteStudent={handleDeleteStudent}
+              onDeleteStudentsBulk={handleDeleteStudentsBulk}
               onImportStudents={handleImportStudents}
+              onViewStudent={setSelectedStudentModal}
+              onViewClass={setSelectedClassModal}
+              onCreateStudentModal={() => setStudentFormModal({ mode: 'create', student: null })}
+              onEditStudentModal={(st) => setStudentFormModal({ mode: 'edit', student: st })}
               onNotify={notify}
             />
           )}
 
           {activeMenu === 'laporan' && (
             <PrintReportsView
-              students={db.students}
-              journals={db.journals}
-              grades={db.grades}
-              settings={db.settings}
+              students={scoped.scopedStudents}
+              journals={scoped.scopedJournals}
+              grades={scoped.scopedGrades}
+              settings={effectiveScopedSettings}
               onNotify={notify}
             />
           )}
@@ -433,9 +660,16 @@ export default function App() {
           {activeMenu === 'pengaturan' && (
             <SettingsView
               settings={db.settings}
+              users={usersList}
+              activeUser={activeUser}
+              currentUserRole={currentUserRole}
+              currentUserEmail={session.email}
               onUpdateSettings={handleUpdateSettings}
-              onSyncGoogleSheets={handleSyncGoogleSheetsOnly}
-              onResetDemoData={handleResetDemoData}
+              onUpdateUsers={handleUpdateUsers}
+              onSwitchUserSession={handleSwitchUserSession}
+              onOpenTeacherProfileModal={() => setShowTeacherProfileModal(true)}
+              onViewClass={setSelectedClassModal}
+              onViewSubject={setSelectedSubjectModal}
               onNotify={notify}
             />
           )}
@@ -460,6 +694,124 @@ export default function App() {
           </button>
         </div>
       )}
+
+      <StudentDetailModal
+        student={selectedStudentModal}
+        journals={scoped.scopedJournals}
+        grades={scoped.scopedGrades}
+        settings={effectiveScopedSettings}
+        onEditStudent={(st) => {
+          setSelectedStudentModal(null);
+          setStudentFormModal({ mode: 'edit', student: st });
+        }}
+        onViewClass={setSelectedClassModal}
+        onViewSubject={setSelectedSubjectModal}
+        onNotify={notify}
+        onClose={() => setSelectedStudentModal(null)}
+      />
+
+      <StudentEditModal
+        isOpen={Boolean(studentFormModal)}
+        mode={studentFormModal?.mode || 'edit'}
+        student={studentFormModal?.student || null}
+        classes={scoped.allowedClasses}
+        onSave={(savedStudent, isEdit) => {
+          handleAddOrUpdateStudent(savedStudent, isEdit);
+          setStudentFormModal(null);
+        }}
+        onClose={() => setStudentFormModal(null)}
+      />
+
+      <ClassDetailModal
+        className={selectedClassModal}
+        students={scoped.scopedStudents}
+        journals={scoped.scopedJournals}
+        grades={scoped.scopedGrades}
+        settings={effectiveScopedSettings}
+        onSelectStudent={setSelectedStudentModal}
+        onSelectSubject={setSelectedSubjectModal}
+        onNavigate={setActiveMenu}
+        onClose={() => setSelectedClassModal(null)}
+      />
+
+      <SubjectDetailModal
+        subject={selectedSubjectModal}
+        students={scoped.scopedStudents}
+        journals={scoped.scopedJournals}
+        grades={scoped.scopedGrades}
+        settings={effectiveScopedSettings}
+        onSelectClass={setSelectedClassModal}
+        onSelectStudent={setSelectedStudentModal}
+        onNavigate={setActiveMenu}
+        onClose={() => setSelectedSubjectModal(null)}
+      />
+
+      <TeacherProfileModal
+        isOpen={showTeacherProfileModal}
+        settings={db.settings}
+        activeUser={activeUser}
+        currentUserRole={currentUserRole}
+        onSaveProfile={(updated) => {
+          const tp = updated.teacherProfile;
+          updateDatabase((prev) => {
+            const prevUsers = prev.users ?? [];
+            const targetIdx = activeUser
+              ? prevUsers.findIndex((u) => u.id === activeUser.id)
+              : prevUsers.findIndex((u) => u.email.toLowerCase() === session.email.toLowerCase());
+
+            const nextUsers =
+              targetIdx >= 0
+                ? prevUsers.map((u, idx) =>
+                    idx === targetIdx
+                      ? {
+                          ...u,
+                          name: tp.name,
+                          nip: tp.nip,
+                          school: tp.school,
+                          email: tp.email,
+                          password: tp.password,
+                          gender: tp.gender ?? u.gender,
+                          photoDataUrl: tp.photoDataUrl,
+                          assignedClasses: tp.assignedClasses ?? [],
+                          assignedSubjects: tp.assignedSubjects ?? [],
+                        }
+                      : u
+                  )
+                : prevUsers;
+
+            const shouldSyncLegacyTeacherProfile =
+              !activeUser ||
+              activeUser.id === 'usr-guru-1' ||
+              activeUser.email.toLowerCase() === prev.settings.teacherProfile.email.toLowerCase();
+
+            return {
+              ...prev,
+              users: nextUsers,
+              settings: {
+                ...prev.settings,
+                sheetsWebAppUrl: updated.sheetsWebAppUrl,
+                ...(shouldSyncLegacyTeacherProfile ? { teacherProfile: tp } : {}),
+              },
+            };
+          });
+
+          if (tp.email.toLowerCase() !== session.email.toLowerCase()) {
+            const nextSession: SessionState = {
+              ...session,
+              email: tp.email,
+              userId: activeUser?.id || session.userId,
+            };
+            saveSession(nextSession);
+            setSession(nextSession);
+          }
+
+          notify('Profil & tanggung jawab mengajar berhasil diperbarui.');
+        }}
+        onSyncGoogleSheets={(sheetsUrl) => void handleSyncGoogleSheetsOnly(sheetsUrl)}
+        onResetDemoData={handleResetDemoData}
+        onClose={() => setShowTeacherProfileModal(false)}
+      />
     </div>
   );
 }
+

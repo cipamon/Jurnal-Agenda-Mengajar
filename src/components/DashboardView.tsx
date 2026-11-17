@@ -10,7 +10,8 @@ import {
 } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import { Copy, FileEdit, FileSpreadsheet, PlusCircle, Printer } from 'lucide-react';
-import { GradeRecord, JournalEntry, MenuId, Student, SystemSettings } from '../types';
+import { GradeRecord, JournalEntry, MenuId, Student, SystemSettings, UserRole } from '../types';
+import { getUserPhotoUrl } from '../utils/defaultAvatars';
 import { formatTanggalID } from '../utils/helpers';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
@@ -20,9 +21,17 @@ interface DashboardViewProps {
   journals: JournalEntry[];
   grades: GradeRecord[];
   settings: SystemSettings;
+  currentUserName?: string;
+  currentUserRole?: UserRole;
+  currentUserGender?: 'L' | 'P';
+  currentUserPhoto?: string;
+  scopeSummary?: string | null;
   onNavigate: (menu: MenuId) => void;
+  onOpenProfileModal?: () => void;
   onEditJournal: (journal: JournalEntry) => void;
   onDuplicateJournal: (journal: JournalEntry) => void;
+  onViewClass?: (className: string) => void;
+  onViewSubject?: (subject: string) => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -30,9 +39,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   journals,
   grades,
   settings,
+  currentUserName,
+  currentUserRole = 'guru',
+  currentUserGender,
+  currentUserPhoto,
+  scopeSummary,
   onNavigate,
+  onOpenProfileModal,
   onEditJournal,
   onDuplicateJournal,
+  onViewClass,
+  onViewSubject,
 }) => {
   const stats = useMemo(() => {
     let totalH = 0;
@@ -157,18 +174,56 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Banner Gradient Indigo-Violet */}
       <section className="rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-violet-700 text-white p-6 sm:p-8 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-indigo-100">
-              {settings.teacherProfile.school} · Tahun Ajaran {settings.academicYear} · Semester{' '}
-              {settings.semester}
-            </p>
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white [text-wrap:balance]">
-              Selamat Datang, {settings.teacherProfile.name}
-            </h2>
-            <p className="text-sm text-indigo-100 max-w-2xl">
-              Pantau ringkasan keaktifan pembelajaran, persentase kehadiran peserta didik, dan capaian nilai kelas
-              secara langsung.
-            </p>
+          <div className="flex items-center gap-4 min-w-0">
+            <img
+              src={getUserPhotoUrl({
+                photoDataUrl: currentUserPhoto || settings.teacherProfile.photoDataUrl,
+                role: currentUserRole,
+                gender: currentUserGender || settings.teacherProfile.gender || 'P',
+              })}
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.src = getUserPhotoUrl({
+                  photoDataUrl: '',
+                  role: currentUserRole,
+                  gender: currentUserGender || settings.teacherProfile.gender || 'P',
+                });
+              }}
+              alt={currentUserName || settings.teacherProfile.name}
+              className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl object-cover object-top border-2 border-white/40 bg-white shrink-0"
+            />
+            <div className="space-y-1 min-w-0">
+              <p className="text-xs font-medium text-indigo-100">
+                {settings.teacherProfile.school} · Tahun Ajaran {settings.academicYear} · Semester{' '}
+                {settings.semester}
+              </p>
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white [text-wrap:balance]">
+                Selamat Datang, {currentUserName || settings.teacherProfile.name}
+              </h2>
+              <p className="text-sm text-indigo-100 max-w-2xl">
+                Pantau ringkasan keaktifan pembelajaran, persentase kehadiran peserta didik, dan capaian nilai kelas
+                secara langsung.
+              </p>
+              {scopeSummary && (
+                <p className="text-xs text-indigo-100/95 pt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="font-semibold text-white">Tanggung Jawab Aktif</span>
+                  <span aria-hidden="true">·</span>
+                  <span>{scopeSummary}</span>
+                  {onOpenProfileModal && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <button
+                        type="button"
+                        onClick={onOpenProfileModal}
+                        className="underline font-semibold text-white hover:text-indigo-100 cursor-pointer"
+                      >
+                        Atur Kelas &amp; Mapel
+                      </button>
+                    </>
+                  )}
+                </p>
+              )}
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2.5 shrink-0">
             <button
@@ -317,7 +372,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <tbody className="divide-y divide-slate-200 text-sm">
                 {classRecap.map((row) => (
                   <tr key={row.className} className="hover:bg-slate-50">
-                    <td className="py-2.5 px-4 font-semibold text-slate-900">{row.className}</td>
+                    <td className="py-2.5 px-4 font-semibold text-slate-900">
+                      {onViewClass ? (
+                        <button
+                          type="button"
+                          onClick={() => onViewClass(row.className)}
+                          className="font-semibold text-indigo-700 hover:text-indigo-900 hover:underline cursor-pointer text-left"
+                          title={`Klik untuk lihat detail kelas ${row.className}`}
+                        >
+                          {row.className}
+                        </button>
+                      ) : (
+                        row.className
+                      )}
+                    </td>
                     <td className="py-2.5 px-3 text-right tabular-nums text-slate-700">{row.studentCount}</td>
                     <td className="py-2.5 px-3 text-right tabular-nums text-slate-700">{row.journalCount}</td>
                     <td className="py-2.5 px-3 text-right tabular-nums font-medium text-emerald-700">
@@ -373,10 +441,32 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <div className="text-slate-400">Jam {j.period}</div>
                       </td>
                       <td className="py-2.5 px-3 whitespace-nowrap font-semibold text-slate-900 text-xs">
-                        {j.className}
+                        {onViewClass ? (
+                          <button
+                            type="button"
+                            onClick={() => onViewClass(j.className)}
+                            className="font-semibold text-slate-900 hover:text-indigo-600 hover:underline cursor-pointer"
+                            title={`Klik untuk lihat detail kelas ${j.className}`}
+                          >
+                            {j.className}
+                          </button>
+                        ) : (
+                          j.className
+                        )}
                       </td>
                       <td className="py-2.5 px-3">
-                        <div className="font-semibold text-slate-900 text-xs">{j.subject}</div>
+                        {onViewSubject ? (
+                          <button
+                            type="button"
+                            onClick={() => onViewSubject(j.subject)}
+                            className="font-semibold text-indigo-700 hover:text-indigo-900 hover:underline text-xs text-left cursor-pointer"
+                            title={`Klik untuk lihat detail mata pelajaran ${j.subject}`}
+                          >
+                            {j.subject}
+                          </button>
+                        ) : (
+                          <div className="font-semibold text-slate-900 text-xs">{j.subject}</div>
+                        )}
                         <div className="text-xs text-slate-600 line-clamp-1">{j.topic}</div>
                       </td>
                       <td className="py-2.5 px-4 text-right whitespace-nowrap">
