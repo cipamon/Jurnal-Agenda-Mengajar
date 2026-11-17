@@ -1,10 +1,12 @@
 import React from 'react';
-import { CloudUpload, Menu } from 'lucide-react';
+import { CalendarClock, CloudUpload, Menu } from 'lucide-react';
 import { MenuId, SystemSettings } from '../types';
 
 interface TopbarProps {
   activeMenu: MenuId;
   settings: SystemSettings;
+  periodScope?: 'active' | 'all';
+  onTogglePeriodScope?: () => void;
   onOpenMobileMenu: () => void;
   onManualSync: () => void;
   isSyncing: boolean;
@@ -22,6 +24,8 @@ const MENU_TITLES: Record<MenuId, string> = {
 export const Topbar: React.FC<TopbarProps> = ({
   activeMenu,
   settings,
+  periodScope = 'active',
+  onTogglePeriodScope,
   onOpenMobileMenu,
   onManualSync,
   isSyncing,
@@ -43,11 +47,28 @@ export const Topbar: React.FC<TopbarProps> = ({
           </h1>
           <p className="hidden sm:block text-xs text-slate-500 truncate">
             TA {settings.academicYear} · Semester {settings.semester} · KKM {settings.kkm}
+            {periodScope === 'all' ? ' · Menampilkan Semua Periode (Arsip)' : ''}
           </p>
         </div>
       </div>
 
-      <div className="flex items-center gap-3 shrink-0">
+      <div className="flex items-center gap-2.5 shrink-0">
+        {onTogglePeriodScope && (
+          <button
+            type="button"
+            onClick={onTogglePeriodScope}
+            title="Klik untuk beralih antara data periode aktif dan seluruh arsip semester"
+            className={`hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+              periodScope === 'all'
+                ? 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <CalendarClock className="w-3.5 h-3.5 text-indigo-600" />
+            <span>{periodScope === 'all' ? 'Semua Periode (Arsip)' : 'Periode Aktif'}</span>
+          </button>
+        )}
+
         <button
           type="button"
           onClick={onManualSync}

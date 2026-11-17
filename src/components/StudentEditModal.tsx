@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { ImagePlus, Link2, Plus, Save, Trash2, X } from 'lucide-react';
-import { Student } from '../types';
+import { Student, StudentStatus } from '../types';
 import { getStudentPhotoUrl } from '../utils/defaultAvatars';
-import { generateId } from '../utils/helpers';
+import { generateId, STUDENT_STATUS_LABELS } from '../utils/helpers';
 
 interface StudentEditModalProps {
   isOpen?: boolean;
   mode?: 'create' | 'edit';
   student: Student | null;
   classes: string[];
+  existingStudents?: Student[];
   defaultClassName?: string;
+  defaultEnrollmentYear?: string;
   onSave: (studentData: Student, isEdit: boolean) => void;
   onClose: () => void;
 }
@@ -19,7 +21,9 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
   mode,
   student,
   classes,
+  existingStudents = [],
   defaultClassName,
+  defaultEnrollmentYear = '',
   onSave,
   onClose,
 }) => {
@@ -31,6 +35,8 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
   const [name, setName] = useState('');
   const [gender, setGender] = useState<'L' | 'P'>('L');
   const [className, setClassName] = useState(defaultClassName || classes[0] || '');
+  const [status, setStatus] = useState<StudentStatus>('aktif');
+  const [enrollmentYear, setEnrollmentYear] = useState(defaultEnrollmentYear);
   const [ttl, setTtl] = useState('');
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
@@ -45,6 +51,8 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
       setName(student.name);
       setGender(student.gender);
       setClassName(student.className);
+      setStatus(student.status || 'aktif');
+      setEnrollmentYear(student.enrollmentYear || defaultEnrollmentYear);
       setTtl(student.ttl || '');
       setEmail(student.email || '');
       setAddress(student.address || '');
@@ -55,6 +63,8 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
       setName('');
       setGender('L');
       setClassName(defaultClassName || classes[0] || '');
+      setStatus('aktif');
+      setEnrollmentYear(defaultEnrollmentYear);
       setTtl('');
       setEmail('');
       setAddress('');
@@ -67,7 +77,7 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [effectiveOpen, effectiveMode, student, classes, defaultClassName, onClose]);
+  }, [effectiveOpen, effectiveMode, student, classes, defaultClassName, defaultEnrollmentYear, onClose]);
 
   if (!effectiveOpen) return null;
 
@@ -84,19 +94,34 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nis.trim() || !name.trim() || !className) {
+    const cleanNis = nis.trim();
+    const cleanName = name.trim();
+    if (!cleanNis || !cleanName || !className) {
       setError('NIS, Nama Lengkap, dan Kelas wajib diisi.');
       return;
     }
+
     const isEdit = effectiveMode === 'edit' && Boolean(student);
+    const duplicate = existingStudents.find(
+      (s) => s.nis.trim().toLowerCase() === cleanNis.toLowerCase() && s.id !== student?.id
+    );
+    if (duplicate) {
+      setError(
+        `NIS "${cleanNis}" sudah terdaftar atas nama ${duplicate.name} (${duplicate.className}). Gunakan NIS lain.`
+      );
+      return;
+    }
+
     onSave(
       {
         id: isEdit && student ? student.id : generateId('std'),
         absenNo: absenNo.trim(),
-        nis: nis.trim(),
-        name: name.trim(),
+        nis: cleanNis,
+        name: cleanName,
         gender,
         className,
+        status,
+        enrollmentYear: enrollmentYear.trim() || undefined,
         ttl: ttl.trim(),
         email: email.trim(),
         address: address.trim(),
@@ -263,17 +288,47 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Nama Lengkap</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Nama Lengkap</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Status Siswa</label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as StudentStatus)}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              >
+                {(['aktif', 'lulus', 'pindah', 'keluar'] as StudentStatus[]).map((stKey) => (
+                  <option key={stKey} value={stKey}>
+                    {STUDENT_STATUS_LABELS[stKey]}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Tahun Masuk / Angkatan
+              </label>
+              <input
+                type="text"
+                value={enrollmentYear}
+                onChange={(e) => setEnrollmentYear(e.target.value)}
+                placeholder="2025/2026"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              />
+            </div>
+
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Tempat, Tanggal Lahir (TTL)

@@ -3,19 +3,22 @@ import {
   Download,
   FileEdit,
   FileSpreadsheet,
+  GraduationCap,
   Plus,
   Search,
   Trash2,
   Upload,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { Student, SystemSettings } from '../types';
+import { Student, StudentStatus, SystemSettings } from '../types';
 import { getStudentPhotoUrl } from '../utils/defaultAvatars';
-import { generateId } from '../utils/helpers';
+import { generateId, STUDENT_STATUS_LABELS } from '../utils/helpers';
 
 interface StudentsViewProps {
   students: Student[];
   settings: SystemSettings;
+  canManageStudents?: boolean;
+  canPromoteStudents?: boolean;
   onDeleteStudent: (id: string) => void;
   onDeleteStudentsBulk?: (ids: string[]) => void;
   onImportStudents: (newStudents: Student[]) => void;
@@ -23,12 +26,15 @@ interface StudentsViewProps {
   onViewClass?: (className: string) => void;
   onCreateStudentModal: () => void;
   onEditStudentModal: (student: Student) => void;
+  onOpenPromotionModal?: (selectedIds: string[]) => void;
   onNotify: (msg: string) => void;
 }
 
 export const StudentsView: React.FC<StudentsViewProps> = ({
   students,
   settings,
+  canManageStudents = true,
+  canPromoteStudents = true,
   onDeleteStudent,
   onDeleteStudentsBulk,
   onImportStudents,
@@ -36,6 +42,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
   onViewClass,
   onCreateStudentModal,
   onEditStudentModal,
+  onOpenPromotionModal,
   onNotify,
 }) => {
   const [showImportPanel, setShowImportPanel] = useState(false);
@@ -44,6 +51,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterClass, setFilterClass] = useState('ALL');
+  const [filterStatus, setFilterStatus] = useState<'ALL' | StudentStatus>('aktif');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   useEffect(() => {
@@ -57,6 +65,8 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
     const q = searchQuery.trim().toLowerCase();
     return [...students]
       .filter((st) => {
+        const stStatus: StudentStatus = st.status || 'aktif';
+        if (filterStatus !== 'ALL' && stStatus !== filterStatus) return false;
         if (filterClass !== 'ALL' && st.className !== filterClass) return false;
         if (q) {
           const hay = `${st.nis} ${st.absenNo || ''} ${st.name} ${st.className} ${st.email || ''}`.toLowerCase();
@@ -70,7 +80,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
           (a.absenNo || '').localeCompare(b.absenNo || '', undefined, { numeric: true }) ||
           a.name.localeCompare(b.name)
       );
-  }, [students, filterClass, searchQuery]);
+  }, [students, filterClass, filterStatus, searchQuery]);
 
   const toggleSelectRow = (id: string) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -104,6 +114,8 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
         'Nama Lengkap': 'Contoh Nama Siswa',
         'L/P': 'L',
         Kelas: settings.classes[0] || 'X IPA 1',
+        Status: 'aktif',
+        'Tahun Masuk': settings.academicYear,
         Email: 'siswa@sekolah.sch.id',
         TTL: 'Bandung, 12 Mei 2010',
         Alamat: 'Jl. Pendidikan No. 10, Bandung',
@@ -115,6 +127,8 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
         'Nama Lengkap': 'Contoh Nama Siswi',
         'L/P': 'P',
         Kelas: settings.classes[0] || 'X IPA 1',
+        Status: 'aktif',
+        'Tahun Masuk': settings.academicYear,
         Email: 'siswi@sekolah.sch.id',
         TTL: 'Bandung, 20 Agustus 2010',
         Alamat: 'Jl. Merdeka No. 25, Bandung',
@@ -140,6 +154,8 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
       'Nama Lengkap': st.name,
       'L/P': st.gender,
       Kelas: st.className,
+      Status: STUDENT_STATUS_LABELS[st.status || 'aktif'],
+      'Tahun Masuk': st.enrollmentYear || settings.academicYear,
       Email: st.email || '-',
       TTL: st.ttl || '-',
       Alamat: st.address || '-',
@@ -154,6 +170,14 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
     );
   };
 
+  const parseStatus = (raw?: string): StudentStatus => {
+    const s = String(raw || '').trim().toLowerCase();
+    if (s.includes('lulus') || s.includes('alumni')) return 'lulus';
+    if (s.includes('pindah') || s.includes('mutasi')) return 'pindah';
+    if (s.includes('keluar') || s.includes('nonaktif')) return 'keluar';
+    return 'aktif';
+  };
+
   const parseAndImportRows = (
     rawRows: Array<{
       nis: string;
@@ -161,6 +185,8 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
       gender: string;
       className: string;
       absenNo?: string;
+      status?: string;
+      enrollmentYear?: string;
       email?: string;
       ttl?: string;
       address?: string;
@@ -182,6 +208,8 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
           name: cleanName,
           gender: cleanGender,
           className: cleanClass,
+          status: parseStatus(r.status),
+          enrollmentYear: String(r.enrollmentYear || settings.academicYear).trim(),
           email: String(r.email || '').trim(),
           ttl: String(r.ttl || '').trim(),
           address: String(r.address || '').trim(),
@@ -240,6 +268,8 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
         name: String(row['Nama Lengkap'] ?? row['Nama'] ?? row['nama'] ?? row['Nama Siswa'] ?? ''),
         gender: String(row['L/P'] ?? row['Jenis Kelamin'] ?? row['JK'] ?? 'L'),
         className: String(row['Kelas'] ?? row['kelas'] ?? settings.classes[0] ?? 'X IPA 1'),
+        status: String(row['Status'] ?? row['status'] ?? 'aktif'),
+        enrollmentYear: String(row['Tahun Masuk'] ?? row['Angkatan'] ?? settings.academicYear),
         email: String(row['Email'] ?? row['email'] ?? ''),
         ttl: String(row['TTL'] ?? row['Tempat Tanggal Lahir'] ?? ''),
         address: String(row['Alamat'] ?? row['alamat'] ?? ''),
@@ -262,46 +292,67 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Action Card: Tambah Siswa (Pop-up) & Impor/Ekspor Excel */}
+      {/* Top Action Card: Tambah Siswa (Pop-up), Naik Kelas & Impor/Ekspor Excel */}
       <section className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div className="space-y-1">
           <h2 className="text-base font-bold text-slate-900">
-            Manajemen Biodata & Peserta Didik
+            Manajemen Biodata, Kenaikan Kelas & Peserta Didik
           </h2>
           <p className="text-xs text-slate-500 leading-relaxed max-w-2xl">
-            Tambah siswa baru melalui pop-up biodata (lengkap dengan foto file/link URL), klik{' '}
-            <strong className="text-slate-700">Nama Siswa</strong> untuk profil & aktivitas individu,
-            atau klik <strong className="text-slate-700">Kelas</strong> untuk membuka detail rombongan belajar.
+            Tambah siswa baru melalui pop-up biodata, proses{' '}
+            <strong className="text-slate-700">Naik Kelas / Mutasi</strong> secara massal, atau klik{' '}
+            <strong className="text-slate-700">Nama Siswa</strong> / <strong className="text-slate-700">Kelas</strong> untuk melihat detail & riwayat aktivitas.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-          <button
-            type="button"
-            onClick={onCreateStudentModal}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Tambah Siswa Baru</span>
-          </button>
+          {canManageStudents && (
+            <button
+              type="button"
+              onClick={onCreateStudentModal}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Tambah Siswa Baru</span>
+            </button>
+          )}
 
-          <button
-            type="button"
-            onClick={handleDownloadTemplate}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
-          >
-            <Download className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Unduh Template</span>
-          </button>
+          {canPromoteStudents && onOpenPromotionModal && (
+            <button
+              type="button"
+              onClick={() => onOpenPromotionModal(selectedIds)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <GraduationCap className="w-4 h-4 text-indigo-700" />
+              <span>
+                {selectedIds.length > 0
+                  ? `Naik Kelas / Mutasi (${selectedIds.length})`
+                  : 'Naik Kelas / Mutasi'}
+              </span>
+            </button>
+          )}
 
-          <button
-            type="button"
-            onClick={() => setShowImportPanel((v) => !v)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
-          >
-            <Upload className="w-3.5 h-3.5 text-indigo-300" />
-            <span>{showImportPanel ? 'Tutup Impor' : 'Impor Data'}</span>
-          </button>
+          {canManageStudents && (
+            <>
+              <button
+                type="button"
+                onClick={handleDownloadTemplate}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <Download className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Unduh Template</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowImportPanel((v) => !v)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <Upload className="w-3.5 h-3.5 text-indigo-300" />
+                <span>{showImportPanel ? 'Tutup Impor' : 'Impor Data'}</span>
+              </button>
+            </>
+          )}
 
           <button
             type="button"
@@ -317,7 +368,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
       </section>
 
       {/* Collapsible Kotak Impor Data */}
-      {showImportPanel && (
+      {canManageStudents && showImportPanel && (
         <section className="bg-white rounded-xl border border-indigo-200 p-5 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
@@ -395,7 +446,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Cari nama, NIS, atau email..."
-                className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600 w-56"
+                className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600 w-52 sm:w-56"
               />
             </div>
 
@@ -412,7 +463,19 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
               ))}
             </select>
 
-            {selectedIds.length > 0 && (
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value as 'ALL' | StudentStatus)}
+              className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+            >
+              <option value="aktif">Status: Aktif</option>
+              <option value="lulus">Status: Lulus / Alumni</option>
+              <option value="pindah">Status: Pindah</option>
+              <option value="keluar">Status: Keluar</option>
+              <option value="ALL">Semua Status</option>
+            </select>
+
+            {canManageStudents && selectedIds.length > 0 && (
               <button
                 type="button"
                 onClick={handleBulkDelete}
@@ -445,7 +508,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                 <th className="py-2.5 px-3 font-semibold w-28">NIS</th>
                 <th className="py-2.5 px-3 font-semibold min-w-[210px]">Nama Lengkap</th>
                 <th className="py-2.5 px-3 font-semibold text-center w-16">L/P</th>
-                <th className="py-2.5 px-3 font-semibold w-24">Kelas</th>
+                <th className="py-2.5 px-3 font-semibold w-28">Kelas & Status</th>
                 <th className="py-2.5 px-3 font-semibold min-w-[180px]">Email & TTL</th>
                 <th className="py-2.5 px-4 font-semibold text-right w-32">Aksi</th>
               </tr>
@@ -454,101 +517,122 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
               {filteredStudents.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-10 text-center text-slate-500 text-sm">
-                    Tidak ada data siswa yang cocok.
+                    Tidak ada data siswa yang cocok dengan filter kelas/status.
                   </td>
                 </tr>
               ) : (
-                filteredStudents.map((st, idx) => (
-                  <tr key={st.id} className="hover:bg-slate-50">
-                    <td className="py-2.5 px-3 text-center">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.includes(st.id)}
-                        onChange={() => toggleSelectRow(st.id)}
-                        aria-label={`Pilih siswa ${st.name}`}
-                        className="rounded border-slate-300 cursor-pointer"
-                      />
-                    </td>
-                    <td className="py-2.5 px-3 text-center text-xs font-mono text-slate-600 tabular-nums">
-                      {st.absenNo || String(idx + 1).padStart(2, '0')}
-                    </td>
-                    <td className="py-2.5 px-3 font-mono text-xs text-slate-700 tabular-nums">
-                      {st.nis}
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 overflow-hidden">
-                          <img
-                            src={getStudentPhotoUrl(st)}
-                            onError={(e) => {
-                              e.currentTarget.onerror = null;
-                              e.currentTarget.src = getStudentPhotoUrl({
-                                photoDataUrl: '',
-                                gender: st.gender,
-                              });
-                            }}
-                            alt={st.name}
-                            className="w-full h-full object-cover object-top"
-                          />
+                filteredStudents.map((st, idx) => {
+                  const stStatus: StudentStatus = st.status || 'aktif';
+                  return (
+                    <tr key={st.id} className="hover:bg-slate-50">
+                      <td className="py-2.5 px-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(st.id)}
+                          onChange={() => toggleSelectRow(st.id)}
+                          aria-label={`Pilih siswa ${st.name}`}
+                          className="rounded border-slate-300 cursor-pointer"
+                        />
+                      </td>
+                      <td className="py-2.5 px-3 text-center text-xs font-mono text-slate-600 tabular-nums">
+                        {st.absenNo || String(idx + 1).padStart(2, '0')}
+                      </td>
+                      <td className="py-2.5 px-3 font-mono text-xs text-slate-700 tabular-nums">
+                        {st.nis}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 overflow-hidden">
+                            <img
+                              src={getStudentPhotoUrl(st)}
+                              onError={(e) => {
+                                e.currentTarget.onerror = null;
+                                e.currentTarget.src = getStudentPhotoUrl({
+                                  photoDataUrl: '',
+                                  gender: st.gender,
+                                });
+                              }}
+                              alt={st.name}
+                              className="w-full h-full object-cover object-top"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => onViewStudent(st)}
+                            className="text-left font-semibold text-slate-900 hover:text-indigo-600 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer text-xs sm:text-sm"
+                            title="Klik untuk lihat profil & aktivitas kelas"
+                          >
+                            {st.name}
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => onViewStudent(st)}
-                          className="text-left font-semibold text-slate-900 hover:text-indigo-600 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer text-xs sm:text-sm"
-                          title="Klik untuk lihat profil & aktivitas kelas"
-                        >
-                          {st.name}
-                        </button>
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-3 text-center text-xs font-semibold text-slate-700">
-                      {st.gender}
-                    </td>
-                    <td className="py-2.5 px-3 text-xs whitespace-nowrap">
-                      {onViewClass ? (
-                        <button
-                          type="button"
-                          onClick={() => onViewClass(st.className)}
-                          className="font-semibold text-indigo-700 hover:text-indigo-900 hover:underline cursor-pointer"
-                          title={`Klik untuk lihat detail kelas ${st.className}`}
-                        >
-                          {st.className}
-                        </button>
-                      ) : (
-                        <span className="font-semibold text-indigo-700">{st.className}</span>
-                      )}
-                    </td>
-                    <td className="py-2.5 px-3 text-xs text-slate-600">
-                      <div className="truncate max-w-[220px]">{st.email || '-'}</div>
-                      <div className="text-[11px] text-slate-400 truncate max-w-[220px]">
-                        {st.ttl || '-'}
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-4 text-right whitespace-nowrap">
-                      <div className="inline-flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => onEditStudentModal(st)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 text-xs font-medium text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 cursor-pointer"
-                        >
-                          <FileEdit className="w-3.5 h-3.5" />
-                          <span>Edit</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedIds((prev) => prev.filter((id) => id !== st.id));
-                            onDeleteStudent(st.id);
-                          }}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-rose-200 text-xs font-medium text-rose-700 hover:bg-rose-50 cursor-pointer"
-                          aria-label={`Hapus ${st.name}`}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="py-2.5 px-3 text-center text-xs font-semibold text-slate-700">
+                        {st.gender}
+                      </td>
+                      <td className="py-2.5 px-3 text-xs whitespace-nowrap">
+                        <div>
+                          {onViewClass ? (
+                            <button
+                              type="button"
+                              onClick={() => onViewClass(st.className)}
+                              className="font-semibold text-indigo-700 hover:text-indigo-900 hover:underline cursor-pointer"
+                              title={`Klik untuk lihat detail kelas ${st.className}`}
+                            >
+                              {st.className}
+                            </button>
+                          ) : (
+                            <span className="font-semibold text-indigo-700">{st.className}</span>
+                          )}
+                        </div>
+                        {stStatus !== 'aktif' && (
+                          <div className="text-[11px] font-medium text-amber-700">
+                            {STUDENT_STATUS_LABELS[stStatus]}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-3 text-xs text-slate-600">
+                        <div className="truncate max-w-[220px]">{st.email || '-'}</div>
+                        <div className="text-[11px] text-slate-400 truncate max-w-[220px]">
+                          {st.ttl || '-'}
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-4 text-right whitespace-nowrap">
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => onViewStudent(st)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-100 cursor-pointer"
+                          >
+                            <span>Detail</span>
+                          </button>
+                          {canManageStudents && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => onEditStudentModal(st)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 text-xs font-medium text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 cursor-pointer"
+                              >
+                                <FileEdit className="w-3.5 h-3.5" />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedIds((prev) => prev.filter((id) => id !== st.id));
+                                  onDeleteStudent(st.id);
+                                }}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-rose-200 text-xs font-medium text-rose-700 hover:bg-rose-50 cursor-pointer"
+                                aria-label={`Hapus ${st.name}`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

@@ -9,10 +9,10 @@ import {
   Tooltip,
 } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
-import { Copy, FileEdit, FileSpreadsheet, PlusCircle, Printer } from 'lucide-react';
+import { Copy, FileEdit, FileSpreadsheet, PlusCircle, Printer, Users } from 'lucide-react';
 import { GradeRecord, JournalEntry, MenuId, Student, SystemSettings, UserRole } from '../types';
 import { getUserPhotoUrl } from '../utils/defaultAvatars';
-import { formatTanggalID } from '../utils/helpers';
+import { formatTanggalID, ROLE_PERMISSIONS } from '../utils/helpers';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement);
 
@@ -51,6 +51,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onViewClass,
   onViewSubject,
 }) => {
+  const rolePerms = ROLE_PERMISSIONS[currentUserRole];
   const stats = useMemo(() => {
     let totalH = 0;
     let totalS = 0;
@@ -226,30 +227,46 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-            <button
-              type="button"
-              onClick={() => onNavigate('jurnal')}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white text-indigo-700 hover:bg-indigo-50 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>Catat Jurnal Baru</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onNavigate('nilai')}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-950/50 hover:bg-indigo-950/70 text-white border border-white/20 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
-            >
-              <FileSpreadsheet className="w-4 h-4" />
-              <span>Input Nilai</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onNavigate('laporan')}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-950/50 hover:bg-indigo-950/70 text-white border border-white/20 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
-            >
-              <Printer className="w-4 h-4" />
-              <span>Cetak Laporan</span>
-            </button>
+            {rolePerms.canManageJournals && rolePerms.allowedMenus.includes('jurnal') && (
+              <button
+                type="button"
+                onClick={() => onNavigate('jurnal')}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white text-indigo-700 hover:bg-indigo-50 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>Catat Jurnal Baru</span>
+              </button>
+            )}
+            {rolePerms.canManageGrades && rolePerms.allowedMenus.includes('nilai') && (
+              <button
+                type="button"
+                onClick={() => onNavigate('nilai')}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-950/50 hover:bg-indigo-950/70 text-white border border-white/20 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>Input Nilai</span>
+              </button>
+            )}
+            {rolePerms.allowedMenus.includes('siswa') && !rolePerms.canManageJournals && (
+              <button
+                type="button"
+                onClick={() => onNavigate('siswa')}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white text-indigo-700 hover:bg-indigo-50 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <Users className="w-4 h-4" />
+                <span>Kelola Data Siswa</span>
+              </button>
+            )}
+            {rolePerms.allowedMenus.includes('laporan') && (
+              <button
+                type="button"
+                onClick={() => onNavigate('laporan')}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-950/50 hover:bg-indigo-950/70 text-white border border-white/20 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Cetak Laporan</span>
+              </button>
+            )}
           </div>
         </div>
       </section>
@@ -406,15 +423,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-4">
             <div>
               <h3 className="text-sm font-bold text-slate-900">Kegiatan Mengajar Terbaru</h3>
-              <p className="text-xs text-slate-500">Klik Edit atau Duplikat untuk membuka di modul Jurnal</p>
+              <p className="text-xs text-slate-500">
+                {rolePerms.canManageJournals
+                  ? 'Klik Edit atau Duplikat untuk membuka di modul Jurnal'
+                  : 'Pemantauan aktivitas KBM terbaru'}
+              </p>
             </div>
-            <button
-              type="button"
-              onClick={() => onNavigate('jurnal')}
-              className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              Lihat Semua
-            </button>
+            {rolePerms.allowedMenus.includes('jurnal') && (
+              <button
+                type="button"
+                onClick={() => onNavigate('jurnal')}
+                className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                Lihat Semua
+              </button>
+            )}
           </div>
           <div className="max-h-[420px] overflow-auto eguru-scroll">
             <table className="w-full text-left border-collapse">
@@ -423,13 +446,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <th className="py-2.5 px-4 font-semibold">Tanggal</th>
                   <th className="py-2.5 px-3 font-semibold">Kelas</th>
                   <th className="py-2.5 px-3 font-semibold">Mata Pelajaran & Materi</th>
-                  <th className="py-2.5 px-4 font-semibold text-right">Aksi</th>
+                  {rolePerms.canManageJournals && (
+                    <th className="py-2.5 px-4 font-semibold text-right">Aksi</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 text-sm">
                 {latestJournals.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="py-10 text-center text-slate-500 text-sm">
+                    <td
+                      colSpan={rolePerms.canManageJournals ? 4 : 3}
+                      className="py-10 text-center text-slate-500 text-sm"
+                    >
                       Belum ada jurnal mengajar tersimpan.
                     </td>
                   </tr>
@@ -469,28 +497,30 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         )}
                         <div className="text-xs text-slate-600 line-clamp-1">{j.topic}</div>
                       </td>
-                      <td className="py-2.5 px-4 text-right whitespace-nowrap">
-                        <div className="inline-flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => onEditJournal(j)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-slate-200 text-xs font-medium text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 cursor-pointer"
-                            title="Edit jurnal"
-                          >
-                            <FileEdit className="w-3.5 h-3.5" />
-                            <span>Edit</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onDuplicateJournal(j)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-100 cursor-pointer"
-                            title="Duplikat jurnal"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                            <span>Duplikat</span>
-                          </button>
-                        </div>
-                      </td>
+                      {rolePerms.canManageJournals && (
+                        <td className="py-2.5 px-4 text-right whitespace-nowrap">
+                          <div className="inline-flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => onEditJournal(j)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-slate-200 text-xs font-medium text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 cursor-pointer"
+                              title="Edit jurnal"
+                            >
+                              <FileEdit className="w-3.5 h-3.5" />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onDuplicateJournal(j)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-100 cursor-pointer"
+                              title="Duplikat jurnal"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                              <span>Duplikat</span>
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))
                 )}

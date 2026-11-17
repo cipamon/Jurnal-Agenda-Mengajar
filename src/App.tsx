@@ -15,6 +15,7 @@ import { SettingsView } from './components/SettingsView';
 import { Sidebar } from './components/Sidebar';
 import { StudentDetailModal } from './components/StudentDetailModal';
 import { StudentEditModal } from './components/StudentEditModal';
+import { StudentPromotionModal } from './components/StudentPromotionModal';
 import { StudentsView } from './components/StudentsView';
 import { SubjectDetailModal } from './components/SubjectDetailModal';
 import { TeacherProfileModal } from './components/TeacherProfileModal';
@@ -30,7 +31,12 @@ import {
   SystemSettings,
   UserRole,
 } from './types';
-import { getScopedPortalData, normalizeWebBrand, USER_ROLE_LABELS } from './utils/helpers';
+import {
+  getScopedPortalData,
+  normalizeWebBrand,
+  ROLE_PERMISSIONS,
+  USER_ROLE_LABELS,
+} from './utils/helpers';
 import { createSeedDatabase } from './utils/seedData';
 import {
   clearSession,
@@ -64,6 +70,11 @@ export default function App() {
   const [selectedClassModal, setSelectedClassModal] = useState<string | null>(null);
   const [selectedSubjectModal, setSelectedSubjectModal] = useState<string | null>(null);
   const [showTeacherProfileModal, setShowTeacherProfileModal] = useState(false);
+  const [periodScope, setPeriodScope] = useState<'active' | 'all'>('active');
+  const [promotionModal, setPromotionModal] = useState<{
+    open: boolean;
+    preselectedIds: string[];
+  }>({ open: false, preselectedIds: [] });
 
   const notify = useCallback((message: string) => {
     setToast(message);
@@ -129,6 +140,22 @@ export default function App() {
     });
   }, []);
 
+  // Enforce RBAC allowed menus whenever user session/role changes
+  useEffect(() => {
+    if (!db || !session?.isAuthenticated) return;
+    const users = db.users && db.users.length > 0 ? db.users : createSeedDatabase().users ?? [];
+    const matched = users.find(
+      (u) =>
+        (session.userId && u.id === session.userId) ||
+        u.email.toLowerCase() === session.email.toLowerCase()
+    );
+    const role: UserRole = matched?.role || session.role || 'guru';
+    const perms = ROLE_PERMISSIONS[role];
+    if (!perms.allowedMenus.includes(activeMenu)) {
+      setActiveMenu(perms.allowedMenus[0] || 'dashboard');
+    }
+  }, [db, session, activeMenu]);
+
   const handleLogin = (payload: {
     email: string;
     password: string;
@@ -137,10 +164,12 @@ export default function App() {
     semester: 'Ganjil' | 'Genap';
     useDemoSeed: boolean;
     demoAsAdmin?: boolean;
+    demoRole?: UserRole;
   }): string | null => {
     if (payload.useDemoSeed) {
+      const targetRole: UserRole = payload.demoRole || (payload.demoAsAdmin ? 'admin' : 'guru');
       const seeded = createSeedDatabase(
-        payload.demoAsAdmin ? undefined : payload.email,
+        targetRole === 'guru' ? payload.email : undefined,
         payload.sheetsWebAppUrl,
         payload.academicYear,
         payload.semester
@@ -148,24 +177,19 @@ export default function App() {
       setDb(seeded);
       void saveDatabase(seeded);
       const seedUsers = seeded.users ?? [];
-      const targetUser = payload.demoAsAdmin
-        ? seedUsers.find((u) => u.role === 'admin')
-        : seedUsers.find((u) => u.role === 'guru');
+      const targetUser = seedUsers.find((u) => u.role === targetRole) || seedUsers[0];
+      const finalRole = targetUser?.role || targetRole;
       const nextSession: SessionState = {
         isAuthenticated: true,
         email: targetUser?.email || seeded.settings.teacherProfile.email,
         userId: targetUser?.id,
-        role: targetUser?.role || 'guru',
+        role: finalRole,
         loggedInAt: new Date().toISOString(),
       };
       saveSession(nextSession);
       setSession(nextSession);
-      setActiveMenu(payload.demoAsAdmin ? 'pengaturan' : 'dashboard');
-      notify(
-        payload.demoAsAdmin
-          ? 'Berhasil masuk sebagai Admin Sistem (Data Demo).'
-          : 'Berhasil masuk dengan data demo otomatis.'
-      );
+      setActiveMenu(finalRole === 'admin' ? 'pengaturan' : 'dashboard');
+      notify(`Berhasil masuk sebagai ${USER_ROLE_LABELS[finalRole]} (Data Demo).`);
       return null;
     }
 
@@ -348,12 +372,16 @@ export default function App() {
     updateDatabase((prev) => {
       const nextGrades = [...prev.grades];
       records.forEach((rec) => {
+        const recYear = rec.academicYear || prev.settings.academicYear;
+        const recSem = rec.semester || prev.settings.semester;
         const idx = nextGrades.findIndex(
           (g) =>
             g.studentId === rec.studentId &&
             g.className === rec.className &&
             g.subject === rec.subject &&
-            g.examType === rec.examType
+            g.examType === rec.examType &&
+            (g.academicYear || prev.settings.academicYear) === recYear &&
+            (g.semester || prev.settings.semester) === recSem
         );
         if (idx >= 0) {
           nextGrades[idx] = { ...rec, id: nextGrades[idx].id };
@@ -389,6 +417,15 @@ export default function App() {
     notify(isEdit ? `Data siswa ${student.name} diperbarui.` : `Siswa ${student.name} ditambahkan.`);
   };
 
+  const handlePromoteStudents = (updatedStudents: Student[], summaryMsg: string) => {
+    const updatedMap = new Map(updatedStudents.map((s) => [s.id, s]));
+    updateDatabase((prev) => ({
+      ...prev,
+      students: prev.students.map((s) => updatedMap.get(s.id) || s),
+    }));
+    notify(summaryMsg);
+  };
+
   const handleDeleteStudent = (id: string) => {
     updateDatabase((prev) => ({
       ...prev,
@@ -415,29 +452,45 @@ export default function App() {
   };
 
   const handleImportStudents = (newStudents: Student[]) => {
-    updateDatabase((prev) => {
-      const existingNis = new Set(prev.students.map((s) => s.nis));
-      const merged = [...prev.students];
-      const extraClasses = new Set(prev.settings.classes);
+    const currentStudents = db?.students ?? [];
+    const existingNis = new Set(currentStudents.map((s) => s.nis.trim().toLowerCase()));
+    let addedCount = 0;
+    let skippedCount = 0;
+    const toAdd: Student[] = [];
 
-      newStudents.forEach((st) => {
-        if (st.className) extraClasses.add(st.className);
-        if (!existingNis.has(st.nis)) {
-          existingNis.add(st.nis);
-          merged.push(st);
-        }
-      });
-
-      return {
-        ...prev,
-        students: merged,
-        settings: {
-          ...prev.settings,
-          classes: Array.from(extraClasses),
-        },
-      };
+    newStudents.forEach((st) => {
+      const normNis = st.nis.trim().toLowerCase();
+      if (!existingNis.has(normNis)) {
+        existingNis.add(normNis);
+        toAdd.push(st);
+        addedCount++;
+      } else {
+        skippedCount++;
+      }
     });
-    notify(`Impor selesai: ${newStudents.length} baris diproses.`);
+
+    if (toAdd.length > 0) {
+      updateDatabase((prev) => {
+        const extraClasses = new Set(prev.settings.classes);
+        toAdd.forEach((st) => {
+          if (st.className) extraClasses.add(st.className);
+        });
+        return {
+          ...prev,
+          students: [...prev.students, ...toAdd],
+          settings: {
+            ...prev.settings,
+            classes: Array.from(extraClasses),
+          },
+        };
+      });
+    }
+
+    notify(
+      skippedCount > 0
+        ? `Impor selesai: ${addedCount} siswa ditambahkan, ${skippedCount} baris dilewati karena NIS sudah terdaftar.`
+        : `Impor selesai: ${addedCount} siswa baru ditambahkan.`
+    );
   };
 
   // Settings & Users handlers
@@ -517,6 +570,7 @@ export default function App() {
       u.email.toLowerCase() === session.email.toLowerCase()
   );
   const currentUserRole: UserRole = activeUser?.role || session.role || 'guru';
+  const rolePerms = ROLE_PERMISSIONS[currentUserRole];
   const currentUserName = activeUser?.name || db.settings.teacherProfile.name;
   const currentUserNip = activeUser?.nip || db.settings.teacherProfile.nip;
   const currentUserGender: 'L' | 'P' =
@@ -525,7 +579,7 @@ export default function App() {
     activeUser?.photoDataUrl ||
     (currentUserRole === 'guru' ? db.settings.teacherProfile.photoDataUrl : undefined);
 
-  const scoped = getScopedPortalData(db, activeUser, currentUserRole);
+  const scoped = getScopedPortalData(db, activeUser, currentUserRole, periodScope);
   const effectiveScopedSettings: SystemSettings =
     activeUser && (currentUserRole === 'guru' || currentUserRole === 'wali_kelas')
       ? {
@@ -568,6 +622,10 @@ export default function App() {
         <Topbar
           activeMenu={activeMenu}
           settings={effectiveScopedSettings}
+          periodScope={periodScope}
+          onTogglePeriodScope={() =>
+            setPeriodScope((prev) => (prev === 'active' ? 'all' : 'active'))
+          }
           onOpenMobileMenu={() => setMobileMenuOpen(true)}
           onManualSync={handleManualSync}
           isSyncing={isSyncing}
@@ -576,7 +634,7 @@ export default function App() {
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1440px] w-full mx-auto">
           {activeMenu === 'dashboard' && (
             <DashboardView
-              students={scoped.scopedStudents}
+              students={scoped.scopedActiveStudents}
               journals={scoped.scopedJournals}
               grades={scoped.scopedGrades}
               settings={effectiveScopedSettings}
@@ -600,11 +658,14 @@ export default function App() {
             />
           )}
 
-          {activeMenu === 'jurnal' && (
+          {activeMenu === 'jurnal' && rolePerms.allowedMenus.includes('jurnal') && (
             <JournalAttendanceView
-              students={scoped.scopedStudents}
+              students={scoped.scopedActiveStudents}
               journals={scoped.scopedJournals}
               settings={effectiveScopedSettings}
+              currentUserId={activeUser?.id}
+              currentUserName={currentUserName}
+              readOnly={!rolePerms.canManageJournals}
               draftJournal={draftJournal}
               onClearDraft={() => setDraftJournal(null)}
               onSaveJournal={handleSaveJournal}
@@ -618,11 +679,14 @@ export default function App() {
             />
           )}
 
-          {activeMenu === 'nilai' && (
+          {activeMenu === 'nilai' && rolePerms.allowedMenus.includes('nilai') && (
             <GradesMatrixView
-              students={scoped.scopedStudents}
+              students={scoped.scopedActiveStudents}
               grades={scoped.scopedGrades}
               settings={effectiveScopedSettings}
+              currentUserId={activeUser?.id}
+              currentUserName={currentUserName}
+              readOnly={!rolePerms.canManageGrades}
               onSaveGradesBatch={handleSaveGradesBatch}
               onDeleteGrades={handleDeleteGrades}
               onViewStudent={setSelectedStudentModal}
@@ -632,10 +696,12 @@ export default function App() {
             />
           )}
 
-          {activeMenu === 'siswa' && (
+          {activeMenu === 'siswa' && rolePerms.allowedMenus.includes('siswa') && (
             <StudentsView
               students={scoped.scopedStudents}
               settings={effectiveScopedSettings}
+              canManageStudents={rolePerms.canManageStudents}
+              canPromoteStudents={rolePerms.canPromoteStudents}
               onDeleteStudent={handleDeleteStudent}
               onDeleteStudentsBulk={handleDeleteStudentsBulk}
               onImportStudents={handleImportStudents}
@@ -643,21 +709,25 @@ export default function App() {
               onViewClass={setSelectedClassModal}
               onCreateStudentModal={() => setStudentFormModal({ mode: 'create', student: null })}
               onEditStudentModal={(st) => setStudentFormModal({ mode: 'edit', student: st })}
+              onOpenPromotionModal={(preselectedIds) =>
+                setPromotionModal({ open: true, preselectedIds })
+              }
               onNotify={notify}
             />
           )}
 
-          {activeMenu === 'laporan' && (
+          {activeMenu === 'laporan' && rolePerms.allowedMenus.includes('laporan') && (
             <PrintReportsView
-              students={scoped.scopedStudents}
+              students={scoped.scopedActiveStudents}
               journals={scoped.scopedJournals}
               grades={scoped.scopedGrades}
               settings={effectiveScopedSettings}
+              onUpdateSettings={rolePerms.canAccessSettings ? handleUpdateSettings : undefined}
               onNotify={notify}
             />
           )}
 
-          {activeMenu === 'pengaturan' && (
+          {activeMenu === 'pengaturan' && rolePerms.canAccessSettings && (
             <SettingsView
               settings={db.settings}
               users={usersList}
@@ -700,6 +770,7 @@ export default function App() {
         journals={scoped.scopedJournals}
         grades={scoped.scopedGrades}
         settings={effectiveScopedSettings}
+        canEditStudent={rolePerms.canManageStudents}
         onEditStudent={(st) => {
           setSelectedStudentModal(null);
           setStudentFormModal({ mode: 'edit', student: st });
@@ -715,6 +786,8 @@ export default function App() {
         mode={studentFormModal?.mode || 'edit'}
         student={studentFormModal?.student || null}
         classes={scoped.allowedClasses}
+        existingStudents={db.students}
+        defaultEnrollmentYear={db.settings.academicYear}
         onSave={(savedStudent, isEdit) => {
           handleAddOrUpdateStudent(savedStudent, isEdit);
           setStudentFormModal(null);
@@ -722,9 +795,20 @@ export default function App() {
         onClose={() => setStudentFormModal(null)}
       />
 
+      <StudentPromotionModal
+        isOpen={promotionModal.open}
+        students={scoped.scopedStudents}
+        classes={db.settings.classes}
+        academicYears={db.settings.academicYears}
+        currentAcademicYear={db.settings.academicYear}
+        preselectedStudentIds={promotionModal.preselectedIds}
+        onApplyPromotion={handlePromoteStudents}
+        onClose={() => setPromotionModal({ open: false, preselectedIds: [] })}
+      />
+
       <ClassDetailModal
         className={selectedClassModal}
-        students={scoped.scopedStudents}
+        students={scoped.scopedActiveStudents}
         journals={scoped.scopedJournals}
         grades={scoped.scopedGrades}
         settings={effectiveScopedSettings}
@@ -736,7 +820,7 @@ export default function App() {
 
       <SubjectDetailModal
         subject={selectedSubjectModal}
-        students={scoped.scopedStudents}
+        students={scoped.scopedActiveStudents}
         journals={scoped.scopedJournals}
         grades={scoped.scopedGrades}
         settings={effectiveScopedSettings}

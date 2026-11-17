@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { MenuId, TeacherProfile, UserRole, WebBrandConfig } from '../types';
 import { getUserPhotoUrl } from '../utils/defaultAvatars';
-import { USER_ROLE_LABELS } from '../utils/helpers';
+import { ROLE_PERMISSIONS, USER_ROLE_LABELS } from '../utils/helpers';
 
 interface SidebarProps {
   activeMenu: MenuId;
@@ -53,6 +53,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   mobileOpen,
   onCloseMobile,
 }) => {
+  const rolePerms = ROLE_PERMISSIONS[currentUserRole];
+  const visibleMenuItems = rolePerms.allowedMenus
+    .map((id) => MENU_ITEMS.find((m) => m.id === id))
+    .filter((m): m is (typeof MENU_ITEMS)[number] => Boolean(m));
+
   const userAvatarSrc = getUserPhotoUrl({
     photoDataUrl: currentUserPhoto,
     role: currentUserRole,
@@ -95,9 +100,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
       </div>
 
-      {/* Navigation Links */}
+      {/* Navigation Links (Differentiated by Role) */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {MENU_ITEMS.map((item) => {
+        <p className="px-3.5 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          Menu {USER_ROLE_LABELS[currentUserRole]}
+        </p>
+        {visibleMenuItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeMenu === item.id;
           return (

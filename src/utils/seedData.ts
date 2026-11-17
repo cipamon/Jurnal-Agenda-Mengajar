@@ -9,7 +9,7 @@ import {
   SystemSettings,
 } from '../types';
 import { DEFAULT_WEB_LOGO } from './defaultAvatars';
-import { DEFAULT_LEFT_LOGO, DEFAULT_RIGHT_LOGO } from './defaultLogos';
+import { DEFAULT_LEFT_LOGO, DEFAULT_RIGHT_LOGO, DEFAULT_SCHOOL_STAMP } from './defaultLogos';
 
 export function createDefaultSettings(overrides?: Partial<SystemSettings>): SystemSettings {
   return {
@@ -21,6 +21,15 @@ export function createDefaultSettings(overrides?: Partial<SystemSettings>): Syst
     principalName: 'Drs. H. Ahmad Fauzi, M.Pd.',
     principalNip: '19680412 199403 1 008',
     sheetsWebAppUrl: '',
+    reportFontFamily: 'Times New Roman',
+    signatureStamp: {
+      principalSignatureDataUrl: '',
+      teacherSignatureDataUrl: '',
+      stampDataUrl: DEFAULT_SCHOOL_STAMP,
+      signatureSize: 54,
+      stampSize: 74,
+      showStampDefault: true,
+    },
     webBrand: {
       appName: 'Portal E-Guru v10.2',
       tabTitle: 'Portal E-Guru v10.2 — Sistem Jurnal Mengajar, Presensi & Penilaian Guru Terpadu',
@@ -68,6 +77,14 @@ export function createDefaultSettings(overrides?: Partial<SystemSettings>): Syst
     classes: ['X IPA 1', 'X IPA 2', 'XI IPA 1', 'XII IPA 1'],
     subjects: ['Matematika Wajib', 'Matematika Peminatan', 'Informatika', 'Fisika'],
     examTypes: ['Tugas 1', 'UH 1', 'Tugas 2', 'PTS', 'PAS'],
+    examWeights: {
+      'Tugas 1': 15,
+      'UH 1': 20,
+      'Tugas 2': 15,
+      PTS: 25,
+      PAS: 25,
+    },
+    useWeightedAverage: true,
     academicYears: ['2024/2025', '2025/2026', '2026/2027'],
     ...overrides,
   };
@@ -89,7 +106,7 @@ export function createSeedDatabase(
     settings.teacherProfile.email = emailOverride;
   }
 
-  const students: Student[] = [
+  const rawStudents: Student[] = [
     // X IPA 1 (7 siswa)
     { id: 'std-101', absenNo: '01', nis: '25261001', name: 'Aditya Pratama Putra', gender: 'L', className: 'X IPA 1', email: 'aditya.pratama@siswa.sman1nusantara.sch.id', ttl: 'Bandung, 14 Mei 2010', address: 'Jl. Merdeka No. 18, Sumur Bandung, Kota Bandung' },
     { id: 'std-102', absenNo: '02', nis: '25261002', name: 'Aulia Rahmawati', gender: 'P', className: 'X IPA 1', email: 'aulia.rahmawati@siswa.sman1nusantara.sch.id', ttl: 'Cimahi, 03 Agustus 2010', address: 'Komplek Taman Cibeunying Blok C-4, Kota Bandung' },
@@ -127,6 +144,12 @@ export function createSeedDatabase(
     { id: 'std-407', absenNo: '07', nis: '23241007', name: 'Gita Purnama Sari', gender: 'P', className: 'XII IPA 1', email: 'gita.purnama@siswa.sman1nusantara.sch.id', ttl: 'Bandung, 01 September 2008', address: 'Jl. Banda No. 28, Bandung Wetan, Kota Bandung' },
   ];
 
+  const students: Student[] = rawStudents.map((s) => ({
+    ...s,
+    status: 'aktif',
+    enrollmentYear: settings.academicYear,
+  }));
+
   // Build deterministic realistic attendance for a class
   const buildAttendance = (
     className: string,
@@ -143,7 +166,7 @@ export function createSeedDatabase(
 
   const nowIso = new Date().toISOString();
 
-  const journals: JournalEntry[] = [
+  const rawJournals: JournalEntry[] = [
     {
       id: 'jrn-01',
       date: '2026-11-02',
@@ -238,6 +261,8 @@ export function createSeedDatabase(
       attendance: buildAttendance('X IPA 2', {
         'std-206': { status: 'S', note: 'Flu ringan' },
       }),
+      teacherId: 'usr-guru-2',
+      teacherName: 'Hendra Wijaya, S.Kom.',
       createdAt: nowIso,
       updatedAt: nowIso,
     },
@@ -310,6 +335,14 @@ export function createSeedDatabase(
     },
   ];
 
+  const journals: JournalEntry[] = rawJournals.map((j) => ({
+    ...j,
+    teacherId: j.teacherId || 'usr-guru-1',
+    teacherName: j.teacherName || settings.teacherProfile.name,
+    academicYear: settings.academicYear,
+    semester: settings.semester,
+  }));
+
   // Build comprehensive grade matrix records for all 4 classes
   const grades: GradeRecord[] = [];
   const examScoresSeed: Record<string, number[]> = {
@@ -359,7 +392,7 @@ export function createSeedDatabase(
         }
 
         grades.push({
-          id: `grd-${student.id}-${examType.replace(/\s+/g, '')}`,
+          id: `grd-${settings.academicYear}-${settings.semester}-${student.id}-${subject.replace(/\s+/g, '')}-${examType.replace(/\s+/g, '')}`,
           studentId: student.id,
           className,
           subject,
@@ -367,6 +400,10 @@ export function createSeedDatabase(
           score: rawScore,
           note,
           marker,
+          teacherId: 'usr-guru-1',
+          teacherName: settings.teacherProfile.name,
+          academicYear: settings.academicYear,
+          semester: settings.semester,
           updatedAt: nowIso,
         });
       });
@@ -425,6 +462,18 @@ export function createSeedDatabase(
       gender: 'L',
       assignedClasses: ['X IPA 1'],
       assignedSubjects: [],
+      active: true,
+      createdAt: nowIso,
+    },
+    {
+      id: 'usr-kepsek-1',
+      name: settings.principalName,
+      nip: settings.principalNip,
+      email: 'kepsek@sman1nusantara.sch.id',
+      password: 'kepsek123',
+      role: 'kepala_sekolah',
+      school: settings.teacherProfile.school,
+      gender: 'L',
       active: true,
       createdAt: nowIso,
     },

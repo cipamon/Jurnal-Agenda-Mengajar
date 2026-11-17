@@ -6,15 +6,19 @@ import {
   KopSuratConfig,
   KopSuratLineSizes,
   KopSuratLineStyles,
+  MenuId,
   PortalDatabase,
   PrintFontFamily,
   RowMarkerColor,
+  SignatureStampConfig,
   Student,
+  StudentStatus,
   SystemSettings,
   UserRole,
   WebBrandConfig,
 } from '../types';
 import { DEFAULT_WEB_LOGO } from './defaultAvatars';
+import { DEFAULT_SCHOOL_STAMP } from './defaultLogos';
 
 export const PRINT_FONT_OPTIONS: PrintFontFamily[] = [
   'Times New Roman',
@@ -31,6 +35,88 @@ export const USER_ROLE_LABELS: Record<UserRole, string> = {
   wali_kelas: 'Wali Kelas',
   kepala_sekolah: 'Kepala Sekolah',
   karyawan: 'Karyawan / Staff',
+};
+
+export const STUDENT_STATUS_LABELS: Record<StudentStatus, string> = {
+  aktif: 'Aktif',
+  lulus: 'Lulus / Alumni',
+  pindah: 'Pindah Sekolah',
+  keluar: 'Keluar / Nonaktif',
+};
+
+export interface RolePermissionConfig {
+  label: string;
+  description: string;
+  allowedMenus: MenuId[];
+  canAccessSettings: boolean;
+  canManageStudents: boolean;
+  canPromoteStudents: boolean;
+  canManageJournals: boolean;
+  canManageGrades: boolean;
+  canConfigureReports: boolean;
+}
+
+export const ROLE_PERMISSIONS: Record<UserRole, RolePermissionConfig> = {
+  admin: {
+    label: 'Admin Sistem',
+    description:
+      'Akses penuh ke seluruh modul, Master Data, Identitas Web, Manajemen Akun Multi-Role, Stempel & Pengaturan Sistem.',
+    allowedMenus: ['dashboard', 'jurnal', 'nilai', 'siswa', 'laporan', 'pengaturan'],
+    canAccessSettings: true,
+    canManageStudents: true,
+    canPromoteStudents: true,
+    canManageJournals: true,
+    canManageGrades: true,
+    canConfigureReports: true,
+  },
+  guru: {
+    label: 'Guru Mapel',
+    description:
+      'Kelola Jurnal Mengajar, Presensi, Input & Leger Nilai, serta cetak laporan pada kelas dan mata pelajaran ampuannya.',
+    allowedMenus: ['dashboard', 'jurnal', 'nilai', 'siswa', 'laporan'],
+    canAccessSettings: false,
+    canManageStudents: true,
+    canPromoteStudents: false,
+    canManageJournals: true,
+    canManageGrades: true,
+    canConfigureReports: true,
+  },
+  wali_kelas: {
+    label: 'Wali Kelas',
+    description:
+      'Kelola peserta didik dan kenaikan kelas pada rombongan belajar binaan, serta pantau kehadiran dan nilai kelas.',
+    allowedMenus: ['dashboard', 'siswa', 'jurnal', 'nilai', 'laporan'],
+    canAccessSettings: false,
+    canManageStudents: true,
+    canPromoteStudents: true,
+    canManageJournals: true,
+    canManageGrades: true,
+    canConfigureReports: true,
+  },
+  kepala_sekolah: {
+    label: 'Kepala Sekolah',
+    description:
+      'Mode Pemantauan Eksekutif: memantau grafik, jurnal guru, rekap nilai seluruh kelas, dan mencetak laporan resmi.',
+    allowedMenus: ['dashboard', 'laporan', 'jurnal', 'nilai', 'siswa'],
+    canAccessSettings: false,
+    canManageStudents: false,
+    canPromoteStudents: false,
+    canManageJournals: false,
+    canManageGrades: false,
+    canConfigureReports: true,
+  },
+  karyawan: {
+    label: 'Karyawan / Staff',
+    description:
+      'Staf Tata Usaha: fokus pengelolaan Data Siswa, Impor/Ekspor Excel, Mutasi/Kenaikan Kelas, serta cetak laporan resmi.',
+    allowedMenus: ['dashboard', 'siswa', 'laporan'],
+    canAccessSettings: false,
+    canManageStudents: true,
+    canPromoteStudents: true,
+    canManageJournals: false,
+    canManageGrades: false,
+    canConfigureReports: true,
+  },
 };
 
 export const DEFAULT_KOP_LINE_SIZES: KopSuratLineSizes = {
@@ -83,6 +169,20 @@ export function normalizeWebBrand(settings: SystemSettings): WebBrandConfig {
       settings.webBrand?.tabTitle ||
       'Portal E-Guru v10.2 — Sistem Jurnal Mengajar, Presensi & Penilaian Guru Terpadu',
     webLogoDataUrl: settings.webBrand?.webLogoDataUrl || DEFAULT_WEB_LOGO,
+  };
+}
+
+export function normalizeSignatureStamp(
+  settings: SystemSettings
+): Required<SignatureStampConfig> {
+  const cfg = settings.signatureStamp;
+  return {
+    principalSignatureDataUrl: cfg?.principalSignatureDataUrl ?? '',
+    teacherSignatureDataUrl: cfg?.teacherSignatureDataUrl ?? '',
+    stampDataUrl: cfg === undefined ? DEFAULT_SCHOOL_STAMP : cfg.stampDataUrl ?? '',
+    signatureSize: cfg?.signatureSize ?? 54,
+    stampSize: cfg?.stampSize ?? 74,
+    showStampDefault: cfg?.showStampDefault ?? true,
   };
 }
 
@@ -227,6 +327,47 @@ export const ROW_MARKER_META: Record<
   },
 };
 
+export function computeWeightedAverage(
+  scoreByExam: Record<string, number | null | undefined>,
+  examTypes: string[],
+  examWeights?: Record<string, number>,
+  useWeightedAverage?: boolean
+): { avg: number | null; isWeighted: boolean } {
+  const scoredExams = examTypes.filter((ex) => {
+    const val = scoreByExam[ex];
+    return val !== null && val !== undefined && !Number.isNaN(val);
+  });
+
+  if (scoredExams.length === 0) {
+    return { avg: null, isWeighted: Boolean(useWeightedAverage) };
+  }
+
+  if (useWeightedAverage && examWeights) {
+    let weightedSum = 0;
+    let totalWeight = 0;
+    scoredExams.forEach((ex) => {
+      const w = Number(examWeights[ex] ?? 0);
+      const val = Number(scoreByExam[ex]);
+      if (w > 0) {
+        weightedSum += val * w;
+        totalWeight += w;
+      }
+    });
+    if (totalWeight > 0) {
+      return {
+        avg: Math.round((weightedSum / totalWeight) * 10) / 10,
+        isWeighted: true,
+      };
+    }
+  }
+
+  const sum = scoredExams.reduce((acc, ex) => acc + Number(scoreByExam[ex]), 0);
+  return {
+    avg: Math.round((sum / scoredExams.length) * 10) / 10,
+    isWeighted: false,
+  };
+}
+
 export interface ScopedPortalData {
   isScoped: boolean;
   hasClassRestriction: boolean;
@@ -234,7 +375,8 @@ export interface ScopedPortalData {
   allowedClasses: string[];
   allowedSubjects: string[];
   scopedSettings: SystemSettings;
-  scopedStudents: Student[];
+  scopedStudents: Student[]; // all students in allowed classes (including alumni/moved for StudentsView)
+  scopedActiveStudents: Student[]; // only active students in allowed classes (for journals, grades, dashboard, reports)
   scopedJournals: JournalEntry[];
   scopedGrades: GradeRecord[];
   scopeSummaryText: string | null;
@@ -255,10 +397,22 @@ export function formatAssignmentSummary(
   return `${clsPart} · ${subjPart}`;
 }
 
+export function matchesActivePeriod(
+  record: { academicYear?: string; semester?: 'Ganjil' | 'Genap' },
+  settings: SystemSettings,
+  periodScope: 'active' | 'all' = 'active'
+): boolean {
+  if (periodScope === 'all') return true;
+  const yrMatch = !record.academicYear || record.academicYear === settings.academicYear;
+  const semMatch = !record.semester || record.semester === settings.semester;
+  return yrMatch && semMatch;
+}
+
 export function getScopedPortalData(
   db: PortalDatabase,
   activeUser?: AppUser,
-  role?: UserRole
+  role?: UserRole,
+  periodScope: 'active' | 'all' = 'active'
 ): ScopedPortalData {
   const effectiveRole: UserRole = activeUser?.role || role || 'guru';
   const canBeScoped = effectiveRole === 'guru' || effectiveRole === 'wali_kelas';
@@ -294,21 +448,21 @@ export function getScopedPortalData(
     ? db.students.filter((s) => classSet.has(s.className))
     : db.students;
 
-  const scopedJournals = isScoped
-    ? db.journals.filter(
-        (j) =>
-          (!hasClassRestriction || classSet.has(j.className)) &&
-          (!hasSubjectRestriction || subjectSet.has(j.subject))
-      )
-    : db.journals;
+  const scopedActiveStudents = scopedStudents.filter((s) => !s.status || s.status === 'aktif');
 
-  const scopedGrades = isScoped
-    ? db.grades.filter(
-        (g) =>
-          (!hasClassRestriction || classSet.has(g.className)) &&
-          (!hasSubjectRestriction || subjectSet.has(g.subject))
-      )
-    : db.grades;
+  const scopedJournals = db.journals.filter(
+    (j) =>
+      (!hasClassRestriction || classSet.has(j.className)) &&
+      (!hasSubjectRestriction || subjectSet.has(j.subject)) &&
+      matchesActivePeriod(j, db.settings, periodScope)
+  );
+
+  const scopedGrades = db.grades.filter(
+    (g) =>
+      (!hasClassRestriction || classSet.has(g.className)) &&
+      (!hasSubjectRestriction || subjectSet.has(g.subject)) &&
+      matchesActivePeriod(g, db.settings, periodScope)
+  );
 
   const scopedSettings: SystemSettings = {
     ...db.settings,
@@ -331,6 +485,7 @@ export function getScopedPortalData(
     allowedSubjects,
     scopedSettings,
     scopedStudents,
+    scopedActiveStudents,
     scopedJournals,
     scopedGrades,
     scopeSummaryText,

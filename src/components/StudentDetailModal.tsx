@@ -12,7 +12,14 @@ import {
   User,
   X,
 } from 'lucide-react';
-import { GradeRecord, JournalEntry, KopSuratTextStyle, Student, SystemSettings } from '../types';
+import {
+  GradeRecord,
+  JournalEntry,
+  KopSuratTextStyle,
+  PrintFontFamily,
+  Student,
+  SystemSettings,
+} from '../types';
 import { getStudentPhotoUrl } from '../utils/defaultAvatars';
 import { exportStudentIndividualPdf } from '../utils/exportReports';
 import {
@@ -21,7 +28,10 @@ import {
   getPrintFontCss,
   getTodayIso,
   normalizeKopSurat,
+  normalizeSignatureStamp,
+  PRINT_FONT_OPTIONS,
   ROW_MARKER_META,
+  STUDENT_STATUS_LABELS,
 } from '../utils/helpers';
 
 interface StudentDetailModalProps {
@@ -29,6 +39,7 @@ interface StudentDetailModalProps {
   journals: JournalEntry[];
   grades: GradeRecord[];
   settings: SystemSettings;
+  canEditStudent?: boolean;
   onEditStudent?: (student: Student) => void;
   onViewClass?: (className: string) => void;
   onViewSubject?: (subject: string) => void;
@@ -50,24 +61,36 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   journals,
   grades,
   settings,
+  canEditStudent = true,
   onEditStudent,
   onViewClass,
   onViewSubject,
   onNotify,
   onClose,
 }) => {
+  const sigStamp = useMemo(() => normalizeSignatureStamp(settings), [settings]);
   const [activeTab, setActiveTab] = useState<'aktivitas' | 'nilai'>('aktivitas');
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [showPrincipalSig, setShowPrincipalSig] = useState(false);
+  const [showTeacherSig, setShowTeacherSig] = useState(true);
+  const [showStamp, setShowStamp] = useState<boolean>(sigStamp.showStampDefault);
+  const [printFont, setPrintFont] = useState<PrintFontFamily>(
+    settings.reportFontFamily || normalizeKopSurat(settings.kopSurat).fontFamily || 'Times New Roman'
+  );
 
   useEffect(() => {
     if (!student) return;
     setActiveTab('aktivitas');
+    setShowStamp(sigStamp.showStampDefault);
+    setPrintFont(
+      settings.reportFontFamily || normalizeKopSurat(settings.kopSurat).fontFamily || 'Times New Roman'
+    );
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [student, onClose]);
+  }, [student, onClose, sigStamp.showStampDefault, settings.reportFontFamily, settings.kopSurat]);
 
   const studentJournals = useMemo(() => {
     if (!student) return [];
@@ -123,8 +146,13 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   const handleDownloadPdf = async () => {
     setExportingPdf(true);
     try {
-      await exportStudentIndividualPdf(student, journals, grades, settings);
-      onNotify?.(`PDF individu untuk ${student.name} berhasil diunduh.`);
+      await exportStudentIndividualPdf(student, journals, grades, settings, {
+        showPrincipalSig,
+        showTeacherSig,
+        showStamp,
+        fontFamily: printFont,
+      });
+      onNotify?.(`PDF individu untuk ${student.name} (${printFont}) berhasil diunduh.`);
     } catch {
       onNotify?.('Gagal membuat PDF profil siswa.');
     } finally {
@@ -188,14 +216,16 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                 <p className="text-xs text-indigo-300 mt-0.5 flex items-center gap-1.5">
                   <User className="w-3.5 h-3.5 shrink-0" />
                   <span>
-                    Peserta Didik · {student.gender === 'L' ? 'Laki-laki' : 'Perempuan'}
-                    {!student.photoDataUrl && ' (Foto Default)'}
+                    Peserta Didik ({STUDENT_STATUS_LABELS[student.status || 'aktif']}) ·{' '}
+                    {student.gender === 'L' ? 'Laki-laki' : 'Perempuan'}
+                    {student.enrollmentYear ? ` · Masuk ${student.enrollmentYear}` : ''}
+                    {!student.photoDataUrl && ' · Foto Default'}
                   </span>
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              {onEditStudent && (
+              {canEditStudent && onEditStudent && (
                 <button
                   type="button"
                   onClick={() => onEditStudent(student)}
@@ -350,6 +380,20 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                               ) : (
                                 <span className="font-semibold text-indigo-700">{j.subject}</span>
                               )}
+                              {j.teacherName && (
+                                <>
+                                  <span aria-hidden="true">·</span>
+                                  <span>{j.teacherName}</span>
+                                </>
+                              )}
+                              {(j.academicYear || j.semester) && (
+                                <>
+                                  <span aria-hidden="true">·</span>
+                                  <span>
+                                    {j.academicYear || settings.academicYear} ({j.semester || settings.semester})
+                                  </span>
+                                </>
+                              )}
                             </div>
                             <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5 pt-0.5">
                               <BookOpen className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -428,11 +472,52 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
             )}
           </div>
 
-          {/* Footer */}
-          <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs text-slate-500 hidden sm:block">
-              Tekan <span className="font-mono font-semibold">Esc</span> untuk menutup
-            </p>
+          {/* Footer with Print Font & TTD/Stempel toggles */}
+          <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-700">
+              <div className="flex items-center gap-1.5">
+                <span className="font-semibold text-slate-500">Font:</span>
+                <select
+                  value={printFont}
+                  onChange={(e) => setPrintFont(e.target.value as PrintFontFamily)}
+                  className="px-2 py-1 text-xs rounded-md border border-slate-300 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                >
+                  {PRINT_FONT_OPTIONS.map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <label className="inline-flex items-center gap-1.5 font-medium cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showTeacherSig}
+                  onChange={(e) => setShowTeacherSig(e.target.checked)}
+                  className="rounded border-slate-300 text-indigo-600"
+                />
+                <span>TTD Guru</span>
+              </label>
+              <label className="inline-flex items-center gap-1.5 font-medium cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showPrincipalSig}
+                  onChange={(e) => setShowPrincipalSig(e.target.checked)}
+                  className="rounded border-slate-300 text-indigo-600"
+                />
+                <span>TTD Kepsek</span>
+              </label>
+              <label className="inline-flex items-center gap-1.5 font-medium cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showStamp}
+                  onChange={(e) => setShowStamp(e.target.checked)}
+                  className="rounded border-slate-300 text-indigo-600"
+                />
+                <span>Stempel</span>
+              </label>
+            </div>
+
             <div className="flex flex-wrap items-center gap-2 ml-auto">
               <button
                 type="button"
@@ -468,7 +553,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
       {/* ===================================================================== */}
       <section
         id="student-individual-print-sheet"
-        style={{ fontFamily: getPrintFontCss(normKop.fontFamily) }}
+        style={{ fontFamily: getPrintFontCss(printFont) }}
         className="hidden print:block print-only-container bg-white text-slate-950 p-2"
       >
         <style>{`@media print { @page { size: A4 portrait; margin: 12mm; } }`}</style>
@@ -695,18 +780,72 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
         </table>
 
         {/* Tanda Tangan */}
-        <div className="grid grid-cols-2 gap-8 text-xs pt-2">
-          <div />
-          <div className="pl-12">
-            <p>
-              {settings.signatureCity}, {formatTanggalID(getTodayIso())}
-            </p>
-            <p>Guru Mata Pelajaran,</p>
-            <div className="h-16" />
-            <p className="font-bold underline">{settings.teacherProfile.name}</p>
-            <p>NIP. {settings.teacherProfile.nip}</p>
+        {(showPrincipalSig || showTeacherSig) && (
+          <div className="grid grid-cols-2 gap-8 text-xs pt-2">
+            <div className="pl-4">
+              {showPrincipalSig && (
+                <div>
+                  <p>Mengetahui,</p>
+                  <p>{settings.principalTitle}</p>
+                  <div className="relative min-h-[68px] flex items-center py-1">
+                    {showStamp && sigStamp.stampDataUrl && (
+                      <img
+                        src={sigStamp.stampDataUrl}
+                        alt="Stempel Sekolah"
+                        style={{ width: sigStamp.stampSize, height: sigStamp.stampSize }}
+                        className="object-contain opacity-85 mix-blend-multiply -ml-3"
+                      />
+                    )}
+                    {sigStamp.principalSignatureDataUrl && (
+                      <img
+                        src={sigStamp.principalSignatureDataUrl}
+                        alt="TTD Kepala Sekolah"
+                        style={{ height: sigStamp.signatureSize }}
+                        className={`object-contain ${
+                          showStamp && sigStamp.stampDataUrl ? '-ml-9' : ''
+                        }`}
+                      />
+                    )}
+                  </div>
+                  <p className="font-bold underline">{settings.principalName}</p>
+                  <p>NIP. {settings.principalNip}</p>
+                </div>
+              )}
+            </div>
+            <div className="pl-12">
+              {showTeacherSig && (
+                <div>
+                  <p>
+                    {settings.signatureCity}, {formatTanggalID(getTodayIso())}
+                  </p>
+                  <p>Guru Mata Pelajaran,</p>
+                  <div className="relative min-h-[68px] flex items-center py-1">
+                    {!showPrincipalSig && showStamp && sigStamp.stampDataUrl && (
+                      <img
+                        src={sigStamp.stampDataUrl}
+                        alt="Stempel Sekolah"
+                        style={{ width: sigStamp.stampSize, height: sigStamp.stampSize }}
+                        className="object-contain opacity-85 mix-blend-multiply -ml-4"
+                      />
+                    )}
+                    {sigStamp.teacherSignatureDataUrl && (
+                      <img
+                        src={sigStamp.teacherSignatureDataUrl}
+                        alt="TTD Guru Mapel"
+                        style={{ height: sigStamp.signatureSize }}
+                        className={`object-contain ${
+                          !showPrincipalSig && showStamp && sigStamp.stampDataUrl ? '-ml-9' : ''
+                        }`}
+                      />
+                    )}
+                  </div>
+                  <p className="font-bold underline">{settings.teacherProfile.name}</p>
+                  <p>NIP. {settings.teacherProfile.nip}</p>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </section>
     </>
   );

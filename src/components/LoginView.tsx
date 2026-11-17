@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronRight, Database, Eye, EyeOff, Lock, Mail, ShieldCheck, Sparkles } from 'lucide-react';
-import { WebBrandConfig } from '../types';
+import { UserRole, WebBrandConfig } from '../types';
 
 interface LoginViewProps {
   defaultEmail: string;
@@ -17,6 +17,7 @@ interface LoginViewProps {
     semester: 'Ganjil' | 'Genap';
     useDemoSeed: boolean;
     demoAsAdmin?: boolean;
+    demoRole?: UserRole;
   }) => string | null;
 }
 
@@ -54,16 +55,25 @@ export const LoginView: React.FC<LoginViewProps> = ({
     if (err) setError(err);
   };
 
-  const handleDemoLogin = (asAdmin = false) => {
+  const handleDemoLogin = (role: UserRole = 'guru') => {
     setError(null);
+    const demoEmails: Record<UserRole, { email: string; password: string }> = {
+      guru: { email: defaultEmail, password: 'guru123' },
+      wali_kelas: { email: 'walikelas@sman1nusantara.sch.id', password: 'wali123' },
+      kepala_sekolah: { email: 'kepsek@sman1nusantara.sch.id', password: 'kepsek123' },
+      karyawan: { email: 'tu@sman1nusantara.sch.id', password: 'staff123' },
+      admin: { email: 'admin@sman1nusantara.sch.id', password: 'admin123' },
+    };
+    const creds = demoEmails[role];
     onLogin({
-      email: asAdmin ? 'admin@sman1nusantara.sch.id' : defaultEmail,
-      password: asAdmin ? 'admin123' : 'guru123',
+      email: creds.email,
+      password: creds.password,
       sheetsWebAppUrl: sheetsUrl.trim(),
       academicYear,
       semester,
       useDemoSeed: true,
-      demoAsAdmin: asAdmin,
+      demoAsAdmin: role === 'admin',
+      demoRole: role,
     });
   };
 
@@ -112,16 +122,25 @@ export const LoginView: React.FC<LoginViewProps> = ({
         </div>
 
         <div className="mt-10 space-y-1 text-xs text-slate-400">
+          <p className="text-slate-300 font-semibold mb-1.5">Akun Demo per Role (Hak Akses &amp; Menu Berbeda):</p>
           <p>
-            Demo Guru 1: <span className="font-mono text-slate-200">{defaultEmail}</span> /{' '}
+            Guru Mapel: <span className="font-mono text-slate-200">{defaultEmail}</span> /{' '}
             <span className="font-mono text-slate-200">guru123</span>
           </p>
           <p>
-            Demo Guru 2: <span className="font-mono text-slate-200">guru2@sman1nusantara.sch.id</span> /{' '}
-            <span className="font-mono text-slate-200">guru123</span>
+            Wali Kelas: <span className="font-mono text-slate-200">walikelas@sman1nusantara.sch.id</span> /{' '}
+            <span className="font-mono text-slate-200">wali123</span>
           </p>
           <p>
-            Demo Admin: <span className="font-mono text-slate-200">admin@sman1nusantara.sch.id</span> /{' '}
+            Kepala Sekolah: <span className="font-mono text-slate-200">kepsek@sman1nusantara.sch.id</span> /{' '}
+            <span className="font-mono text-slate-200">kepsek123</span>
+          </p>
+          <p>
+            Staff / TU: <span className="font-mono text-slate-200">tu@sman1nusantara.sch.id</span> /{' '}
+            <span className="font-mono text-slate-200">staff123</span>
+          </p>
+          <p>
+            Admin Sistem: <span className="font-mono text-slate-200">admin@sman1nusantara.sch.id</span> /{' '}
             <span className="font-mono text-slate-200">admin123</span>
           </p>
         </div>
@@ -236,7 +255,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <button
                   type="button"
-                  onClick={() => handleDemoLogin(false)}
+                  onClick={() => handleDemoLogin('guru')}
                   className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap"
                 >
                   <Sparkles className="w-4 h-4 text-indigo-300 shrink-0" />
@@ -244,11 +263,35 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleDemoLogin(true)}
+                  onClick={() => handleDemoLogin('admin')}
                   className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-900 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap"
                 >
                   <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
                   <span>Demo Otomatis (Admin)</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => handleDemoLogin('wali_kelas')}
+                  className="py-1.5 px-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-semibold cursor-pointer whitespace-nowrap"
+                >
+                  Demo Wali Kelas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDemoLogin('kepala_sekolah')}
+                  className="py-1.5 px-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-semibold cursor-pointer whitespace-nowrap"
+                >
+                  Demo Kepsek
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDemoLogin('karyawan')}
+                  className="py-1.5 px-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-semibold cursor-pointer whitespace-nowrap"
+                >
+                  Demo Staff TU
                 </button>
               </div>
             </div>

@@ -32,6 +32,8 @@ import {
   getPrintFontCss,
   getTodayIso,
   normalizeKopSurat,
+  normalizeSignatureStamp,
+  PRINT_FONT_OPTIONS,
 } from '../utils/helpers';
 
 interface PrintReportsViewProps {
@@ -39,25 +41,19 @@ interface PrintReportsViewProps {
   journals: JournalEntry[];
   grades: GradeRecord[];
   settings: SystemSettings;
+  onUpdateSettings?: (next: SystemSettings) => void;
   onNotify: (msg: string) => void;
 }
-
-const PRINT_FONTS: PrintFontFamily[] = [
-  'Times New Roman',
-  'Tahoma',
-  'Arial',
-  'Verdana',
-  'Calibri',
-  'Georgia',
-];
 
 export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
   students,
   journals,
   grades,
   settings,
+  onUpdateSettings,
   onNotify,
 }) => {
+  const sigStamp = useMemo(() => normalizeSignatureStamp(settings), [settings]);
   const [reportType, setReportType] = useState<ReportType>('semua');
   const [selectedClasses, setSelectedClasses] = useState<string[]>([...settings.classes]);
   const [classDropdownOpen, setClassDropdownOpen] = useState(false);
@@ -71,9 +67,18 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
   const [showKopSurat, setShowKopSurat] = useState(true);
   const [showPrincipalSig, setShowPrincipalSig] = useState(true);
   const [showTeacherSig, setShowTeacherSig] = useState(true);
+  const [showStamp, setShowStamp] = useState<boolean>(sigStamp.showStampDefault);
   const [orientation, setOrientation] = useState<PaperOrientation>('landscape');
-  const [fontFamily, setFontFamily] = useState<PrintFontFamily>('Times New Roman');
+  const [fontFamily, setFontFamily] = useState<PrintFontFamily>(
+    settings.reportFontFamily || 'Times New Roman'
+  );
   const [exportingPdf, setExportingPdf] = useState(false);
+
+  useEffect(() => {
+    if (settings.reportFontFamily) {
+      setFontFamily(settings.reportFontFamily);
+    }
+  }, [settings.reportFontFamily]);
 
   // Close multi-select dropdown when clicking outside
   useEffect(() => {
@@ -137,6 +142,7 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
       showKopSurat,
       showPrincipalSig,
       showTeacherSig,
+      showStamp,
       orientation,
       fontFamily,
     }),
@@ -149,6 +155,7 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
       showKopSurat,
       showPrincipalSig,
       showTeacherSig,
+      showStamp,
       orientation,
       fontFamily,
     ]
@@ -297,7 +304,26 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
             <div>
               <p>Mengetahui,</p>
               <p>{settings.principalTitle}</p>
-              <div className="h-16" />
+              <div className="relative min-h-[68px] flex items-center py-1">
+                {showStamp && sigStamp.stampDataUrl && (
+                  <img
+                    src={sigStamp.stampDataUrl}
+                    alt="Stempel Sekolah"
+                    style={{ width: sigStamp.stampSize, height: sigStamp.stampSize }}
+                    className="object-contain opacity-85 mix-blend-multiply -ml-3 pointer-events-none select-none"
+                  />
+                )}
+                {sigStamp.principalSignatureDataUrl && (
+                  <img
+                    src={sigStamp.principalSignatureDataUrl}
+                    alt="TTD Kepala Sekolah"
+                    style={{ height: sigStamp.signatureSize }}
+                    className={`object-contain ${
+                      showStamp && sigStamp.stampDataUrl ? '-ml-9' : ''
+                    }`}
+                  />
+                )}
+              </div>
               <p className="font-bold underline">{settings.principalName}</p>
               <p>NIP. {settings.principalNip}</p>
             </div>
@@ -310,7 +336,26 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
                 {settings.signatureCity}, {formatTanggalID(getTodayIso())}
               </p>
               <p>Guru Mata Pelajaran,</p>
-              <div className="h-16" />
+              <div className="relative min-h-[68px] flex items-center py-1">
+                {!showPrincipalSig && showStamp && sigStamp.stampDataUrl && (
+                  <img
+                    src={sigStamp.stampDataUrl}
+                    alt="Stempel Sekolah"
+                    style={{ width: sigStamp.stampSize, height: sigStamp.stampSize }}
+                    className="object-contain opacity-85 mix-blend-multiply -ml-4 pointer-events-none select-none"
+                  />
+                )}
+                {sigStamp.teacherSignatureDataUrl && (
+                  <img
+                    src={sigStamp.teacherSignatureDataUrl}
+                    alt="TTD Guru Mapel"
+                    style={{ height: sigStamp.signatureSize }}
+                    className={`object-contain ${
+                      !showPrincipalSig && showStamp && sigStamp.stampDataUrl ? '-ml-9' : ''
+                    }`}
+                  />
+                )}
+              </div>
               <p className="font-bold underline">{settings.teacherProfile.name}</p>
               <p>NIP. {settings.teacherProfile.nip}</p>
             </div>
@@ -417,14 +462,20 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
             {/* Jenis Huruf Cetak */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Jenis Huruf Cetak (Font)
+                Jenis Huruf Cetak &amp; PDF (Font)
               </label>
               <select
                 value={fontFamily}
-                onChange={(e) => setFontFamily(e.target.value as PrintFontFamily)}
+                onChange={(e) => {
+                  const nextFont = e.target.value as PrintFontFamily;
+                  setFontFamily(nextFont);
+                  if (onUpdateSettings) {
+                    onUpdateSettings({ ...settings, reportFontFamily: nextFont });
+                  }
+                }}
                 className="w-full px-3 py-2 text-xs rounded-lg border border-indigo-300 bg-indigo-50/40 font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600"
               >
-                {PRINT_FONTS.map((f) => (
+                {PRINT_FONT_OPTIONS.map((f) => (
                   <option key={f} value={f}>
                     {f}
                   </option>
@@ -512,6 +563,16 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
                   className="rounded border-slate-300 text-indigo-600"
                 />
                 <span>TTD Guru Mapel</span>
+              </label>
+
+              <label className="inline-flex items-center gap-2 font-semibold text-slate-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showStamp}
+                  onChange={(e) => setShowStamp(e.target.checked)}
+                  className="rounded border-slate-300 text-indigo-600"
+                />
+                <span>Stempel Sekolah</span>
               </label>
 
               <div className="inline-flex items-center rounded-lg border border-slate-300 bg-slate-100 p-0.5">
@@ -801,13 +862,21 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
                         Nama Siswa
                       </th>
                       <th className="border border-slate-900 px-1.5 py-1.5 text-center w-10">L/P</th>
-                      {m.examTypes.map((ex) => (
-                        <th key={ex} className="border border-slate-900 px-2 py-1.5 text-center">
-                          {ex}
-                        </th>
-                      ))}
+                      {m.examTypes.map((ex) => {
+                        const w = settings.examWeights?.[ex];
+                        return (
+                          <th key={ex} className="border border-slate-900 px-2 py-1.5 text-center">
+                            <div>{ex}</div>
+                            {settings.useWeightedAverage && w !== undefined && (
+                              <div className="text-[9px] font-normal text-slate-600 tabular-nums">
+                                ({w}%)
+                              </div>
+                            )}
+                          </th>
+                        );
+                      })}
                       <th className="border border-slate-900 px-2 py-1.5 text-center bg-slate-200">
-                        Rata-Rata
+                        {settings.useWeightedAverage ? 'Nilai Akhir' : 'Rata-Rata'}
                       </th>
                       <th className="border border-slate-900 px-2 py-1.5 text-center bg-slate-200">
                         Keterangan

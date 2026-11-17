@@ -32,6 +32,9 @@ interface JournalAttendanceViewProps {
   students: Student[];
   journals: JournalEntry[];
   settings: SystemSettings;
+  currentUserId?: string;
+  currentUserName?: string;
+  readOnly?: boolean;
   draftJournal: { mode: 'create' | 'edit' | 'duplicate'; entry: JournalEntry } | null;
   onClearDraft: () => void;
   onSaveJournal: (entry: JournalEntry, isEdit: boolean) => void;
@@ -50,6 +53,9 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
   students,
   journals,
   settings,
+  currentUserId,
+  currentUserName,
+  readOnly = false,
   draftJournal,
   onClearDraft,
   onSaveJournal,
@@ -159,23 +165,48 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
       return;
     }
 
+    const normalizedPeriod = period.trim() || '1 - 2';
+    const existing = editingId ? journals.find((j) => j.id === editingId) : null;
+    const targetYear = existing?.academicYear || settings.academicYear;
+    const targetSemester = existing?.semester || settings.semester;
+
+    const conflicting = journals.find(
+      (j) =>
+        j.id !== editingId &&
+        j.date === date &&
+        j.period.trim().toLowerCase() === normalizedPeriod.toLowerCase() &&
+        j.className === className &&
+        j.subject === subject &&
+        (j.academicYear || settings.academicYear) === targetYear &&
+        (j.semester || settings.semester) === targetSemester
+    );
+    if (conflicting) {
+      setFormError(
+        `Jurnal untuk ${className} (${subject}) pada tanggal ${formatTanggalID(date)} Jam ${normalizedPeriod} sudah tercatat ("${conflicting.topic}"). Edit jurnal yang ada atau ubah jam pelajaran.`
+      );
+      return;
+    }
+
     const finalAttendance: Record<string, StudentAttendanceItem> = {};
     classStudents.forEach((st) => {
       finalAttendance[st.id] = attendanceMap[st.id] ?? { status: 'H', note: '' };
     });
 
     const nowIso = new Date().toISOString();
-    const existing = editingId ? journals.find((j) => j.id === editingId) : null;
 
     const entry: JournalEntry = {
       id: editingId || generateId('jrn'),
       date,
-      period: period.trim() || '1 - 2',
+      period: normalizedPeriod,
       className,
       subject,
       topic: topic.trim(),
       activities: activities.trim() || '-',
       attendance: finalAttendance,
+      teacherId: existing?.teacherId || currentUserId,
+      teacherName: existing?.teacherName || currentUserName || settings.teacherProfile.name,
+      academicYear: targetYear,
+      semester: targetSemester,
       createdAt: existing?.createdAt || nowIso,
       updatedAt: nowIso,
     };
@@ -322,6 +353,10 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
         topic: cleanTopic,
         activities: String(r.activities || '-').trim(),
         attendance: att,
+        teacherId: currentUserId,
+        teacherName: currentUserName || settings.teacherProfile.name,
+        academicYear: settings.academicYear,
+        semester: settings.semester,
         createdAt: nowIso,
         updatedAt: nowIso,
       });
@@ -511,9 +546,19 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
 
   return (
     <div className="space-y-8">
+      {readOnly && (
+        <div className="p-4 rounded-xl border border-indigo-200 bg-indigo-50 text-xs text-indigo-900">
+          <p className="font-bold">Mode Pemantauan / Supervisi (Hanya Baca)</p>
+          <p className="mt-0.5 text-indigo-800">
+            Anda masuk dengan hak akses monitoring. Anda dapat memantau riwayat jurnal, melihat leger kehadiran, mengklik nama siswa/kelas/mapel, serta mengekspor data Excel tanpa mengubah catatan mengajar guru.
+          </p>
+        </div>
+      )}
+
       {/* ===================================================================== */}
       {/* BAGIAN 1: FORM JURNAL & PRESENSI PERTEMUAN */}
       {/* ===================================================================== */}
+      {!readOnly && (
       <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -774,6 +819,7 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
           </div>
         </form>
       </section>
+      )}
 
       {/* ===================================================================== */}
       {/* BAGIAN 2: RIWAYAT JURNAL TERSIMPAN */}
@@ -812,23 +858,27 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
               ))}
             </select>
 
-            <button
-              type="button"
-              onClick={handleDownloadJournalTemplate}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
-            >
-              <Download className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Template</span>
-            </button>
+            {!readOnly && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleDownloadJournalTemplate}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <Download className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Template</span>
+                </button>
 
-            <button
-              type="button"
-              onClick={() => setShowImportPanel((v) => !v)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
-            >
-              <Upload className="w-3.5 h-3.5 text-indigo-300" />
-              <span>{showImportPanel ? 'Tutup Impor' : 'Impor'}</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={() => setShowImportPanel((v) => !v)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <Upload className="w-3.5 h-3.5 text-indigo-300" />
+                  <span>{showImportPanel ? 'Tutup Impor' : 'Impor'}</span>
+                </button>
+              </>
+            )}
 
             <button
               type="button"
@@ -841,7 +891,7 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
               </span>
             </button>
 
-            {selectedIds.length > 0 && (
+            {!readOnly && selectedIds.length > 0 && (
               <button
                 type="button"
                 onClick={handleBulkDelete}
@@ -854,7 +904,7 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
           </div>
         </div>
 
-        {showImportPanel && (
+        {!readOnly && showImportPanel && (
           <div className="p-5 bg-indigo-50/50 border-b border-indigo-200 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
@@ -934,13 +984,13 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
                 <th className="py-2.5 px-3 font-semibold">Mata Pelajaran</th>
                 <th className="py-2.5 px-3 font-semibold">Materi Pokok & Kegiatan</th>
                 <th className="py-2.5 px-3 font-semibold text-center">Rekap</th>
-                <th className="py-2.5 px-4 font-semibold text-right">Aksi</th>
+                {!readOnly && <th className="py-2.5 px-4 font-semibold text-right">Aksi</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 text-sm">
               {filteredJournals.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-10 text-center text-slate-500 text-sm">
+                  <td colSpan={readOnly ? 6 : 7} className="py-10 text-center text-slate-500 text-sm">
                     Tidak ada jurnal yang cocok dengan filter pencarian.
                   </td>
                 </tr>
@@ -996,38 +1046,44 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
                       <td className="py-3 px-3 min-w-[240px]">
                         <div className="text-xs font-semibold text-slate-900">{j.topic}</div>
                         <div className="text-xs text-slate-600 mt-0.5 line-clamp-2">{j.activities}</div>
+                        <div className="text-[11px] text-slate-400 mt-1">
+                          Oleh: {j.teacherName || settings.teacherProfile.name} ·{' '}
+                          {j.academicYear || settings.academicYear} ({j.semester || settings.semester})
+                        </div>
                       </td>
                       <td className="py-3 px-3 whitespace-nowrap text-center text-xs font-mono tabular-nums text-slate-700">
                         H:{cnt.H} S:{cnt.S} I:{cnt.I} A:{cnt.A} D:{cnt.D}
                       </td>
-                      <td className="py-3 px-4 text-right whitespace-nowrap">
-                        <div className="inline-flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => loadEntryToForm(j, 'edit')}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 text-xs font-medium text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 cursor-pointer"
-                          >
-                            <FileEdit className="w-3.5 h-3.5" />
-                            <span>Edit</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => loadEntryToForm(j, 'duplicate')}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-100 cursor-pointer"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                            <span>Duplikat</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onDeleteJournals([j.id])}
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-rose-200 text-xs font-medium text-rose-700 hover:bg-rose-50 cursor-pointer"
-                            aria-label="Hapus jurnal"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
+                      {!readOnly && (
+                        <td className="py-3 px-4 text-right whitespace-nowrap">
+                          <div className="inline-flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => loadEntryToForm(j, 'edit')}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 text-xs font-medium text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 cursor-pointer"
+                            >
+                              <FileEdit className="w-3.5 h-3.5" />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => loadEntryToForm(j, 'duplicate')}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-100 cursor-pointer"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                              <span>Duplikat</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onDeleteJournals([j.id])}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-rose-200 text-xs font-medium text-rose-700 hover:bg-rose-50 cursor-pointer"
+                              aria-label="Hapus jurnal"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })
@@ -1082,21 +1138,23 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
               ))}
             </select>
 
-            <button
-              type="button"
-              onClick={handleSaveLedgerChanges}
-              disabled={pendingEditsCount === 0}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                pendingEditsCount > 0
-                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-              }`}
-            >
-              <Save className="w-3.5 h-3.5" />
-              <span>
-                Simpan Perubahan{pendingEditsCount > 0 ? ` (${pendingEditsCount})` : ''}
-              </span>
-            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={handleSaveLedgerChanges}
+                disabled={pendingEditsCount === 0}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  pendingEditsCount > 0
+                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>
+                  Simpan Perubahan{pendingEditsCount > 0 ? ` (${pendingEditsCount})` : ''}
+                </span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -1176,9 +1234,11 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
                               type="text"
                               value={code}
                               maxLength={2}
+                              readOnly={readOnly}
+                              disabled={readOnly}
                               onChange={(e) => handleLedgerCellChange(j.id, st.id, e.target.value)}
                               aria-label={`Kehadiran ${st.name} tanggal ${j.date}`}
-                              className={`w-10 h-7 text-center font-bold rounded border focus:outline-none focus:ring-2 focus:ring-indigo-600 uppercase ${
+                              className={`w-10 h-7 text-center font-bold rounded border focus:outline-none focus:ring-2 focus:ring-indigo-600 uppercase disabled:cursor-default ${
                                 meta.bgClass
                               } ${meta.textClass} ${
                                 isDirty ? 'border-indigo-600 ring-1 ring-indigo-600' : meta.borderClass

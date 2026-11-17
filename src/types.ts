@@ -40,6 +40,8 @@ export interface AppUser {
   createdAt: string;
 }
 
+export type StudentStatus = 'aktif' | 'lulus' | 'pindah' | 'keluar';
+
 export interface Student {
   id: string;
   nis: string;
@@ -47,6 +49,8 @@ export interface Student {
   name: string;
   gender: 'L' | 'P';
   className: string;
+  status?: StudentStatus;
+  enrollmentYear?: string;
   photoDataUrl?: string;
   email?: string;
   ttl?: string;
@@ -67,6 +71,10 @@ export interface JournalEntry {
   topic: string;
   activities: string;
   attendance: Record<string, StudentAttendanceItem>; // keyed by student.id
+  teacherId?: string;
+  teacherName?: string;
+  academicYear?: string;
+  semester?: 'Ganjil' | 'Genap';
   createdAt: string;
   updatedAt: string;
 }
@@ -80,6 +88,10 @@ export interface GradeRecord {
   score: number | null;
   note: string;
   marker: RowMarkerColor;
+  teacherId?: string;
+  teacherName?: string;
+  academicYear?: string;
+  semester?: 'Ganjil' | 'Genap';
   updatedAt: string;
 }
 
@@ -141,6 +153,15 @@ export interface TeacherProfile {
   assignedSubjects?: string[];
 }
 
+export interface SignatureStampConfig {
+  principalSignatureDataUrl?: string;
+  teacherSignatureDataUrl?: string;
+  stampDataUrl?: string;
+  signatureSize?: number; // px height (36 - 96)
+  stampSize?: number; // px square (48 - 110)
+  showStampDefault?: boolean;
+}
+
 export interface SystemSettings {
   academicYear: string;
   semester: 'Ganjil' | 'Genap';
@@ -150,12 +171,16 @@ export interface SystemSettings {
   principalName: string;
   principalNip: string;
   sheetsWebAppUrl: string;
+  reportFontFamily?: PrintFontFamily;
+  signatureStamp?: SignatureStampConfig;
   webBrand?: WebBrandConfig;
   kopSurat: KopSuratConfig;
   teacherProfile: TeacherProfile;
   classes: string[];
   subjects: string[];
   examTypes: string[];
+  examWeights?: Record<string, number>;
+  useWeightedAverage?: boolean;
   academicYears: string[];
 }
 

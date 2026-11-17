@@ -32,6 +32,45 @@ export const DEFAULT_RIGHT_LOGO =
   <text x="60" y="94" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#ffffff">SMAN 1</text>
 </svg>`);
 
+export const DEFAULT_SCHOOL_STAMP =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <circle cx="80" cy="80" r="72" fill="none" stroke="#1d4ed8" stroke-width="3.5" opacity="0.88"/>
+  <circle cx="80" cy="80" r="65" fill="none" stroke="#1d4ed8" stroke-width="1.2" opacity="0.82"/>
+  <circle cx="80" cy="80" r="44" fill="none" stroke="#1d4ed8" stroke-width="1.8" opacity="0.85"/>
+  <defs>
+    <path id="topArc" d="M 24,80 A 56,56 0 1,1 136,80" />
+    <path id="botArc" d="M 136,86 A 56,56 0 1,1 24,86" />
+  </defs>
+  <text font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#1d4ed8" letter-spacing="1.2" opacity="0.9">
+    <textPath href="#topArc" startOffset="50%" text-anchor="middle">PEMERINTAH PROVINSI · DINAS PENDIDIKAN</textPath>
+  </text>
+  <text font-family="Arial, sans-serif" font-size="9.5" font-weight="bold" fill="#1d4ed8" letter-spacing="1" opacity="0.9">
+    <textPath href="#botArc" startOffset="50%" text-anchor="middle">SMAN 1 NUSANTARA</textPath>
+  </text>
+  <polygon points="80,50 84,61 96,61 86,68 90,79 80,72 70,79 74,68 64,61 76,61" fill="none" stroke="#1d4ed8" stroke-width="1.8" opacity="0.88"/>
+  <line x1="44" y1="88" x2="116" y2="88" stroke="#1d4ed8" stroke-width="1.4" opacity="0.85"/>
+  <text x="80" y="102" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" font-weight="bold" fill="#1d4ed8" opacity="0.9">SEKOLAH</text>
+  <line x1="50" y1="107" x2="110" y2="107" stroke="#1d4ed8" stroke-width="1.2" opacity="0.8"/>
+</svg>`);
+
+export const DEFAULT_PRINCIPAL_TTD =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 90">
+  <path d="M22 62 C36 22, 54 18, 52 54 C50 74, 72 32, 86 24 C96 18, 84 64, 98 58 C114 52, 126 30, 144 38 C156 44, 150 58, 174 52 C188 48, 198 44, 206 42" fill="none" stroke="#0f172a" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M36 74 C84 66, 136 64, 192 70" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round"/>
+</svg>`);
+
+export const DEFAULT_TEACHER_TTD =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 90">
+  <path d="M28 56 C40 16, 66 16, 60 54 C56 70, 80 34, 96 42 C108 48, 114 26, 128 32 C142 38, 134 62, 154 52 C170 44, 186 36, 202 30" fill="none" stroke="#1e293b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M44 68 C94 62, 146 60, 188 64" fill="none" stroke="#1e293b" stroke-width="1.8" stroke-linecap="round"/>
+</svg>`);
+
 export async function dataUrlToPngBase64(dataUrl: string, targetSize = 180): Promise<string | null> {
   if (!dataUrl) return null;
   return new Promise((resolve) => {

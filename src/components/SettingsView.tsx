@@ -27,11 +27,18 @@ import {
   UserRole,
 } from '../types';
 import { DEFAULT_WEB_LOGO, getUserPhotoUrl } from '../utils/defaultAvatars';
-import { DEFAULT_LEFT_LOGO, DEFAULT_RIGHT_LOGO } from '../utils/defaultLogos';
+import {
+  DEFAULT_LEFT_LOGO,
+  DEFAULT_PRINCIPAL_TTD,
+  DEFAULT_RIGHT_LOGO,
+  DEFAULT_SCHOOL_STAMP,
+  DEFAULT_TEACHER_TTD,
+} from '../utils/defaultLogos';
 import {
   formatAssignmentSummary,
   getPrintFontCss,
   normalizeKopSurat,
+  normalizeSignatureStamp,
   normalizeWebBrand,
   PRINT_FONT_OPTIONS,
   USER_ROLE_LABELS,
@@ -1068,6 +1075,271 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </section>
 
       {/* ===================================================================== */}
+      {/* 2B. TANDA TANGAN DIGITAL, STEMPEL SEKOLAH & FONT LAPORAN DEFAULT */}
+      {/* ===================================================================== */}
+      <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h3 className="text-base font-bold text-slate-900">
+              Tanda Tangan Digital, Stempel Sekolah &amp; Font Laporan Default
+            </h3>
+            <p className="text-xs text-slate-500">
+              Unggah/tempel tautan TTD Kepala Sekolah, TTD Guru Mapel, dan Stempel Instansi serta atur jenis huruf standar untuk cetak &amp; unduh PDF
+            </p>
+          </div>
+        </div>
+
+        {(() => {
+          const sigStamp = normalizeSignatureStamp(draft);
+          const updateSigStamp = (patch: Partial<typeof sigStamp>) => {
+            const next: SystemSettings = {
+              ...draft,
+              signatureStamp: { ...sigStamp, ...patch },
+            };
+            setDraft(next);
+            onUpdateSettings(next);
+          };
+
+          const handleAssetFile = (
+            field: 'principalSignatureDataUrl' | 'teacherSignatureDataUrl' | 'stampDataUrl',
+            file?: File
+          ) => {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+              if (typeof reader.result === 'string') {
+                updateSigStamp({ [field]: reader.result });
+                onNotify('Gambar tanda tangan/stempel berhasil diunggah.');
+              }
+            };
+            reader.readAsDataURL(file);
+          };
+
+          const activeFont: PrintFontFamily =
+            draft.reportFontFamily || normalizeKopSurat(draft.kopSurat).fontFamily || 'Times New Roman';
+
+          return (
+            <div className="p-6 space-y-6">
+              {/* Font Default & Ukuran + Saklar Stempel */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200">
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1.5">
+                    Font Default Cetak &amp; PDF Laporan
+                  </label>
+                  <select
+                    value={activeFont}
+                    onChange={(e) => {
+                      const next: SystemSettings = {
+                        ...draft,
+                        reportFontFamily: e.target.value as PrintFontFamily,
+                      };
+                      setDraft(next);
+                      onUpdateSettings(next);
+                    }}
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                  >
+                    {PRINT_FONT_OPTIONS.map((f) => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1.5">
+                    Tinggi TTD ({sigStamp.signatureSize} px)
+                  </label>
+                  <input
+                    type="range"
+                    min={36}
+                    max={96}
+                    value={sigStamp.signatureSize}
+                    onChange={(e) => updateSigStamp({ signatureSize: Number(e.target.value) })}
+                    className="w-full accent-indigo-600 mt-1.5 cursor-pointer"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1.5">
+                    Ukuran Stempel ({sigStamp.stampSize} px)
+                  </label>
+                  <input
+                    type="range"
+                    min={48}
+                    max={110}
+                    value={sigStamp.stampSize}
+                    onChange={(e) => updateSigStamp({ stampSize: Number(e.target.value) })}
+                    className="w-full accent-indigo-600 mt-1.5 cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex items-center">
+                  <label className="inline-flex items-start gap-2 text-xs font-semibold text-slate-800 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={sigStamp.showStampDefault}
+                      onChange={(e) => updateSigStamp({ showStampDefault: e.target.checked })}
+                      className="rounded border-slate-300 text-indigo-600 mt-0.5"
+                    />
+                    <span>Tampilkan Stempel secara default saat cetak/unduh laporan</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* 3 Kartu Upload/Link: TTD Kepsek, TTD Guru, Stempel Sekolah */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {(
+                  [
+                    {
+                      field: 'principalSignatureDataUrl' as const,
+                      title: 'TTD Kepala Sekolah',
+                      subtitle: draft.principalName,
+                      defaultUrl: DEFAULT_PRINCIPAL_TTD,
+                      defaultLabel: 'Contoh TTD',
+                      val: sigStamp.principalSignatureDataUrl,
+                    },
+                    {
+                      field: 'teacherSignatureDataUrl' as const,
+                      title: 'TTD Guru Mapel',
+                      subtitle: draft.teacherProfile.name,
+                      defaultUrl: DEFAULT_TEACHER_TTD,
+                      defaultLabel: 'Contoh TTD',
+                      val: sigStamp.teacherSignatureDataUrl,
+                    },
+                    {
+                      field: 'stampDataUrl' as const,
+                      title: 'Stempel Sekolah / Dinas',
+                      subtitle: 'Disarankan PNG transparan',
+                      defaultUrl: DEFAULT_SCHOOL_STAMP,
+                      defaultLabel: 'Stempel Default',
+                      val: sigStamp.stampDataUrl,
+                    },
+                  ]
+                ).map((box) => (
+                  <div
+                    key={box.field}
+                    className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3 flex flex-col justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-20 h-16 rounded-lg bg-white border border-slate-200 flex items-center justify-center p-1.5 shrink-0 overflow-hidden">
+                        {box.val ? (
+                          <img
+                            src={box.val}
+                            alt={box.title}
+                            className="max-w-full max-h-full object-contain"
+                          />
+                        ) : (
+                          <span className="text-[11px] text-slate-400">Kosong</span>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-900 truncate">{box.title}</p>
+                        <p className="text-[11px] text-slate-500 truncate">{box.subtitle}</p>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <label className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold cursor-pointer whitespace-nowrap">
+                            <ImagePlus className="w-3 h-3" />
+                            <span>Unggah</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => handleAssetFile(box.field, e.target.files?.[0])}
+                              className="hidden"
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => updateSigStamp({ [box.field]: box.defaultUrl })}
+                            className="px-2 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 text-[11px] font-medium text-slate-700 cursor-pointer whitespace-nowrap"
+                          >
+                            {box.defaultLabel}
+                          </button>
+                          {box.val && (
+                            <button
+                              type="button"
+                              onClick={() => updateSigStamp({ [box.field]: '' })}
+                              className="px-2 py-1 rounded border border-rose-200 bg-white hover:bg-rose-50 text-[11px] font-medium text-rose-700 cursor-pointer whitespace-nowrap"
+                            >
+                              Hapus
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <input
+                        type="url"
+                        value={box.val.startsWith('data:') ? '' : box.val}
+                        onChange={(e) => updateSigStamp({ [box.field]: e.target.value })}
+                        placeholder="Atau tempel link URL gambar (https://...)"
+                        className="w-full px-2.5 py-1.5 text-[11px] rounded-md border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Mini Preview Tanda Tangan & Stempel */}
+              <div className="p-4 rounded-xl border border-slate-200 bg-white">
+                <p className="text-xs font-semibold text-slate-500 mb-3">
+                  Pratinjau Pengesahan Laporan (Font {activeFont} · Stempel {sigStamp.showStampDefault ? 'Ditampilkan' : 'Disembunyikan Default'}):
+                </p>
+                <div
+                  style={{ fontFamily: getPrintFontCss(activeFont) }}
+                  className="grid grid-cols-2 gap-6 text-xs text-slate-950 p-3 rounded-lg border border-slate-200 bg-slate-50/40"
+                >
+                  <div className="pl-2">
+                    <p>Mengetahui,</p>
+                    <p>{draft.principalTitle}</p>
+                    <div className="relative min-h-[64px] flex items-center py-1">
+                      {sigStamp.stampDataUrl && sigStamp.showStampDefault && (
+                        <img
+                          src={sigStamp.stampDataUrl}
+                          alt="Stempel Sekolah"
+                          style={{ width: sigStamp.stampSize, height: sigStamp.stampSize }}
+                          className="object-contain opacity-85 mix-blend-multiply -ml-2 pointer-events-none select-none"
+                        />
+                      )}
+                      {sigStamp.principalSignatureDataUrl && (
+                        <img
+                          src={sigStamp.principalSignatureDataUrl}
+                          alt="TTD Kepala Sekolah"
+                          style={{ height: sigStamp.signatureSize }}
+                          className={`object-contain ${
+                            sigStamp.stampDataUrl && sigStamp.showStampDefault ? '-ml-8' : ''
+                          }`}
+                        />
+                      )}
+                    </div>
+                    <p className="font-bold underline">{draft.principalName}</p>
+                    <p>NIP. {draft.principalNip}</p>
+                  </div>
+
+                  <div className="pl-4">
+                    <p>{draft.signatureCity}, Tanggal Cetak</p>
+                    <p>Guru Mata Pelajaran,</p>
+                    <div className="min-h-[64px] flex items-center py-1">
+                      {sigStamp.teacherSignatureDataUrl && (
+                        <img
+                          src={sigStamp.teacherSignatureDataUrl}
+                          alt="TTD Guru"
+                          style={{ height: sigStamp.signatureSize }}
+                          className="object-contain"
+                        />
+                      )}
+                    </div>
+                    <p className="font-bold underline">{draft.teacherProfile.name}</p>
+                    <p>NIP. {draft.teacherProfile.nip}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </section>
+
+      {/* ===================================================================== */}
       {/* 3. 4 KARTU MASTER DATA */}
       {/* ===================================================================== */}
       <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
@@ -1117,6 +1389,136 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             onUpdateSettings(next);
           }}
         />
+      </section>
+
+      {/* ===================================================================== */}
+      {/* 3B. PENGATURAN BOBOT PENILAIAN (%) */}
+      {/* ===================================================================== */}
+      <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h3 className="text-base font-bold text-slate-900">
+              Bobot Penilaian per Jenis Ujian (%)
+            </h3>
+            <p className="text-xs text-slate-500">
+              Tentukan persentase bobot masing-masing ujian untuk menghitung Nilai Akhir otomatis pada Matriks & Cetak Rapor
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-800 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={Boolean(draft.useWeightedAverage)}
+                onChange={(e) => {
+                  const next: SystemSettings = {
+                    ...draft,
+                    useWeightedAverage: e.target.checked,
+                  };
+                  setDraft(next);
+                  onUpdateSettings(next);
+                }}
+                className="rounded border-slate-300 text-indigo-600"
+              />
+              <span>Aktifkan Rata-Rata Berbobot</span>
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                if (draft.examTypes.length === 0) return;
+                const count = draft.examTypes.length;
+                const base = Math.floor(100 / count);
+                const rem = 100 - base * count;
+                const nextWeights: Record<string, number> = {};
+                draft.examTypes.forEach((ex, idx) => {
+                  nextWeights[ex] = base + (idx < rem ? 1 : 0);
+                });
+                const next: SystemSettings = {
+                  ...draft,
+                  examWeights: nextWeights,
+                };
+                setDraft(next);
+                onUpdateSettings(next);
+                onNotify('Bobot penilaian dibagi rata menjadi total 100%.');
+              }}
+              className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 cursor-pointer whitespace-nowrap"
+            >
+              Bagi Rata 100%
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {(() => {
+            const totalWeight = draft.examTypes.reduce(
+              (acc, ex) => acc + Number(draft.examWeights?.[ex] ?? 0),
+              0
+            );
+            return (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                  {draft.examTypes.map((ex) => {
+                    const weightVal = draft.examWeights?.[ex] ?? 0;
+                    return (
+                      <div
+                        key={ex}
+                        className="p-3 rounded-lg border border-slate-200 bg-slate-50/70 space-y-1.5"
+                      >
+                        <label className="block text-xs font-bold text-slate-800 truncate" title={ex}>
+                          {ex}
+                        </label>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={weightVal}
+                            disabled={!draft.useWeightedAverage}
+                            onChange={(e) => {
+                              const raw = Number(e.target.value);
+                              const clamped = Number.isNaN(raw) ? 0 : Math.max(0, Math.min(100, raw));
+                              const nextWeights = {
+                                ...(draft.examWeights || {}),
+                                [ex]: clamped,
+                              };
+                              const next: SystemSettings = {
+                                ...draft,
+                                examWeights: nextWeights,
+                              };
+                              setDraft(next);
+                              onUpdateSettings(next);
+                            }}
+                            className="w-full px-2.5 py-1.5 text-sm font-bold tabular-nums rounded-md border border-slate-300 bg-white disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                          />
+                          <span className="text-xs font-bold text-slate-500">%</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
+                  <span className="text-slate-600">
+                    {draft.useWeightedAverage
+                      ? 'Perhitungan aktif: nilai ujian yang sudah terisi dinormalisasi secara proporsional sesuai bobot.'
+                      : 'Saat nonaktif, sistem menggunakan rata-rata hitung biasa (bobot sama).'}
+                  </span>
+                  <span
+                    className={`font-bold tabular-nums ${
+                      !draft.useWeightedAverage
+                        ? 'text-slate-500'
+                        : totalWeight === 100
+                          ? 'text-emerald-700'
+                          : 'text-amber-700'
+                    }`}
+                  >
+                    Total Bobot: {totalWeight}%{' '}
+                    {draft.useWeightedAverage && totalWeight !== 100 ? '(Disarankan 100%)' : ''}
+                  </span>
+                </div>
+              </>
+            );
+          })()}
+        </div>
       </section>
 
       {/* ===================================================================== */}

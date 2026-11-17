@@ -2,12 +2,15 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Award, CheckCircle2, Download, FileSpreadsheet, Save, Trash2, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { GradeRecord, RowMarkerColor, Student, SystemSettings } from '../types';
-import { ROW_MARKER_META } from '../utils/helpers';
+import { computeWeightedAverage, ROW_MARKER_META } from '../utils/helpers';
 
 interface GradesMatrixViewProps {
   students: Student[];
   grades: GradeRecord[];
   settings: SystemSettings;
+  currentUserId?: string;
+  currentUserName?: string;
+  readOnly?: boolean;
   onSaveGradesBatch: (records: GradeRecord[]) => void;
   onDeleteGrades?: (ids: string[]) => void;
   onViewStudent: (student: Student) => void;
@@ -18,10 +21,26 @@ interface GradesMatrixViewProps {
 
 const MARKER_KEYS: RowMarkerColor[] = ['neutral', 'green', 'yellow', 'red', 'blue'];
 
+function makeGradeCompositeId(
+  academicYear: string,
+  semester: 'Ganjil' | 'Genap',
+  studentId: string,
+  subject: string,
+  examType: string
+): string {
+  const yrSlug = academicYear.replace(/[^a-zA-Z0-9]/g, '');
+  const subjSlug = subject.replace(/\s+/g, '');
+  const exSlug = examType.replace(/\s+/g, '');
+  return `grd-${yrSlug}-${semester}-${studentId}-${subjSlug}-${exSlug}`;
+}
+
 export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
   students,
   grades,
   settings,
+  currentUserId,
+  currentUserName,
+  readOnly = false,
   onSaveGradesBatch,
   onDeleteGrades,
   onViewStudent,
@@ -112,11 +131,18 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
 
   const handleSaveInputGrades = () => {
     const nowIso = new Date().toISOString();
+    const teacherNameVal = currentUserName || settings.teacherProfile.name;
     const batch: GradeRecord[] = classStudents.map((st) => {
       const row = draftScores[st.id] ?? { score: '', note: '', marker: 'neutral' };
       const parsed = row.score.trim() === '' ? null : Math.max(0, Math.min(100, Number(row.score)));
       return {
-        id: `grd-${st.id}-${selectedSubject.replace(/\s+/g, '')}-${selectedExamType.replace(/\s+/g, '')}`,
+        id: makeGradeCompositeId(
+          settings.academicYear,
+          settings.semester,
+          st.id,
+          selectedSubject,
+          selectedExamType
+        ),
         studentId: st.id,
         className: selectedClass,
         subject: selectedSubject,
@@ -124,6 +150,10 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
         score: parsed !== null && Number.isNaN(parsed) ? null : parsed,
         note: row.note.trim(),
         marker: row.marker,
+        teacherId: currentUserId,
+        teacherName: teacherNameVal,
+        academicYear: settings.academicYear,
+        semester: settings.semester,
         updatedAt: nowIso,
       };
     });
@@ -258,7 +288,13 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
         marker,
       };
       toSave.push({
-        id: `grd-${student.id}-${selectedSubject.replace(/\s+/g, '')}-${selectedExamType.replace(/\s+/g, '')}`,
+        id: makeGradeCompositeId(
+          settings.academicYear,
+          settings.semester,
+          student.id,
+          selectedSubject,
+          selectedExamType
+        ),
         studentId: student.id,
         className: selectedClass,
         subject: selectedSubject,
@@ -266,6 +302,10 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
         score: clamped,
         note: String(r.note || '').trim(),
         marker,
+        teacherId: currentUserId,
+        teacherName: currentUserName || settings.teacherProfile.name,
+        academicYear: settings.academicYear,
+        semester: settings.semester,
         updatedAt: nowIso,
       });
     });
@@ -403,7 +443,13 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
       batch.push({
         id:
           existing?.id ||
-          `grd-${studentId}-${matrixSubject.replace(/\s+/g, '')}-${examType.replace(/\s+/g, '')}`,
+          makeGradeCompositeId(
+            settings.academicYear,
+            settings.semester,
+            studentId,
+            matrixSubject,
+            examType
+          ),
         studentId,
         className: matrixClass,
         subject: matrixSubject,
@@ -413,6 +459,10 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
         marker:
           existing?.marker ||
           (score !== null ? (score >= settings.kkm ? 'green' : 'yellow') : 'neutral'),
+        teacherId: existing?.teacherId || currentUserId,
+        teacherName: existing?.teacherName || currentUserName || settings.teacherProfile.name,
+        academicYear: existing?.academicYear || settings.academicYear,
+        semester: existing?.semester || settings.semester,
         updatedAt: nowIso,
       });
     });
@@ -489,8 +539,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
         ? matrixStudents.filter((st) => selectedMatrixIds.includes(st.id))
         : matrixStudents;
     const rows = targetStudents.map((st, idx) => {
-      let sum = 0;
-      let cnt = 0;
+      const scoreByExam: Record<string, number | null> = {};
       const row: Record<string, string | number> = {
         No: idx + 1,
         NIS: st.nis,
@@ -498,14 +547,18 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
       };
       settings.examTypes.forEach((ex) => {
         const val = getMatrixCellValue(st.id, ex);
-        row[ex] = val === '' ? '-' : Number(val);
-        if (val !== '' && !Number.isNaN(Number(val))) {
-          sum += Number(val);
-          cnt++;
-        }
+        const num = val === '' || Number.isNaN(Number(val)) ? null : Number(val);
+        row[ex] = num !== null ? num : '-';
+        scoreByExam[ex] = num;
       });
-      const avg = cnt > 0 ? Math.round((sum / cnt) * 10) / 10 : null;
-      row['Rata-Rata'] = avg !== null ? avg : '-';
+      const { avg } = computeWeightedAverage(
+        scoreByExam,
+        settings.examTypes,
+        settings.examWeights,
+        settings.useWeightedAverage
+      );
+      row[settings.useWeightedAverage ? 'Nilai Akhir (Berbobot)' : 'Rata-Rata'] =
+        avg !== null ? avg : '-';
       row['Status KKM'] = avg !== null ? (avg >= settings.kkm ? 'Tuntas' : 'Remedial') : '-';
       return row;
     });
@@ -547,7 +600,13 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
           if (Number.isNaN(num)) return;
           const clamped = Math.max(0, Math.min(100, num));
           batch.push({
-            id: `grd-${st.id}-${matrixSubject.replace(/\s+/g, '')}-${ex.replace(/\s+/g, '')}`,
+            id: makeGradeCompositeId(
+              settings.academicYear,
+              settings.semester,
+              st.id,
+              matrixSubject,
+              ex
+            ),
             studentId: st.id,
             className: matrixClass,
             subject: matrixSubject,
@@ -555,6 +614,10 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
             score: clamped,
             note: '',
             marker: clamped >= settings.kkm ? 'green' : 'yellow',
+            teacherId: currentUserId,
+            teacherName: currentUserName || settings.teacherProfile.name,
+            academicYear: settings.academicYear,
+            semester: settings.semester,
             updatedAt: nowIso,
           });
         });
@@ -597,7 +660,13 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
         if (Number.isNaN(num)) return;
         const clamped = Math.max(0, Math.min(100, num));
         batch.push({
-          id: `grd-${st.id}-${matrixSubject.replace(/\s+/g, '')}-${ex.replace(/\s+/g, '')}`,
+          id: makeGradeCompositeId(
+            settings.academicYear,
+            settings.semester,
+            st.id,
+            matrixSubject,
+            ex
+          ),
           studentId: st.id,
           className: matrixClass,
           subject: matrixSubject,
@@ -605,6 +674,10 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
           score: clamped,
           note: '',
           marker: clamped >= settings.kkm ? 'green' : 'yellow',
+          teacherId: currentUserId,
+          teacherName: currentUserName || settings.teacherProfile.name,
+          academicYear: settings.academicYear,
+          semester: settings.semester,
           updatedAt: nowIso,
         });
       });
@@ -620,9 +693,19 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
 
   return (
     <div className="space-y-8">
+      {readOnly && (
+        <div className="p-4 rounded-xl border border-indigo-200 bg-indigo-50 text-xs text-indigo-900">
+          <p className="font-bold">Mode Pemantauan Matriks Nilai (Hanya Baca)</p>
+          <p className="mt-0.5 text-indigo-800">
+            Anda dapat memantau leger nilai per kelas &amp; mata pelajaran, melihat status ketuntasan KKM, serta mengekspor rekap Excel tanpa mengubah skor input guru.
+          </p>
+        </div>
+      )}
+
       {/* ===================================================================== */}
       {/* BAGIAN 1: INPUT NILAI PER JENIS UJIAN */}
       {/* ===================================================================== */}
+      {!readOnly && (
       <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 bg-slate-900 text-white flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
@@ -989,6 +1072,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
           )}
         </div>
       </section>
+      )}
 
       {/* ===================================================================== */}
       {/* BAGIAN 2: RIWAYAT MATRIKS NILAI PER KELAS (LEGER MENDATAR) */}
@@ -1000,7 +1084,11 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
               Riwayat Matriks Nilai per Kelas (Leger Mendatar)
             </h3>
             <p className="text-xs text-slate-500">
-              Edit skor langsung di dalam sel ujian · Rata-rata dan ketuntasan KKM ({settings.kkm}) dihitung otomatis
+              Edit skor langsung di dalam sel ujian ·{' '}
+              {settings.useWeightedAverage
+                ? 'Nilai Akhir berbobot (%) & ketuntasan KKM'
+                : 'Rata-rata & ketuntasan KKM'}{' '}
+              ({settings.kkm}) dihitung otomatis
             </p>
           </div>
 
@@ -1035,23 +1123,27 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
               ))}
             </select>
 
-            <button
-              type="button"
-              onClick={handleDownloadMatrixTemplate}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
-            >
-              <Download className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Template</span>
-            </button>
+            {!readOnly && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleDownloadMatrixTemplate}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <Download className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Template</span>
+                </button>
 
-            <button
-              type="button"
-              onClick={() => setShowMatrixImport((v) => !v)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
-            >
-              <Upload className="w-3.5 h-3.5 text-indigo-300" />
-              <span>{showMatrixImport ? 'Tutup Impor' : 'Impor'}</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={() => setShowMatrixImport((v) => !v)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <Upload className="w-3.5 h-3.5 text-indigo-300" />
+                  <span>{showMatrixImport ? 'Tutup Impor' : 'Impor'}</span>
+                </button>
+              </>
+            )}
 
             <button
               type="button"
@@ -1066,7 +1158,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
               </span>
             </button>
 
-            {selectedMatrixIds.length > 0 && (
+            {!readOnly && selectedMatrixIds.length > 0 && (
               <button
                 type="button"
                 onClick={handleDeleteMatrixSelected}
@@ -1077,25 +1169,27 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
               </button>
             )}
 
-            <button
-              type="button"
-              onClick={handleSaveMatrixEdits}
-              disabled={pendingMatrixCount === 0}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                pendingMatrixCount > 0
-                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-              }`}
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>
-                Simpan Perubahan Matriks{pendingMatrixCount > 0 ? ` (${pendingMatrixCount})` : ''}
-              </span>
-            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={handleSaveMatrixEdits}
+                disabled={pendingMatrixCount === 0}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  pendingMatrixCount > 0
+                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>
+                  Simpan Perubahan Matriks{pendingMatrixCount > 0 ? ` (${pendingMatrixCount})` : ''}
+                </span>
+              </button>
+            )}
           </div>
         </div>
 
-        {showMatrixImport && (
+        {!readOnly && showMatrixImport && (
           <div className="p-5 bg-indigo-50/50 border-b border-indigo-200 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
@@ -1181,13 +1275,24 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
                   <th className="sticky left-20 z-30 bg-slate-900 py-2.5 px-3 font-semibold min-w-[180px] border-r border-slate-800">
                     Nama Siswa
                   </th>
-                  {settings.examTypes.map((ex) => (
-                    <th key={ex} className="py-2.5 px-3 font-semibold text-center min-w-[90px] border-r border-slate-800">
-                      {ex}
-                    </th>
-                  ))}
-                  <th className="py-2.5 px-3 font-semibold text-right bg-slate-800 min-w-[90px]">
-                    Rata-Rata
+                  {settings.examTypes.map((ex) => {
+                    const weight = settings.examWeights?.[ex];
+                    return (
+                      <th
+                        key={ex}
+                        className="py-2.5 px-3 font-semibold text-center min-w-[90px] border-r border-slate-800"
+                      >
+                        <div>{ex}</div>
+                        {settings.useWeightedAverage && weight !== undefined && (
+                          <div className="text-[10px] font-normal text-indigo-300 tabular-nums">
+                            Bobot {weight}%
+                          </div>
+                        )}
+                      </th>
+                    );
+                  })}
+                  <th className="py-2.5 px-3 font-semibold text-right bg-slate-800 min-w-[96px]">
+                    {settings.useWeightedAverage ? 'Nilai Akhir' : 'Rata-Rata'}
                   </th>
                   <th className="py-2.5 px-3 font-semibold text-center bg-slate-800 min-w-[95px]">
                     Status KKM
@@ -1196,19 +1301,22 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-200 text-xs">
                 {matrixStudents.map((st, idx) => {
-                  let sum = 0;
-                  let cnt = 0;
+                  const scoreByExam: Record<string, number | null> = {};
                   settings.examTypes.forEach((ex) => {
                     const v = getMatrixCellValue(st.id, ex);
                     if (v !== '') {
                       const num = Number(v);
-                      if (!Number.isNaN(num)) {
-                        sum += num;
-                        cnt++;
-                      }
+                      scoreByExam[ex] = Number.isNaN(num) ? null : num;
+                    } else {
+                      scoreByExam[ex] = null;
                     }
                   });
-                  const avg = cnt > 0 ? Math.round((sum / cnt) * 10) / 10 : null;
+                  const { avg } = computeWeightedAverage(
+                    scoreByExam,
+                    settings.examTypes,
+                    settings.examWeights,
+                    settings.useWeightedAverage
+                  );
                   const tuntas = avg !== null && avg >= settings.kkm;
 
                   return (
@@ -1246,10 +1354,12 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
                             <input
                               type="text"
                               value={cellVal}
+                              readOnly={readOnly}
+                              disabled={readOnly}
                               onChange={(e) => handleMatrixCellChange(st.id, ex, e.target.value)}
                               placeholder="-"
                               aria-label={`Nilai ${ex} untuk ${st.name}`}
-                              className={`w-16 h-7 text-center font-semibold tabular-nums rounded border focus:outline-none focus:ring-2 focus:ring-indigo-600 ${
+                              className={`w-16 h-7 text-center font-semibold tabular-nums rounded border focus:outline-none focus:ring-2 focus:ring-indigo-600 disabled:cursor-default ${
                                 isDirty
                                   ? 'border-indigo-600 bg-indigo-50 text-indigo-900'
                                   : lowScore

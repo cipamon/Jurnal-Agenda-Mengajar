@@ -16,10 +16,12 @@ import { getStudentPhotoUrl } from './defaultAvatars';
 import { dataUrlToPngBase64 } from './defaultLogos';
 import {
   ATTENDANCE_META,
+  computeWeightedAverage,
   formatTanggalID,
   formatTanggalShort,
   getTodayIso,
   normalizeKopSurat,
+  normalizeSignatureStamp,
   ROW_MARKER_META,
 } from './helpers';
 
@@ -32,6 +34,7 @@ export interface ReportFilterOptions {
   showKopSurat: boolean;
   showPrincipalSig: boolean;
   showTeacherSig: boolean;
+  showStamp?: boolean;
   orientation: PaperOrientation;
   fontFamily: PrintFontFamily;
 }
@@ -139,8 +142,6 @@ export function buildGradeMatrices(
 
       clsStudents.forEach((st) => {
         scoreMap[st.id] = {};
-        let sum = 0;
-        let cnt = 0;
         settings.examTypes.forEach((ex) => {
           const rec = grades.find(
             (g) =>
@@ -151,12 +152,13 @@ export function buildGradeMatrices(
           );
           const val = rec && rec.score !== null ? rec.score : null;
           scoreMap[st.id][ex] = val;
-          if (val !== null) {
-            sum += val;
-            cnt += 1;
-          }
         });
-        avgMap[st.id] = cnt > 0 ? Math.round((sum / cnt) * 10) / 10 : null;
+        avgMap[st.id] = computeWeightedAverage(
+          scoreMap[st.id],
+          settings.examTypes,
+          settings.examWeights,
+          settings.useWeightedAverage
+        ).avg;
       });
 
       matrices.push({
@@ -344,12 +346,25 @@ export async function exportReportToPdf(
   const pageHeight = doc.internal.pageSize.getHeight();
   const marginX = 14;
 
+  const sigStamp = normalizeSignatureStamp(settings);
   const leftPng = opts.showKopSurat
     ? await dataUrlToPngBase64(settings.kopSurat.leftLogoDataUrl)
     : null;
   const rightPng = opts.showKopSurat
     ? await dataUrlToPngBase64(settings.kopSurat.rightLogoDataUrl)
     : null;
+  const principalSigPng =
+    opts.showPrincipalSig && sigStamp.principalSignatureDataUrl
+      ? await dataUrlToPngBase64(sigStamp.principalSignatureDataUrl, 260)
+      : null;
+  const teacherSigPng =
+    opts.showTeacherSig && sigStamp.teacherSignatureDataUrl
+      ? await dataUrlToPngBase64(sigStamp.teacherSignatureDataUrl, 260)
+      : null;
+  const stampPng =
+    opts.showStamp && sigStamp.stampDataUrl
+      ? await dataUrlToPngBase64(sigStamp.stampDataUrl, 260)
+      : null;
 
   const drawHeader = (): number => {
     let cursorY = 12;
@@ -421,7 +436,7 @@ export async function exportReportToPdf(
   const drawSignatures = (startY: number) => {
     if (!opts.showPrincipalSig && !opts.showTeacherSig) return;
     let y = startY + 8;
-    if (y + 34 > pageHeight - 10) {
+    if (y + 38 > pageHeight - 10) {
       doc.addPage();
       y = 18;
     }
@@ -430,25 +445,40 @@ export async function exportReportToPdf(
     doc.setFontSize(9.5);
 
     const todayStr = formatTanggalID(getTodayIso());
+    const sigMm = Math.round((sigStamp.signatureSize / 54) * 14 * 10) / 10;
+    const sigW = Math.round(sigMm * 2.2 * 10) / 10;
+    const stampMm = Math.round((sigStamp.stampSize / 74) * 20 * 10) / 10;
 
     if (opts.showPrincipalSig) {
       const leftX = marginX + 8;
       doc.text('Mengetahui,', leftX, y);
       doc.text(settings.principalTitle, leftX, y + 4.8);
+      if (stampPng) {
+        doc.addImage(stampPng, 'PNG', Math.max(marginX, leftX - 8), y + 5, stampMm, stampMm);
+      }
+      if (principalSigPng) {
+        doc.addImage(principalSigPng, 'PNG', leftX + 2, y + 7, sigW, sigMm);
+      }
       doc.setFont(pdfFont, 'bold');
-      doc.text(settings.principalName, leftX, y + 23);
+      doc.text(settings.principalName, leftX, y + 24);
       doc.setFont(pdfFont, 'normal');
-      doc.text(`NIP. ${settings.principalNip}`, leftX, y + 27.6);
+      doc.text(`NIP. ${settings.principalNip}`, leftX, y + 28.6);
     }
 
     if (opts.showTeacherSig) {
       const rightX = pageWidth - marginX - 68;
       doc.text(`${settings.signatureCity}, ${todayStr}`, rightX, y);
       doc.text('Guru Mata Pelajaran,', rightX, y + 4.8);
+      if (!opts.showPrincipalSig && stampPng) {
+        doc.addImage(stampPng, 'PNG', rightX - 10, y + 5, stampMm, stampMm);
+      }
+      if (teacherSigPng) {
+        doc.addImage(teacherSigPng, 'PNG', rightX + 2, y + 7, sigW, sigMm);
+      }
       doc.setFont(pdfFont, 'bold');
-      doc.text(settings.teacherProfile.name, rightX, y + 23);
+      doc.text(settings.teacherProfile.name, rightX, y + 24);
       doc.setFont(pdfFont, 'normal');
-      doc.text(`NIP. ${settings.teacherProfile.nip}`, rightX, y + 27.6);
+      doc.text(`NIP. ${settings.teacherProfile.nip}`, rightX, y + 28.6);
     }
   };
 
@@ -619,7 +649,8 @@ export async function exportReportToPdf(
       );
       y += 9;
 
-      const head = [['No', 'NIS', 'Nama Siswa', 'L/P', ...m.examTypes, 'Rata-rata', 'Keterangan']];
+      const avgLabel = settings.useWeightedAverage ? 'Nilai Akhir' : 'Rata-rata';
+      const head = [['No', 'NIS', 'Nama Siswa', 'L/P', ...m.examTypes, avgLabel, 'Keterangan']];
       const body = m.students.map((st, idx) => {
         const scores = m.examTypes.map((ex) => {
           const v = m.scoreMap[st.id]?.[ex];
@@ -677,7 +708,13 @@ export async function exportStudentIndividualPdf(
   student: Student,
   journals: JournalEntry[],
   grades: GradeRecord[],
-  settings: SystemSettings
+  settings: SystemSettings,
+  opts?: {
+    showPrincipalSig?: boolean;
+    showTeacherSig?: boolean;
+    showStamp?: boolean;
+    fontFamily?: PrintFontFamily;
+  }
 ) {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -686,13 +723,32 @@ export async function exportStudentIndividualPdf(
   });
 
   const normKop = normalizeKopSurat(settings.kopSurat);
+  const sigStamp = normalizeSignatureStamp(settings);
+  const activeReportFont = opts?.fontFamily || settings.reportFontFamily || normKop.fontFamily;
+  const bodyFont = mapPrintFontToJsPdf(activeReportFont);
   const kopFont = mapPrintFontToJsPdf(normKop.fontFamily);
+  const showPrincipalSig = opts?.showPrincipalSig ?? false;
+  const showTeacherSig = opts?.showTeacherSig ?? true;
+  const showStamp = opts?.showStamp ?? sigStamp.showStampDefault;
+
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const marginX = 14;
 
   const leftPng = await dataUrlToPngBase64(normKop.leftLogoDataUrl);
   const rightPng = await dataUrlToPngBase64(normKop.rightLogoDataUrl);
+  const principalSigPng =
+    showPrincipalSig && sigStamp.principalSignatureDataUrl
+      ? await dataUrlToPngBase64(sigStamp.principalSignatureDataUrl, 260)
+      : null;
+  const teacherSigPng =
+    showTeacherSig && sigStamp.teacherSignatureDataUrl
+      ? await dataUrlToPngBase64(sigStamp.teacherSignatureDataUrl, 260)
+      : null;
+  const stampPng =
+    showStamp && sigStamp.stampDataUrl
+      ? await dataUrlToPngBase64(sigStamp.stampDataUrl, 260)
+      : null;
   let photoPng = await dataUrlToPngBase64(getStudentPhotoUrl(student), 240);
   if (!photoPng && student.photoDataUrl) {
     photoPng = await dataUrlToPngBase64(
@@ -742,13 +798,13 @@ export async function exportStudentIndividualPdf(
   doc.line(marginX, y + 1.1, pageWidth - marginX, y + 1.1);
   y += 7;
 
-  doc.setFont(kopFont, 'bold');
+  doc.setFont(bodyFont, 'bold');
   doc.setFontSize(11.5);
   doc.text('PROFIL & LAPORAN AKTIVITAS INDIVIDU SISWA', centerX, y, { align: 'center' });
-  doc.setFont(kopFont, 'normal');
+  doc.setFont(bodyFont, 'normal');
   doc.setFontSize(9);
   doc.text(
-    `Tahun Ajaran ${settings.academicYear}  |  Semester ${settings.semester}`,
+    `Tahun Ajaran ${settings.academicYear}  |  Semester ${settings.semester}  |  Font: ${activeReportFont}`,
     centerX,
     y + 4.8,
     { align: 'center' }
@@ -776,9 +832,9 @@ export async function exportStudentIndividualPdf(
   doc.setFontSize(9);
   infoRows.forEach(([lbl, val], idx) => {
     const rowY = y + 3.5 + idx * 5.2;
-    doc.setFont(kopFont, 'bold');
+    doc.setFont(bodyFont, 'bold');
     doc.text(lbl, infoX, rowY);
-    doc.setFont(kopFont, 'normal');
+    doc.setFont(bodyFont, 'normal');
     doc.text(`: ${val}`, infoX + 34, rowY, { maxWidth: pageWidth - marginX - (infoX + 34) });
   });
 
@@ -792,7 +848,7 @@ export async function exportStudentIndividualPdf(
     .filter((g) => g.studentId === student.id && g.score !== null)
     .sort((a, b) => a.subject.localeCompare(b.subject));
 
-  doc.setFont(kopFont, 'bold');
+  doc.setFont(bodyFont, 'bold');
   doc.setFontSize(10);
   doc.text(`A. Riwayat Aktivitas & Kehadiran di Kelas (${studentJournals.length} Sesi)`, marginX, y);
   y += 2.5;
@@ -818,7 +874,7 @@ export async function exportStudentIndividualPdf(
           })
         : [['-', '-', '-', '-', 'Belum ada catatan pertemuan kelas', '-', '-']],
     styles: {
-      font: kopFont,
+      font: bodyFont,
       fontSize: 8,
       cellPadding: 1.8,
       textColor: [15, 23, 42],
@@ -836,7 +892,7 @@ export async function exportStudentIndividualPdf(
     y = 18;
   }
 
-  doc.setFont(kopFont, 'bold');
+  doc.setFont(bodyFont, 'bold');
   doc.setFontSize(10);
   doc.text(`B. Riwayat Penilaian & Evaluasi (KKM ${settings.kkm})`, marginX, y);
   y += 2.5;
@@ -860,7 +916,7 @@ export async function exportStudentIndividualPdf(
           })
         : [['-', '-', '-', '-', 'Belum ada nilai tercatat', '-']],
     styles: {
-      font: kopFont,
+      font: bodyFont,
       fontSize: 8,
       cellPadding: 1.8,
       textColor: [15, 23, 42],
@@ -872,21 +928,51 @@ export async function exportStudentIndividualPdf(
 
   const afterGradeY =
     (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y + 20;
-  let sigY = afterGradeY + 10;
-  if (sigY + 32 > pageHeight - 10) {
-    doc.addPage();
-    sigY = 20;
-  }
+  if (showPrincipalSig || showTeacherSig) {
+    let sigY = afterGradeY + 10;
+    if (sigY + 36 > pageHeight - 10) {
+      doc.addPage();
+      sigY = 20;
+    }
 
-  doc.setFont(kopFont, 'normal');
-  doc.setFontSize(9.5);
-  const rightX = pageWidth - marginX - 68;
-  doc.text(`${settings.signatureCity}, ${formatTanggalID(getTodayIso())}`, rightX, sigY);
-  doc.text('Guru Mata Pelajaran,', rightX, sigY + 4.8);
-  doc.setFont(kopFont, 'bold');
-  doc.text(settings.teacherProfile.name, rightX, sigY + 23);
-  doc.setFont(kopFont, 'normal');
-  doc.text(`NIP. ${settings.teacherProfile.nip}`, rightX, sigY + 27.6);
+    doc.setFont(bodyFont, 'normal');
+    doc.setFontSize(9.5);
+    const sigMm = Math.round((sigStamp.signatureSize / 54) * 14 * 10) / 10;
+    const sigW = Math.round(sigMm * 2.2 * 10) / 10;
+    const stampMm = Math.round((sigStamp.stampSize / 74) * 20 * 10) / 10;
+
+    if (showPrincipalSig) {
+      const leftX = marginX + 8;
+      doc.text('Mengetahui,', leftX, sigY);
+      doc.text(settings.principalTitle, leftX, sigY + 4.8);
+      if (stampPng) {
+        doc.addImage(stampPng, 'PNG', Math.max(marginX, leftX - 8), sigY + 5, stampMm, stampMm);
+      }
+      if (principalSigPng) {
+        doc.addImage(principalSigPng, 'PNG', leftX + 2, sigY + 7, sigW, sigMm);
+      }
+      doc.setFont(bodyFont, 'bold');
+      doc.text(settings.principalName, leftX, sigY + 24);
+      doc.setFont(bodyFont, 'normal');
+      doc.text(`NIP. ${settings.principalNip}`, leftX, sigY + 28.6);
+    }
+
+    if (showTeacherSig) {
+      const rightX = pageWidth - marginX - 68;
+      doc.text(`${settings.signatureCity}, ${formatTanggalID(getTodayIso())}`, rightX, sigY);
+      doc.text('Guru Mata Pelajaran,', rightX, sigY + 4.8);
+      if (!showPrincipalSig && stampPng) {
+        doc.addImage(stampPng, 'PNG', rightX - 10, sigY + 5, stampMm, stampMm);
+      }
+      if (teacherSigPng) {
+        doc.addImage(teacherSigPng, 'PNG', rightX + 2, sigY + 7, sigW, sigMm);
+      }
+      doc.setFont(bodyFont, 'bold');
+      doc.text(settings.teacherProfile.name, rightX, sigY + 24);
+      doc.setFont(bodyFont, 'normal');
+      doc.text(`NIP. ${settings.teacherProfile.nip}`, rightX, sigY + 28.6);
+    }
+  }
 
   const safeName = student.name.replace(/[^a-zA-Z0-9_-]/g, '_');
   doc.save(`Profil_Siswa_${safeName}_${getTodayIso()}.pdf`);
