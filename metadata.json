@@ -1,0 +1,6 @@
+{
+  "name": "Portal E-Guru v10.2",
+  "description": "Sistem Jurnal Mengajar, Presensi & Penilaian Guru Terpadu dengan Dashboard Analitik, Leger Matriks Nilai, Impor/Ekspor Excel, dan Cetak Laporan Resmi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
