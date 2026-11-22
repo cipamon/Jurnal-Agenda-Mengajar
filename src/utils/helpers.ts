@@ -35,9 +35,26 @@ export interface ThemePresetMeta {
 
 export const THEME_PRESETS: ThemePresetMeta[] = [
   {
+    id: 'neomorphic',
+    name: 'Neo Blue 3D (Futuristik)',
+    description: 'Permukaan 3D lembut, bayangan elegan & pendar biru futuristik',
+    primaryHex: '#2563eb',
+    secondaryHex: '#4f46e5',
+    sidebarHex: '#0b1630',
+  },
+  {
+    id: 'neomorphic_dark',
+    name: 'Neo Blue 3D Gelap',
+    description: 'Neomorfik gelap safir dengan kilau tepi & aksen pendar biru',
+    primaryHex: '#3b82f6',
+    secondaryHex: '#2563eb',
+    sidebarHex: '#050c1d',
+    isDark: true,
+  },
+  {
     id: 'indigo',
-    name: 'Royal Indigo',
-    description: 'Tema akademik standar bernuansa biru nila profesional',
+    name: 'Royal Indigo 3D',
+    description: 'Tema akademik bernuansa biru nila dengan permukaan neomorfik',
     primaryHex: '#4f46e5',
     secondaryHex: '#6d28d9',
     sidebarHex: '#0f172a',

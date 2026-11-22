@@ -177,20 +177,20 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   return (
     <>
       <div
-        className="no-print fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-[1px]"
+        className="no-print fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-950/60 backdrop-blur-[1px]"
         onClick={onClose}
         role="dialog"
         aria-modal="true"
         aria-labelledby="student-modal-title"
       >
         <div
-          className="w-full max-w-3xl bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+          className="w-full max-w-3xl bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92dvh]"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header with Photo & Identity */}
-          <div className="px-6 py-5 bg-slate-900 text-white flex items-start justify-between gap-4">
-            <div className="flex items-center gap-4 min-w-0">
-              <div className="w-16 h-16 rounded-xl bg-white border border-indigo-400/40 flex items-center justify-center shrink-0 overflow-hidden">
+          <div className="px-4 py-4 sm:px-6 sm:py-5 bg-slate-900 text-white flex items-start justify-between gap-2.5 sm:gap-4">
+            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+              <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl bg-white border border-indigo-400/40 flex items-center justify-center shrink-0 overflow-hidden">
                 <img
                   src={photoSrc}
                   referrerPolicy="no-referrer"
@@ -203,10 +203,10 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                 />
               </div>
               <div className="min-w-0">
-                <h2 id="student-modal-title" className="text-base sm:text-lg font-bold text-white truncate">
+                <h2 id="student-modal-title" className="text-sm sm:text-lg font-bold text-white truncate">
                   {student.name}
                 </h2>
-                <p className="text-xs text-slate-300 font-mono tabular-nums mt-0.5">
+                <p className="text-[11px] sm:text-xs text-slate-300 font-mono tabular-nums mt-0.5 break-words">
                   {onViewClass ? (
                     <button
                       type="button"
@@ -222,16 +222,16 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                   ) : (
                     <>Kelas {student.className}</>
                   )}{' '}
-                  · No. Absen {student.absenNo || '-'} · NIS {student.nis}
+                  · Absen {student.absenNo || '-'} · NIS {student.nis}
                   {student.nisn ? ` · NISN ${student.nisn}` : ''}
                 </p>
-                <p className="text-xs text-indigo-300 mt-0.5 flex items-center gap-1.5">
+                <p className="text-[11px] sm:text-xs text-indigo-300 mt-0.5 flex items-center gap-1.5">
                   <User className="w-3.5 h-3.5 shrink-0" />
-                  <span>
-                    Peserta Didik ({STUDENT_STATUS_LABELS[student.status || 'aktif']}) ·{' '}
+                  <span className="truncate">
+                    {STUDENT_STATUS_LABELS[student.status || 'aktif']} ·{' '}
                     {student.gender === 'L' ? 'Laki-laki' : 'Perempuan'}
                     {student.enrollmentYear ? ` · Masuk ${student.enrollmentYear}` : ''}
-                    {hasRealPhoto(student.photoDataUrl) ? ' · Foto Asli' : ' · Foto Dummy Default'}
+                    {hasRealPhoto(student.photoDataUrl) ? ' · Foto Asli' : ' · Foto Dummy'}
                   </span>
                 </p>
               </div>
@@ -241,16 +241,17 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                 <button
                   type="button"
                   onClick={() => onEditStudent(student)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-indigo-600 text-slate-100 text-xs font-semibold cursor-pointer whitespace-nowrap"
+                  className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-2 min-h-[38px] rounded-lg bg-slate-800 hover:bg-indigo-600 text-slate-100 text-xs font-semibold cursor-pointer whitespace-nowrap"
                 >
                   <FileEdit className="w-3.5 h-3.5" />
-                  <span>Edit Biodata</span>
+                  <span className="hidden sm:inline">Edit Biodata</span>
+                  <span className="sm:hidden">Edit</span>
                 </button>
               )}
               <button
                 type="button"
                 onClick={onClose}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer shrink-0"
+                className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer shrink-0"
                 aria-label="Tutup informasi siswa"
               >
                 <X className="w-5 h-5" />
@@ -259,7 +260,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
           </div>
 
           {/* Biodata Lengkap Siswa */}
-          <div className="px-6 py-4 bg-white border-b border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+          <div className="px-4 sm:px-6 py-4 bg-white border-b border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 text-xs">
             <div className="flex items-start gap-2.5 min-w-0">
               <Calendar className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
               <div className="min-w-0">
@@ -307,23 +308,23 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
 
           {/* Summary Metrics Strip */}
           <div className="grid grid-cols-2 sm:grid-cols-4 border-b border-slate-200 bg-slate-50 divide-y sm:divide-y-0 sm:divide-x divide-slate-200">
-            <div className="p-3.5 px-5">
+            <div className="p-3 sm:p-3.5 sm:px-5">
               <p className="text-xs text-slate-500">Pertemuan Kelas</p>
               <p className="mt-0.5 text-base font-bold text-slate-900 tabular-nums">
                 {studentJournals.length} Sesi
               </p>
             </div>
-            <div className="p-3.5 px-5">
+            <div className="p-3 sm:p-3.5 sm:px-5">
               <p className="text-xs text-slate-500">Persentase Kehadiran</p>
               <p className="mt-0.5 text-base font-bold text-emerald-700 tabular-nums">{summary.pct}%</p>
             </div>
-            <div className="p-3.5 px-5">
+            <div className="p-3 sm:p-3.5 sm:px-5">
               <p className="text-xs text-slate-500">Rincian Presensi</p>
               <p className="mt-1 text-xs font-mono font-semibold text-slate-800 tabular-nums">
                 H:{summary.H} S:{summary.S} I:{summary.I} A:{summary.A} D:{summary.D}
               </p>
             </div>
-            <div className="p-3.5 px-5">
+            <div className="p-3 sm:p-3.5 sm:px-5">
               <p className="text-xs text-slate-500">Rata-Rata Nilai (KKM {settings.kkm})</p>
               <p
                 className={`mt-0.5 text-base font-bold tabular-nums ${
@@ -340,11 +341,11 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
           </div>
 
           {/* Tab Switcher */}
-          <div className="px-6 pt-3 border-b border-slate-200 flex items-center gap-2 bg-white">
+          <div className="px-4 sm:px-6 pt-3 border-b border-slate-200 flex items-center gap-2 bg-white overflow-x-auto eguru-scroll">
             <button
               type="button"
               onClick={() => setActiveTab('aktivitas')}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
+              className={`inline-flex items-center gap-2 px-3.5 py-2.5 min-h-[40px] text-xs font-semibold border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
                 activeTab === 'aktivitas'
                   ? 'border-indigo-600 text-indigo-700'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -357,7 +358,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('nilai')}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
+              className={`inline-flex items-center gap-2 px-3.5 py-2.5 min-h-[40px] text-xs font-semibold border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
                 activeTab === 'nilai'
                   ? 'border-indigo-600 text-indigo-700'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -369,7 +370,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
           </div>
 
           {/* Scrollable Content Body */}
-          <div className="flex-1 overflow-y-auto eguru-scroll p-6">
+          <div className="flex-1 overflow-y-auto eguru-scroll p-4 sm:p-6">
             {activeTab === 'aktivitas' ? (
               studentJournals.length === 0 ? (
                 <div className="py-10 text-center text-sm text-slate-500">
@@ -451,8 +452,8 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                 Belum ada nilai ujian yang diinput untuk siswa ini.
               </div>
             ) : (
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
-                <table className="w-full text-left border-collapse">
+              <div className="border border-slate-200 rounded-xl overflow-x-auto eguru-scroll">
+                <table className="w-full min-w-[540px] text-left border-collapse">
                   <thead className="bg-slate-900 text-white text-xs">
                     <tr>
                       <th className="py-2.5 px-4 font-semibold">Mata Pelajaran</th>
@@ -499,8 +500,8 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
           </div>
 
           {/* Footer with Print Font & TTD/Stempel toggles */}
-          <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-700">
+          <div className="px-4 sm:px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 text-xs text-slate-700">
               <div className="flex items-center gap-1.5">
                 <span className="font-semibold text-slate-500">Format:</span>
                 {isFormatLocked ? (
@@ -527,7 +528,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                   </div>
                 )}
               </div>
-              <label className="inline-flex items-center gap-1.5 font-medium cursor-pointer">
+              <label className="inline-flex items-center gap-1.5 font-medium cursor-pointer py-1">
                 <input
                   type="checkbox"
                   checked={showTeacherSig}
@@ -536,7 +537,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                 />
                 <span>TTD Guru</span>
               </label>
-              <label className="inline-flex items-center gap-1.5 font-medium cursor-pointer">
+              <label className="inline-flex items-center gap-1.5 font-medium cursor-pointer py-1">
                 <input
                   type="checkbox"
                   checked={showPrincipalSig}
@@ -545,7 +546,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                 />
                 <span>TTD Kepsek</span>
               </label>
-              <label className="inline-flex items-center gap-1.5 font-medium cursor-pointer">
+              <label className="inline-flex items-center gap-1.5 font-medium cursor-pointer py-1">
                 <input
                   type="checkbox"
                   checked={showStamp}
@@ -556,20 +557,20 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
               </label>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 ml-auto">
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full lg:w-auto lg:ml-auto">
               <button
                 type="button"
                 onClick={handleDownloadPdf}
                 disabled={exportingPdf}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[40px] rounded-lg bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
               >
                 <FileText className="w-3.5 h-3.5" />
-                <span>{exportingPdf ? 'Membuat PDF...' : 'Unduh PDF Individu'}</span>
+                <span>{exportingPdf ? 'Membuat PDF...' : 'Unduh PDF'}</span>
               </button>
               <button
                 type="button"
                 onClick={handlePrintIndividual}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[40px] rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
               >
                 <Printer className="w-3.5 h-3.5" />
                 <span>Cetak Individu</span>
@@ -577,7 +578,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+                className="col-span-2 sm:col-span-1 px-4 py-2 min-h-[40px] rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap text-center"
               >
                 Tutup
               </button>

@@ -297,7 +297,7 @@ function buildSettingsPayload(slimSettings: SystemSettings, uid: string) {
     principalTitle: String(slimSettings.principalTitle || '').slice(0, 120),
     principalName: String(slimSettings.principalName || '').slice(0, 150),
     principalNip: String(slimSettings.principalNip || '').slice(0, 60),
-    themeId: slimSettings.themeId || 'indigo',
+    themeId: slimSettings.themeId || 'neomorphic',
     reportFontFamily: slimSettings.reportFontFamily || 'Times New Roman',
     reportPaperSize: slimSettings.reportPaperSize || 'A4',
     reportOrientation: slimSettings.reportOrientation === 'portrait' ? 'portrait' : 'landscape',

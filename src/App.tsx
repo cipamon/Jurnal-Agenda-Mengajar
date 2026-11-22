@@ -309,7 +309,7 @@ export default function App() {
     if (!db) return;
     const brand = normalizeWebBrand(db.settings);
     document.title = brand.tabTitle;
-    const effectiveTheme = localThemeOverride || db.settings.themeId || 'indigo';
+    const effectiveTheme = localThemeOverride || db.settings.themeId || 'neomorphic';
     document.documentElement.setAttribute('data-theme', effectiveTheme);
 
     let linkEl = document.querySelector<HTMLLinkElement>("link[rel='icon']");
@@ -1060,8 +1060,13 @@ export default function App() {
 
   if (!isReady || !db) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white text-sm">
-        Memuat Portal E-Guru v10.3...
+      <div className="min-h-screen bg-[linear-gradient(155deg,#f3f7ff_0%,#e6effc_52%,#dce7f8_100%)] flex flex-col items-center justify-center gap-4 text-slate-800 px-4">
+        <div className="w-16 h-16 rounded-2xl bg-white/85 backdrop-blur-md shadow-[8px_10px_24px_rgba(133,158,201,0.35),-6px_-6px_16px_rgba(255,255,255,0.95)] border border-white flex items-center justify-center">
+          <div className="w-7 h-7 rounded-full border-[3px] border-blue-600/25 border-t-blue-600 animate-spin" />
+        </div>
+        <p className="text-sm font-semibold tracking-tight text-slate-700">
+          Memuat Portal E-Guru v10.3...
+        </p>
       </div>
     );
   }
@@ -1220,8 +1225,31 @@ export default function App() {
     notify('Profil & tanggung jawab mengajar berhasil diperbarui.');
   };
 
+  const activeThemeId: ThemeId = localThemeOverride || db.settings.themeId || 'neomorphic';
+
   return (
-    <div className="eguru-app-shell min-h-screen bg-slate-50 text-slate-900">
+    <div className="eguru-app-shell min-h-screen bg-[#ebf2fc] text-slate-900 overflow-x-clip">
+      {/* Subtle Ambient 3D Depth Orbs (Non-printing decorative backdrop) */}
+      <div
+        aria-hidden="true"
+        className="no-print pointer-events-none fixed inset-0 z-0 overflow-hidden"
+      >
+        <div
+          className="absolute -top-28 -right-24 w-[420px] h-[420px] rounded-full opacity-55 blur-3xl"
+          style={{
+            background:
+              'radial-gradient(circle, rgba(59, 130, 246, 0.22) 0%, rgba(99, 102, 241, 0.08) 55%, transparent 75%)',
+          }}
+        />
+        <div
+          className="absolute -bottom-32 left-20 lg:left-72 w-[380px] h-[380px] rounded-full opacity-50 blur-3xl"
+          style={{
+            background:
+              'radial-gradient(circle, rgba(37, 99, 235, 0.18) 0%, rgba(14, 165, 233, 0.06) 55%, transparent 75%)',
+          }}
+        />
+      </div>
+
       <Sidebar
         activeMenu={activeMenu}
         onSelectMenu={setActiveMenu}
@@ -1232,6 +1260,10 @@ export default function App() {
         currentUserRole={currentUserRole}
         currentUserGender={currentUserGender}
         currentUserPhoto={currentUserPhoto}
+        periodScope={periodScope}
+        onTogglePeriodScope={() =>
+          setPeriodScope((prev) => (prev === 'active' ? 'all' : 'active'))
+        }
         onOpenProfileModal={() => setShowTeacherProfileModal(true)}
         onLogout={handleLogout}
         mobileOpen={mobileMenuOpen}
@@ -1239,10 +1271,14 @@ export default function App() {
       />
 
       {/* When StudentDetailModal is open, mark workspace no-print so Cetak Individu prints ONLY the student sheet */}
-      <div className={`lg:pl-64 flex flex-col min-h-screen ${selectedStudentModal ? 'no-print' : ''}`}>
+      <div
+        className={`relative z-10 lg:pl-64 flex flex-col min-h-screen min-w-0 ${
+          selectedStudentModal ? 'no-print' : ''
+        }`}
+      >
         <Topbar
           activeMenu={activeMenu}
-          settings={effectiveScopedSettings}
+          settings={{ ...effectiveScopedSettings, themeId: activeThemeId }}
           periodScope={periodScope}
           onTogglePeriodScope={() =>
             setPeriodScope((prev) => (prev === 'active' ? 'all' : 'active'))
@@ -1275,7 +1311,7 @@ export default function App() {
           isSyncing={isSyncing}
         />
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1440px] w-full mx-auto">
+        <main className="flex-1 min-w-0 p-3.5 sm:p-6 lg:p-8 max-w-[1440px] w-full mx-auto">
           {activeMenu === 'dashboard' && (
             <DashboardView
               students={scoped.scopedActiveStudents}
@@ -1460,18 +1496,20 @@ export default function App() {
         </main>
       </div>
 
-      {/* Clean Toast Notification */}
+      {/* Frosted Neomorphic Toast Notification */}
       {toast && (
         <div
           role="status"
-          className="no-print fixed bottom-5 right-5 z-50 max-w-sm bg-slate-900 text-white px-4 py-3 rounded-xl shadow-lg border border-slate-700 flex items-center gap-3"
+          className="no-print fixed bottom-4 left-4 right-4 sm:left-auto sm:bottom-5 sm:right-5 z-50 sm:max-w-sm bg-[#0b1630]/92 backdrop-blur-xl text-white px-4 py-3 rounded-2xl shadow-[0_18px_40px_-8px_rgba(15,23,42,0.55),0_0_24px_rgba(59,130,246,0.28)] border border-blue-400/25 flex items-center justify-between gap-3"
         >
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-          <p className="text-xs font-medium leading-snug">{toast}</p>
+          <div className="flex items-center gap-3 min-w-0">
+            <CheckCircle2 className="w-4 h-4 text-sky-400 shrink-0" />
+            <p className="text-xs font-medium leading-snug">{toast}</p>
+          </div>
           <button
             type="button"
             onClick={() => setToast(null)}
-            className="text-slate-400 hover:text-white shrink-0 cursor-pointer"
+            className="text-slate-300 hover:text-white shrink-0 min-w-[36px] min-h-[36px] -mr-1.5 flex items-center justify-center rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
             aria-label="Tutup notifikasi"
           >
             <X className="w-4 h-4" />

@@ -707,7 +707,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
       {/* ===================================================================== */}
       {!readOnly && (
       <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 bg-slate-900 text-white flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="px-4 sm:px-6 py-4 bg-slate-900 text-white flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-4">
           <div>
             <h2 className="text-base font-bold">Input Nilai per Jenis Ujian</h2>
             <p className="text-xs text-slate-300">
@@ -715,7 +715,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-4 text-xs">
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-4 text-xs">
             <div className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 tabular-nums">
               Rata-rata Live:{' '}
               <span className="font-bold text-indigo-300 text-sm ml-1">{liveStats.avg}</span>
@@ -730,7 +730,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
         </div>
 
         {/* Filter & Action Toolbar */}
-        <div className="p-5 bg-slate-50 border-b border-slate-200 flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+        <div className="p-4 sm:p-5 bg-slate-50 border-b border-slate-200 flex flex-col lg:flex-row lg:items-end justify-between gap-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 flex-1">
             <div>
               <div className="flex items-center justify-between mb-1">
@@ -800,11 +800,11 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full lg:w-auto shrink-0">
             <button
               type="button"
               onClick={handleDownloadInputTemplate}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px]"
             >
               <Download className="w-3.5 h-3.5 text-indigo-600" />
               <span>Template</span>
@@ -812,7 +812,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
             <button
               type="button"
               onClick={() => setShowInputImport((v) => !v)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px]"
             >
               <Upload className="w-3.5 h-3.5 text-indigo-300" />
               <span>{showInputImport ? 'Tutup Impor' : 'Impor'}</span>
@@ -820,7 +820,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
             <button
               type="button"
               onClick={handleExportInputGrades}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px]"
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
               <span>
@@ -833,16 +833,16 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
               <button
                 type="button"
                 onClick={() => handleDeleteInputGrades(selectedInputIds)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px]"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Hapus Terpilih ({selectedInputIds.length})</span>
+                <span>Hapus ({selectedInputIds.length})</span>
               </button>
             )}
             <button
               type="button"
               onClick={handleAutoKKM}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px]"
             >
               <Award className="w-4 h-4" />
               <span>Auto KKM {settings.kkm || 75}</span>
@@ -850,7 +850,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
             <button
               type="button"
               onClick={handleSaveInputGrades}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+              className="col-span-2 sm:col-span-1 inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[42px] sm:min-h-[40px]"
             >
               <Save className="w-4 h-4" />
               <span>Simpan Nilai</span>
@@ -918,7 +918,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
         )}
 
         {/* Marker Legend */}
-        <div className="px-5 py-2.5 bg-white border-b border-slate-200 flex flex-wrap items-center gap-4 text-xs text-slate-600">
+        <div className="px-4 sm:px-5 py-2.5 bg-white border-b border-slate-200 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-600">
           <span className="font-semibold text-slate-800">Penanda Baris:</span>
           {MARKER_KEYS.map((key) => (
             <span key={key} className="inline-flex items-center gap-1.5">
@@ -928,8 +928,163 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
           ))}
         </div>
 
-        {/* Student Score Input Table */}
-        <div className="max-h-[420px] overflow-auto eguru-scroll">
+        {/* Mobile & Tablet Student Score Card View */}
+        <div className="lg:hidden">
+          {classStudents.length === 0 ? (
+            <div className="p-10 text-center text-sm text-slate-500">
+              Belum ada siswa di kelas {selectedClass}.
+            </div>
+          ) : (
+            <>
+              <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs">
+                <label className="inline-flex items-center gap-2 font-semibold text-slate-700 cursor-pointer min-h-[34px]">
+                  <input
+                    type="checkbox"
+                    checked={
+                      classStudents.length > 0 &&
+                      classStudents.every((s) => selectedInputIds.includes(s.id))
+                    }
+                    onChange={toggleSelectAllInput}
+                    aria-label="Pilih semua siswa untuk input nilai"
+                    className="w-4 h-4 rounded border-slate-400 cursor-pointer"
+                  />
+                  <span>Pilih Semua ({classStudents.length} Siswa)</span>
+                </label>
+                {selectedInputIds.length > 0 && (
+                  <span className="font-semibold text-indigo-700 tabular-nums">
+                    {selectedInputIds.length} terpilih
+                  </span>
+                )}
+              </div>
+
+              <div className="divide-y divide-slate-200 max-h-[540px] overflow-y-auto eguru-scroll">
+                {classStudents.map((st, idx) => {
+                  const row = draftScores[st.id] ?? { score: '', note: '', marker: 'neutral' };
+                  const markerMeta = ROW_MARKER_META[row.marker];
+                  const numScore = row.score !== '' ? Number(row.score) : null;
+                  const passedKkm = numScore !== null && !Number.isNaN(numScore) && numScore >= settings.kkm;
+                  return (
+                    <div key={st.id} className={`p-3.5 space-y-2.5 ${markerMeta.rowBgClass} transition-colors`}>
+                      <div className="flex items-start justify-between gap-2.5">
+                        <div className="flex items-start gap-2.5 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={selectedInputIds.includes(st.id)}
+                            onChange={() => toggleSelectInputRow(st.id)}
+                            aria-label={`Pilih nilai ${st.name}`}
+                            className="w-4 h-4 mt-0.5 rounded border-slate-300 cursor-pointer shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <button
+                              type="button"
+                              onClick={() => onViewStudent(st)}
+                              className="text-left text-sm font-bold text-slate-900 hover:text-indigo-600 hover:underline cursor-pointer"
+                            >
+                              {idx + 1}. {st.name}
+                            </button>
+                            <p className="text-[11px] font-mono text-slate-500 tabular-nums">
+                              NIS {st.nis}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={row.score}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val !== '' && (Number(val) < 0 || Number(val) > 100)) return;
+                              setDraftScores((prev) => ({
+                                ...prev,
+                                [st.id]: { ...row, score: val },
+                              }));
+                            }}
+                            placeholder="0-100"
+                            aria-label={`Nilai ${st.name}`}
+                            className="w-20 px-2.5 py-2 text-center text-sm font-bold tabular-nums rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600 min-h-[40px]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteInputGrades([st.id])}
+                            className="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-rose-200 bg-white text-rose-700 hover:bg-rose-50 cursor-pointer shrink-0"
+                            title={`Kosongkan / hapus nilai ${st.name}`}
+                            aria-label={`Hapus nilai ${st.name}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="pl-6.5 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          {MARKER_KEYS.map((mk) => {
+                            const active = row.marker === mk;
+                            return (
+                              <button
+                                key={mk}
+                                type="button"
+                                onClick={() =>
+                                  setDraftScores((prev) => ({
+                                    ...prev,
+                                    [st.id]: { ...row, marker: mk },
+                                  }))
+                                }
+                                title={ROW_MARKER_META[mk].label}
+                                aria-label={`Tandai ${ROW_MARKER_META[mk].label}`}
+                                className={`w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-transform ${
+                                  ROW_MARKER_META[mk].dotClass
+                                } ${
+                                  active ? 'ring-2 ring-offset-2 ring-slate-900 scale-110' : 'opacity-65 hover:opacity-100'
+                                }`}
+                              />
+                            );
+                          })}
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className={`font-semibold ${markerMeta.textClass}`}>
+                            {markerMeta.label}
+                          </span>
+                          {numScore !== null && !Number.isNaN(numScore) && (
+                            <span
+                              className={`px-2 py-0.5 rounded font-semibold ${
+                                passedKkm
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}
+                            >
+                              {passedKkm ? 'Tuntas' : 'Remedial'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="pl-6.5">
+                        <input
+                          type="text"
+                          value={row.note}
+                          onChange={(e) =>
+                            setDraftScores((prev) => ({
+                              ...prev,
+                              [st.id]: { ...row, note: e.target.value },
+                            }))
+                          }
+                          placeholder="Catatan pencapaian siswa..."
+                          className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Desktop Student Score Input Table */}
+        <div className="hidden lg:block max-h-[420px] overflow-auto eguru-scroll">
           {classStudents.length === 0 ? (
             <div className="p-10 text-center text-sm text-slate-500">
               Belum ada siswa di kelas {selectedClass}.
@@ -1078,7 +1233,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
       {/* BAGIAN 2: RIWAYAT MATRIKS NILAI PER KELAS (LEGER MENDATAR) */}
       {/* ===================================================================== */}
       <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="px-4 sm:px-6 py-4 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3.5 sm:gap-4">
           <div>
             <h3 className="text-base font-bold text-slate-900">
               Riwayat Matriks Nilai per Kelas (Leger Mendatar)
@@ -1092,14 +1247,14 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 sm:gap-2.5">
             <select
               value={matrixClass}
               onChange={(e) => {
                 setMatrixClass(e.target.value);
                 setMatrixEdits({});
               }}
-              className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              className="px-3 py-2 sm:py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600 min-h-[40px] sm:min-h-0"
             >
               {settings.classes.map((cls) => (
                 <option key={cls} value={cls}>
@@ -1114,7 +1269,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
                 setMatrixSubject(e.target.value);
                 setMatrixEdits({});
               }}
-              className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              className="px-3 py-2 sm:py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600 min-h-[40px] sm:min-h-0"
             >
               {settings.subjects.map((subj) => (
                 <option key={subj} value={subj}>
@@ -1128,7 +1283,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
                 <button
                   type="button"
                   onClick={handleDownloadMatrixTemplate}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px] sm:min-h-0"
                 >
                   <Download className="w-3.5 h-3.5 text-indigo-600" />
                   <span>Template</span>
@@ -1137,7 +1292,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowMatrixImport((v) => !v)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px] sm:min-h-0"
                 >
                   <Upload className="w-3.5 h-3.5 text-indigo-300" />
                   <span>{showMatrixImport ? 'Tutup Impor' : 'Impor'}</span>
@@ -1148,7 +1303,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
             <button
               type="button"
               onClick={handleExportMatrix}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px] sm:min-h-0"
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
               <span>
@@ -1162,10 +1317,10 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
               <button
                 type="button"
                 onClick={handleDeleteMatrixSelected}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px] sm:min-h-0"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Hapus Terpilih ({selectedMatrixIds.length})</span>
+                <span>Hapus ({selectedMatrixIds.length})</span>
               </button>
             )}
 
@@ -1174,7 +1329,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
                 type="button"
                 onClick={handleSaveMatrixEdits}
                 disabled={pendingMatrixCount === 0}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                className={`col-span-2 sm:col-span-1 inline-flex items-center justify-center gap-1.5 px-3.5 py-2 sm:py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer min-h-[40px] sm:min-h-0 ${
                   pendingMatrixCount > 0
                     ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
                     : 'bg-slate-100 text-slate-400 cursor-not-allowed'
@@ -1257,7 +1412,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
             <table className="w-full text-left border-collapse">
               <thead className="sticky top-0 z-20 bg-slate-900 text-white text-xs">
                 <tr>
-                  <th className="sticky left-0 z-30 bg-slate-900 py-2.5 px-3 w-10 text-center border-r border-slate-800">
+                  <th className="sm:sticky sm:left-0 z-30 bg-slate-900 py-2.5 px-2.5 sm:px-3 w-10 text-center border-r border-slate-800">
                     <input
                       type="checkbox"
                       checked={
@@ -1269,10 +1424,10 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
                       className="rounded border-slate-400 cursor-pointer"
                     />
                   </th>
-                  <th className="sticky left-10 z-30 bg-slate-900 py-2.5 px-3 font-semibold w-10 text-center border-r border-slate-800">
+                  <th className="sticky left-0 sm:left-10 z-30 bg-slate-900 py-2.5 px-2 sm:px-3 font-semibold w-9 sm:w-10 text-center border-r border-slate-800">
                     No
                   </th>
-                  <th className="sticky left-20 z-30 bg-slate-900 py-2.5 px-3 font-semibold min-w-[180px] border-r border-slate-800">
+                  <th className="sticky left-9 sm:left-20 z-30 bg-slate-900 py-2.5 px-2.5 sm:px-3 font-semibold min-w-[130px] max-w-[145px] sm:min-w-[180px] sm:max-w-none border-r border-slate-800">
                     Nama Siswa
                   </th>
                   {settings.examTypes.map((ex) => {
@@ -1280,7 +1435,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
                     return (
                       <th
                         key={ex}
-                        className="py-2.5 px-3 font-semibold text-center min-w-[90px] border-r border-slate-800"
+                        className="py-2.5 px-3 font-semibold text-center min-w-[82px] sm:min-w-[90px] border-r border-slate-800"
                       >
                         <div>{ex}</div>
                         {settings.useWeightedAverage && weight !== undefined && (
@@ -1321,7 +1476,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
 
                   return (
                     <tr key={st.id} className="hover:bg-slate-50">
-                      <td className="sticky left-0 z-10 bg-white py-2 px-3 text-center border-r border-slate-200">
+                      <td className="sm:sticky sm:left-0 z-10 bg-white py-2 px-2.5 sm:px-3 text-center border-r border-slate-200">
                         <input
                           type="checkbox"
                           checked={selectedMatrixIds.includes(st.id)}
@@ -1330,15 +1485,15 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
                           className="rounded border-slate-300 cursor-pointer"
                         />
                       </td>
-                      <td className="sticky left-10 z-10 bg-white py-2 px-3 text-center text-slate-500 tabular-nums border-r border-slate-200">
+                      <td className="sticky left-0 sm:left-10 z-10 bg-white py-2 px-2 sm:px-3 text-center text-slate-500 tabular-nums border-r border-slate-200">
                         {idx + 1}
                       </td>
-                      <td className="sticky left-20 z-10 bg-white py-2 px-3 font-medium text-slate-900 border-r border-slate-200 whitespace-nowrap">
+                      <td className="sticky left-9 sm:left-20 z-10 bg-white py-2 px-2.5 sm:px-3 font-medium text-slate-900 border-r border-slate-200 whitespace-nowrap min-w-[130px] max-w-[145px] sm:min-w-[180px] sm:max-w-none">
                         <button
                           type="button"
                           onClick={() => onViewStudent(st)}
-                          className="text-left font-semibold text-slate-900 hover:text-indigo-600 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer"
-                          title="Klik untuk lihat info siswa & aktivitas kelas"
+                          className="text-left font-semibold text-slate-900 hover:text-indigo-600 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer truncate block max-w-[125px] sm:max-w-none"
+                          title={`Klik untuk lihat info siswa ${st.name}`}
                         >
                           {st.name}
                         </button>
@@ -1359,7 +1514,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
                               onChange={(e) => handleMatrixCellChange(st.id, ex, e.target.value)}
                               placeholder="-"
                               aria-label={`Nilai ${ex} untuk ${st.name}`}
-                              className={`w-16 h-7 text-center font-semibold tabular-nums rounded border focus:outline-none focus:ring-2 focus:ring-indigo-600 disabled:cursor-default ${
+                              className={`w-14 sm:w-16 h-8 sm:h-7 text-center font-semibold tabular-nums rounded border focus:outline-none focus:ring-2 focus:ring-indigo-600 disabled:cursor-default ${
                                 isDirty
                                   ? 'border-indigo-600 bg-indigo-50 text-indigo-900'
                                   : lowScore

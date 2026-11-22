@@ -496,98 +496,98 @@ export const StaffTeachersView: React.FC<StaffTeachersViewProps> = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       {/* KPI Summary */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border border-slate-200 p-5 flex items-center justify-between">
-          <div>
-            <p className="text-xs font-medium text-slate-500">Total Guru &amp; Karyawan</p>
-            <p className="mt-1 text-2xl font-bold text-slate-900 tabular-nums">{kpi.total}</p>
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[11px] sm:text-xs font-medium text-slate-500">Total Guru &amp; Karyawan</p>
+            <p className="mt-1 text-xl sm:text-2xl font-bold text-slate-900 tabular-nums">{kpi.total}</p>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-            <Users className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-slate-200 p-5 flex items-center justify-between">
-          <div>
-            <p className="text-xs font-medium text-slate-500">Guru &amp; Wali Kelas</p>
-            <p className="mt-1 text-2xl font-bold text-indigo-700 tabular-nums">{kpi.teachers}</p>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-            <GraduationCap className="w-5 h-5" />
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+            <Users className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5 flex items-center justify-between">
-          <div>
-            <p className="text-xs font-medium text-slate-500">Karyawan, Kepsek &amp; Admin</p>
-            <p className="mt-1 text-2xl font-bold text-slate-900 tabular-nums">{kpi.staffAndExec}</p>
+        <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[11px] sm:text-xs font-medium text-slate-500">Guru &amp; Wali Kelas</p>
+            <p className="mt-1 text-xl sm:text-2xl font-bold text-indigo-700 tabular-nums">{kpi.teachers}</p>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
-            <Briefcase className="w-5 h-5" />
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+            <GraduationCap className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5 flex items-center justify-between">
-          <div>
-            <p className="text-xs font-medium text-slate-500">Status Akun Aktif</p>
-            <p className="mt-1 text-2xl font-bold text-emerald-700 tabular-nums">{kpi.activeCount}</p>
+        <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[11px] sm:text-xs font-medium text-slate-500">Karyawan, Kepsek &amp; Admin</p>
+            <p className="mt-1 text-xl sm:text-2xl font-bold text-slate-900 tabular-nums">{kpi.staffAndExec}</p>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-            <UserCheck className="w-5 h-5" />
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+            <Briefcase className="w-4 h-4 sm:w-5 sm:h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[11px] sm:text-xs font-medium text-slate-500">Status Akun Aktif</p>
+            <p className="mt-1 text-xl sm:text-2xl font-bold text-emerald-700 tabular-nums">{kpi.activeCount}</p>
+          </div>
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+            <UserCheck className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
         </div>
       </section>
 
       {/* Main Directory Table */}
       <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 bg-slate-900 text-white flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="px-4 sm:px-6 py-4 bg-slate-900 text-white flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <h2 className="text-base font-bold">Direktori Khusus Data Guru &amp; Karyawan</h2>
-            <p className="text-xs text-slate-300">
+            <p className="text-xs text-slate-300 mt-0.5">
               Kelola biodata pendidik, tenaga kependidikan, pembagian kelas/mapel, serta cetak riwayat mengajar &amp; penilaian tiap guru
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={handleDownloadTemplate}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-white cursor-pointer whitespace-nowrap"
+              className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-white cursor-pointer whitespace-nowrap"
             >
-              <Download className="w-3.5 h-3.5 text-indigo-300" />
+              <Download className="w-3.5 h-3.5 text-indigo-300 shrink-0" />
               <span>Template Excel</span>
             </button>
             <button
               type="button"
               onClick={() => setShowImport((v) => !v)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-white cursor-pointer whitespace-nowrap"
+              className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-white cursor-pointer whitespace-nowrap"
             >
-              <Upload className="w-3.5 h-3.5 text-indigo-300" />
+              <Upload className="w-3.5 h-3.5 text-indigo-300 shrink-0" />
               <span>{showImport ? 'Tutup Impor' : 'Impor Excel'}</span>
             </button>
             <button
               type="button"
               onClick={handleExport}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-xs font-semibold text-white cursor-pointer whitespace-nowrap"
+              className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-xs font-semibold text-white cursor-pointer whitespace-nowrap"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <FileSpreadsheet className="w-3.5 h-3.5 shrink-0" />
               <span>{selectedIds.length > 0 ? `Ekspor (${selectedIds.length})` : 'Ekspor Excel'}</span>
             </button>
             <button
               type="button"
               onClick={openCreateModal}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white cursor-pointer whitespace-nowrap"
+              className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white cursor-pointer whitespace-nowrap"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Tambah Guru / Karyawan</span>
+              <Plus className="w-3.5 h-3.5 shrink-0" />
+              <span>Tambah Pegawai</span>
             </button>
           </div>
         </div>
 
         {/* Import Panel */}
         {showImport && (
-          <div className="p-5 bg-indigo-50/40 border-b border-indigo-200 space-y-3">
+          <div className="p-4 sm:p-5 bg-indigo-50/40 border-b border-indigo-200 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-bold text-slate-900">Impor Massal Data Guru &amp; Karyawan</p>
@@ -595,7 +595,7 @@ export const StaffTeachersView: React.FC<StaffTeachersViewProps> = ({
                   Unggah file .XLSX/.CSV sesuai template atau tempel data: Nama, NIP, Email, Password, Role, L/P, Sekolah, Kelas, Mapel.
                 </p>
               </div>
-              <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-300 bg-white text-indigo-700 text-xs font-semibold cursor-pointer">
+              <label className="inline-flex items-center gap-1.5 min-h-[38px] px-3 py-1.5 rounded-lg border border-indigo-300 bg-white text-indigo-700 text-xs font-semibold cursor-pointer">
                 <Upload className="w-3.5 h-3.5" />
                 <span>Pilih File Excel / CSV</span>
                 <input
@@ -618,7 +618,7 @@ export const StaffTeachersView: React.FC<StaffTeachersViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShowImport(false)}
-                className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 cursor-pointer"
+                className="min-h-[38px] px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 cursor-pointer"
               >
                 Tutup
               </button>
@@ -626,7 +626,7 @@ export const StaffTeachersView: React.FC<StaffTeachersViewProps> = ({
                 type="button"
                 onClick={handlePasteImport}
                 disabled={!pasteText.trim()}
-                className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold cursor-pointer"
+                className="min-h-[38px] px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold cursor-pointer"
               >
                 Impor Teks
               </button>
@@ -635,48 +635,50 @@ export const StaffTeachersView: React.FC<StaffTeachersViewProps> = ({
         )}
 
         {/* Filter & Search Bar */}
-        <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[260px]">
-            <div className="relative flex-1 min-w-[200px] max-w-sm">
+        <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-3">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2.5 flex-1">
+            <div className="relative w-full sm:flex-1 sm:min-w-[200px] sm:max-w-sm">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Cari nama, NIP, atau email..."
-                className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                className="w-full min-h-[40px] pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
               />
             </div>
 
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value as 'ALL' | UserRole)}
-              className="px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
-            >
-              <option value="ALL">Semua Jabatan / Role</option>
-              <option value="guru">Guru Mapel</option>
-              <option value="wali_kelas">Wali Kelas</option>
-              <option value="kepala_sekolah">Kepala Sekolah</option>
-              <option value="karyawan">Karyawan / Staff</option>
-              <option value="admin">Admin Sistem</option>
-            </select>
+            <div className="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value as 'ALL' | UserRole)}
+                className="w-full sm:w-auto min-h-[40px] px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              >
+                <option value="ALL">Semua Jabatan / Role</option>
+                <option value="guru">Guru Mapel</option>
+                <option value="wali_kelas">Wali Kelas</option>
+                <option value="kepala_sekolah">Kepala Sekolah</option>
+                <option value="karyawan">Karyawan / Staff</option>
+                <option value="admin">Admin Sistem</option>
+              </select>
 
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as 'ALL' | 'aktif' | 'nonaktif')}
-              className="px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
-            >
-              <option value="ALL">Semua Status</option>
-              <option value="aktif">Aktif</option>
-              <option value="nonaktif">Nonaktif</option>
-            </select>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as 'ALL' | 'aktif' | 'nonaktif')}
+                className="w-full sm:w-auto min-h-[40px] px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              >
+                <option value="ALL">Semua Status</option>
+                <option value="aktif">Aktif</option>
+                <option value="nonaktif">Nonaktif</option>
+              </select>
+            </div>
           </div>
 
           {selectedIds.length > 0 && (
             <button
               type="button"
               onClick={handleBulkDelete}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+              className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span>Hapus Terpilih ({selectedIds.length})</span>
@@ -684,8 +686,167 @@ export const StaffTeachersView: React.FC<StaffTeachersViewProps> = ({
           )}
         </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto eguru-scroll">
+        {/* Mobile & Tablet Card List View */}
+        <div className="lg:hidden">
+          {filteredUsers.length > 0 && (
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
+              <label className="inline-flex items-center gap-2.5 text-xs font-semibold text-slate-700 cursor-pointer min-h-[36px]">
+                <input
+                  type="checkbox"
+                  checked={
+                    filteredUsers.length > 0 &&
+                    filteredUsers.every((u) => selectedIds.includes(u.id))
+                  }
+                  onChange={toggleSelectAll}
+                  className="w-4 h-4 rounded border-slate-300 cursor-pointer"
+                />
+                <span>Pilih Semua ({filteredUsers.length})</span>
+              </label>
+              {selectedIds.length > 0 && (
+                <span className="text-[11px] font-semibold text-indigo-700 tabular-nums">
+                  {selectedIds.length} terpilih
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="divide-y divide-slate-200">
+            {filteredUsers.length === 0 ? (
+              <div className="py-10 px-4 text-center text-slate-500 text-xs">
+                Tidak ada data guru atau karyawan yang sesuai dengan filter.
+              </div>
+            ) : (
+              filteredUsers.map((u) => {
+                const isCurrent = u.email.toLowerCase() === currentUserEmail.toLowerCase();
+                const isTeaching = u.role === 'guru' || u.role === 'wali_kelas';
+                const stats = activityStatsByUser.get(u.id) || { journalCount: 0, gradeCount: 0 };
+                const checked = selectedIds.includes(u.id);
+                return (
+                  <div
+                    key={u.id}
+                    className={`p-4 space-y-3 ${checked ? 'bg-indigo-50/40' : 'bg-white'}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleSelect(u.id)}
+                        aria-label={`Pilih ${u.name}`}
+                        className="mt-2 w-4 h-4 rounded border-slate-300 cursor-pointer shrink-0"
+                      />
+                      <img
+                        src={getUserPhotoUrl(u)}
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = getUserPhotoUrl({
+                            photoDataUrl: '',
+                            role: u.role,
+                            gender: u.gender,
+                          });
+                        }}
+                        alt={u.name}
+                        className="w-11 h-11 rounded-xl object-cover object-top border border-slate-200 bg-white shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-bold text-sm text-slate-900 truncate">
+                              {u.name}{' '}
+                              {isCurrent && (
+                                <span className="text-[11px] font-semibold text-indigo-600">(Anda)</span>
+                              )}
+                            </p>
+                            <p className="text-[11px] font-mono text-slate-500 truncate">
+                              NIP. {u.nip} · {u.gender === 'L' ? 'Laki-laki' : 'Perempuan'}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleActive(u)}
+                            className={`px-2.5 py-1 rounded-md border text-[11px] font-semibold cursor-pointer shrink-0 ${
+                              u.active
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-slate-100 text-slate-500 border-slate-200'
+                            }`}
+                          >
+                            {u.active ? 'Aktif' : 'Nonaktif'}
+                          </button>
+                        </div>
+
+                        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+                          <span className="font-semibold text-indigo-700">
+                            {USER_ROLE_LABELS[u.role]}
+                          </span>
+                          <span className="text-slate-300">·</span>
+                          <span className="font-mono text-slate-600 truncate">{u.email}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pl-7 space-y-1 text-xs text-slate-600">
+                      {isTeaching ? (
+                        <>
+                          <div>
+                            <span className="font-semibold text-slate-800">Kelas:</span>{' '}
+                            {u.assignedClasses && u.assignedClasses.length > 0
+                              ? u.assignedClasses.join(', ')
+                              : 'Semua Kelas'}
+                          </div>
+                          <div>
+                            <span className="font-semibold text-slate-800">Mapel:</span>{' '}
+                            {u.assignedSubjects && u.assignedSubjects.length > 0
+                              ? u.assignedSubjects.join(', ')
+                              : 'Semua Mapel'}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-slate-400">Seluruh Unit Sekolah</div>
+                      )}
+                      <div className="flex items-center gap-3 pt-0.5 text-[11px] text-slate-500 tabular-nums">
+                        <span className="font-semibold text-slate-700">
+                          {stats.journalCount} Jurnal
+                        </span>
+                        <span>·</span>
+                        <span>{stats.gradeCount} Nilai Terinput</span>
+                      </div>
+                    </div>
+
+                    <div className="pl-7 flex flex-wrap items-center gap-2 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => onPrintTeacherHistory(u.id)}
+                        className="flex-1 min-w-[90px] min-h-[38px] inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 text-xs font-semibold cursor-pointer"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>Riwayat</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(u)}
+                        className="flex-1 min-w-[80px] min-h-[38px] inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-100 text-xs font-semibold cursor-pointer"
+                      >
+                        <FileEdit className="w-3.5 h-3.5" />
+                        <span>Edit</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteOne(u)}
+                        className="min-h-[38px] min-w-[40px] inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-semibold cursor-pointer"
+                        aria-label={`Hapus ${u.name}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Desktop Table */}
+        <div className="hidden lg:block overflow-x-auto eguru-scroll">
           <table className="w-full text-left border-collapse">
             <thead className="bg-slate-900 text-white text-xs">
               <tr>
@@ -849,30 +1010,30 @@ export const StaffTeachersView: React.FC<StaffTeachersViewProps> = ({
       {/* Pop-up Form Tambah / Edit Guru & Karyawan */}
       {formOpen && (
         <div
-          className="no-print fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-[1px]"
+          className="no-print fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-950/60 backdrop-blur-[1px]"
           onClick={() => setFormOpen(false)}
           role="dialog"
           aria-modal="true"
         >
           <div
-            className="w-full max-w-3xl bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+            className="w-full max-w-3xl bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92dvh]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between gap-3">
-              <h3 className="text-base font-bold">
+            <div className="px-4 sm:px-6 py-3.5 sm:py-4 bg-slate-900 text-white flex items-center justify-between gap-3">
+              <h3 className="text-sm sm:text-base font-bold truncate">
                 {editingId ? 'Edit Data Guru / Karyawan' : 'Tambah Data Guru / Karyawan Baru'}
               </h3>
               <button
                 type="button"
                 onClick={() => setFormOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+                className="min-w-[40px] min-h-[40px] flex items-center justify-center -mr-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer shrink-0"
                 aria-label="Tutup form pegawai"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveForm} className="p-6 space-y-5 overflow-y-auto eguru-scroll">
+            <form onSubmit={handleSaveForm} className="p-4 sm:p-6 space-y-5 overflow-y-auto eguru-scroll">
               <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
                   <img
@@ -1149,17 +1310,17 @@ export const StaffTeachersView: React.FC<StaffTeachersViewProps> = ({
                 </div>
               )}
 
-              <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+              <div className="pt-3 border-t border-slate-200 flex flex-col-reverse sm:flex-row justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setFormOpen(false)}
-                  className="px-4 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                  className="w-full sm:w-auto min-h-[42px] px-4 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+                  className="w-full sm:w-auto min-h-[42px] px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
                 >
                   {editingId ? 'Simpan Perubahan' : 'Tambahkan Pegawai'}
                 </button>

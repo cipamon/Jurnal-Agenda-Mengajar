@@ -164,18 +164,18 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
       className={
         isPage
           ? 'w-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col'
-          : 'w-full max-w-3xl bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]'
+          : 'w-full max-w-3xl bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92dvh]'
       }
       onClick={isPage ? undefined : (e) => e.stopPropagation()}
     >
       {/* Header */}
-      <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between gap-4">
+      <div className="px-4 py-3.5 sm:px-6 sm:py-4 bg-slate-900 text-white flex items-center justify-between gap-3 sm:gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-10 h-10 rounded-lg bg-indigo-600/30 border border-indigo-400/40 flex items-center justify-center shrink-0">
             <UserCheck className="w-5 h-5 text-indigo-300" />
           </div>
           <div className="min-w-0">
-            <h2 id="teacher-profile-modal-title" className="text-base font-bold text-white truncate">
+            <h2 id="teacher-profile-modal-title" className="text-sm sm:text-base font-bold text-white truncate">
               Profil {USER_ROLE_LABELS[currentUserRole]} &amp; Tanggung Jawab Mengajar
             </h2>
             <p className="text-xs text-slate-300 truncate">
@@ -187,7 +187,7 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer shrink-0"
+            className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer shrink-0"
             aria-label="Tutup pop-up profil guru"
           >
             <X className="w-5 h-5" />
@@ -198,7 +198,7 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
         {/* Form Body */}
         <form
           onSubmit={handleSubmit}
-          className={isPage ? 'p-6 space-y-5' : 'p-6 space-y-5 overflow-y-auto eguru-scroll'}
+          className={isPage ? 'p-4 sm:p-6 space-y-5' : 'p-4 sm:p-6 space-y-5 overflow-y-auto eguru-scroll'}
         >
           {error && (
             <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700">
@@ -232,7 +232,7 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
                     )}
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
-                    <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer">
+                    <label className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[38px] rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer">
                       <ImagePlus className="w-3.5 h-3.5" />
                       <span>{hasRealPhoto(photoDataUrl) ? 'Ganti File Foto' : 'Unggah Foto'}</span>
                       <input
@@ -246,7 +246,7 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
                       <button
                         type="button"
                         onClick={() => setPhotoDataUrl('')}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-rose-200 bg-white text-xs font-medium text-rose-700 hover:bg-rose-50 cursor-pointer"
+                        className="inline-flex items-center gap-1 px-2.5 py-2 min-h-[38px] rounded-lg border border-rose-200 bg-white text-xs font-medium text-rose-700 hover:bg-rose-50 cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                         <span>Hapus Foto Asli</span>
@@ -488,14 +488,14 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
           </div>
 
           {/* Actions Footer */}
-          <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+          <div className="pt-4 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             {currentUserRole === 'admin' && (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {!confirmReset ? (
                   <button
                     type="button"
                     onClick={() => setConfirmReset(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-semibold cursor-pointer whitespace-nowrap"
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[40px] rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-semibold cursor-pointer whitespace-nowrap"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
                     <span>Reset Data Demo</span>
@@ -509,7 +509,7 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
                         onResetDemoData();
                         if (variant === 'modal') onClose?.();
                       }}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[40px] rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
                       <span>Konfirmasi Reset Semua Data</span>
@@ -517,7 +517,7 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setConfirmReset(false)}
-                      className="px-2.5 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                      className="px-3 py-2 min-h-[40px] rounded-lg border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
                     >
                       Batal
                     </button>
@@ -526,12 +526,12 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
               </div>
             )}
 
-            <div className="flex flex-wrap items-center gap-2 ml-auto">
+            <div className="flex items-center gap-2 w-full sm:w-auto sm:ml-auto">
               {!isPage && onClose && (
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                  className="flex-1 sm:flex-none px-4 py-2 min-h-[40px] rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer text-center"
                 >
                   Batal
                 </button>
@@ -539,7 +539,7 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
 
               <button
                 type="submit"
-                className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-5 py-2 min-h-[40px] rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
               >
                 <Save className="w-4 h-4" />
                 <span>Simpan Profil</span>
@@ -556,7 +556,7 @@ export const TeacherProfileModal: React.FC<TeacherProfileModalProps> = ({
 
   return (
     <div
-      className="no-print fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-[1px]"
+      className="no-print fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-950/60 backdrop-blur-[1px]"
       onClick={onClose}
       role="dialog"
       aria-modal="true"

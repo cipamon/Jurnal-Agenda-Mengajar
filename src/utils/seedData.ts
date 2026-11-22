@@ -20,7 +20,7 @@ export function createDefaultSettings(overrides?: Partial<SystemSettings>): Syst
     principalTitle: 'Kepala Sekolah',
     principalName: 'Drs. H. Ahmad Fauzi, M.Pd.',
     principalNip: '19680412 199403 1 008',
-    themeId: 'indigo',
+    themeId: 'neomorphic',
     reportFontFamily: 'Times New Roman',
     reportPaperSize: 'A4',
     reportOrientation: 'landscape',

@@ -1,18 +1,66 @@
 @import "tailwindcss";
 
 @layer base {
-  :root {
+  :root,
+  [data-theme="neomorphic"] {
     --font-display: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
     --font-sans: 'DM Sans', system-ui, -apple-system, sans-serif;
     --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
 
+    --eguru-primary: #2563eb;
+    --eguru-primary-hover: #1d4ed8;
+    --eguru-secondary: #4338ca;
+    --eguru-soft: rgba(219, 234, 254, 0.72);
+    --eguru-soft-text: #1d4ed8;
+    --eguru-border: rgba(96, 165, 250, 0.55);
+    --eguru-glow: rgba(37, 99, 235, 0.36);
+    --eguru-glow-soft: rgba(59, 130, 246, 0.18);
+
+    --eguru-sidebar-bg: #0b1630;
+    --eguru-sidebar-bg-end: #102147;
+    --eguru-sidebar-border: rgba(148, 184, 248, 0.16);
+
+    --eguru-hero-from: #217bfe;
+    --eguru-hero-via: #1d5ef2;
+    --eguru-hero-to: #3f3be6;
+
+    --neo-canvas: linear-gradient(155deg, #f3f7ff 0%, #e7effc 52%, #dce7f8 100%);
+    --neo-surface: rgba(255, 255, 255, 0.84);
+    --neo-surface-strong: rgba(255, 255, 255, 0.94);
+    --neo-tray: rgba(235, 243, 255, 0.78);
+    --neo-input-bg: rgba(243, 248, 255, 0.9);
+    --neo-border-outer: rgba(163, 189, 230, 0.36);
+    --neo-border-highlight: rgba(255, 255, 255, 0.92);
+
+    --neo-shadow-card:
+      10px 14px 30px -8px rgba(133, 158, 201, 0.34),
+      -6px -6px 18px rgba(255, 255, 255, 0.92),
+      inset 0 1px 0 rgba(255, 255, 255, 0.95);
+    --neo-shadow-raised:
+      4px 6px 14px rgba(140, 164, 206, 0.28),
+      -4px -4px 12px rgba(255, 255, 255, 0.92),
+      inset 0 1px 0 rgba(255, 255, 255, 0.92);
+    --neo-shadow-inset:
+      inset 3px 3px 7px rgba(173, 193, 224, 0.42),
+      inset -3px -3px 7px rgba(255, 255, 255, 0.95);
+    --neo-shadow-cta:
+      0 10px 24px -6px var(--eguru-glow),
+      0 3px 8px rgba(37, 99, 235, 0.2),
+      inset 0 1px 1px rgba(255, 255, 255, 0.36);
+  }
+
+  [data-theme="indigo"] {
     --eguru-primary: #4f46e5;
     --eguru-primary-hover: #4338ca;
-    --eguru-soft: #eef2ff;
+    --eguru-secondary: #6d28d9;
+    --eguru-soft: rgba(238, 242, 255, 0.82);
     --eguru-soft-text: #4338ca;
-    --eguru-border: #c7d2fe;
+    --eguru-border: rgba(165, 180, 252, 0.65);
+    --eguru-glow: rgba(79, 70, 229, 0.34);
+    --eguru-glow-soft: rgba(99, 102, 241, 0.18);
     --eguru-sidebar-bg: #0f172a;
-    --eguru-sidebar-border: #1e293b;
+    --eguru-sidebar-bg-end: #172342;
+    --eguru-sidebar-border: rgba(148, 163, 184, 0.16);
     --eguru-hero-from: #4f46e5;
     --eguru-hero-via: #4338ca;
     --eguru-hero-to: #6d28d9;
@@ -21,11 +69,15 @@
   [data-theme="emerald"] {
     --eguru-primary: #059669;
     --eguru-primary-hover: #047857;
-    --eguru-soft: #ecfdf5;
+    --eguru-secondary: #0f766e;
+    --eguru-soft: rgba(236, 253, 245, 0.85);
     --eguru-soft-text: #047857;
-    --eguru-border: #a7f3d0;
+    --eguru-border: rgba(110, 231, 183, 0.65);
+    --eguru-glow: rgba(5, 150, 105, 0.32);
+    --eguru-glow-soft: rgba(16, 185, 129, 0.16);
     --eguru-sidebar-bg: #064e3b;
-    --eguru-sidebar-border: #065f46;
+    --eguru-sidebar-bg-end: #07382b;
+    --eguru-sidebar-border: rgba(167, 243, 208, 0.16);
     --eguru-hero-from: #059669;
     --eguru-hero-via: #047857;
     --eguru-hero-to: #0f766e;
@@ -34,11 +86,15 @@
   [data-theme="teal"] {
     --eguru-primary: #0d9488;
     --eguru-primary-hover: #0f766e;
-    --eguru-soft: #f0fdfa;
+    --eguru-secondary: #0284c7;
+    --eguru-soft: rgba(240, 253, 250, 0.85);
     --eguru-soft-text: #0f766e;
-    --eguru-border: #99f6e4;
+    --eguru-border: rgba(94, 234, 212, 0.65);
+    --eguru-glow: rgba(13, 148, 136, 0.32);
+    --eguru-glow-soft: rgba(20, 184, 166, 0.16);
     --eguru-sidebar-bg: #0f293a;
-    --eguru-sidebar-border: #164e63;
+    --eguru-sidebar-bg-end: #0b1f2d;
+    --eguru-sidebar-border: rgba(153, 246, 228, 0.15);
     --eguru-hero-from: #0d9488;
     --eguru-hero-via: #0284c7;
     --eguru-hero-to: #0369a1;
@@ -47,11 +103,15 @@
   [data-theme="amber"] {
     --eguru-primary: #d97706;
     --eguru-primary-hover: #b45309;
-    --eguru-soft: #fffbeb;
+    --eguru-secondary: #b45309;
+    --eguru-soft: rgba(255, 251, 235, 0.85);
     --eguru-soft-text: #b45309;
-    --eguru-border: #fde68a;
+    --eguru-border: rgba(252, 211, 77, 0.65);
+    --eguru-glow: rgba(217, 119, 6, 0.32);
+    --eguru-glow-soft: rgba(245, 158, 11, 0.16);
     --eguru-sidebar-bg: #271a0c;
-    --eguru-sidebar-border: #451a03;
+    --eguru-sidebar-bg-end: #1c1208;
+    --eguru-sidebar-border: rgba(253, 230, 138, 0.14);
     --eguru-hero-from: #d97706;
     --eguru-hero-via: #b45309;
     --eguru-hero-to: #92400e;
@@ -60,11 +120,15 @@
   [data-theme="rose"] {
     --eguru-primary: #e11d48;
     --eguru-primary-hover: #be123c;
-    --eguru-soft: #fff1f2;
+    --eguru-secondary: #9f1239;
+    --eguru-soft: rgba(255, 241, 242, 0.85);
     --eguru-soft-text: #be123c;
-    --eguru-border: #fecdd3;
+    --eguru-border: rgba(253, 164, 175, 0.65);
+    --eguru-glow: rgba(225, 29, 72, 0.32);
+    --eguru-glow-soft: rgba(244, 63, 94, 0.16);
     --eguru-sidebar-bg: #2d0c18;
-    --eguru-sidebar-border: #4c0519;
+    --eguru-sidebar-bg-end: #1e0710;
+    --eguru-sidebar-border: rgba(254, 205, 211, 0.14);
     --eguru-hero-from: #e11d48;
     --eguru-hero-via: #be123c;
     --eguru-hero-to: #9f1239;
@@ -73,38 +137,116 @@
   [data-theme="slate"] {
     --eguru-primary: #334155;
     --eguru-primary-hover: #1e293b;
-    --eguru-soft: #f1f5f9;
+    --eguru-secondary: #0f172a;
+    --eguru-soft: rgba(241, 245, 249, 0.88);
     --eguru-soft-text: #1e293b;
-    --eguru-border: #cbd5e1;
+    --eguru-border: rgba(148, 163, 184, 0.55);
+    --eguru-glow: rgba(51, 65, 85, 0.28);
+    --eguru-glow-soft: rgba(71, 85, 105, 0.15);
     --eguru-sidebar-bg: #0f172a;
-    --eguru-sidebar-border: #1e293b;
+    --eguru-sidebar-bg-end: #090e1a;
+    --eguru-sidebar-border: rgba(148, 163, 184, 0.14);
     --eguru-hero-from: #334155;
     --eguru-hero-via: #1e293b;
     --eguru-hero-to: #0f172a;
   }
 
+  [data-theme="neomorphic_dark"] {
+    --eguru-primary: #3b82f6;
+    --eguru-primary-hover: #2563eb;
+    --eguru-secondary: #4f46e5;
+    --eguru-soft: rgba(59, 130, 246, 0.18);
+    --eguru-soft-text: #93c5fd;
+    --eguru-border: rgba(59, 130, 246, 0.45);
+    --eguru-glow: rgba(59, 130, 246, 0.44);
+    --eguru-glow-soft: rgba(59, 130, 246, 0.22);
+
+    --eguru-sidebar-bg: #060d1f;
+    --eguru-sidebar-bg-end: #0a1530;
+    --eguru-sidebar-border: rgba(96, 165, 250, 0.14);
+
+    --eguru-hero-from: #1d4ed8;
+    --eguru-hero-via: #1e40af;
+    --eguru-hero-to: #312e81;
+
+    --neo-canvas: linear-gradient(155deg, #080f1f 0%, #0d1831 54%, #070d1b 100%);
+    --neo-surface: rgba(17, 29, 55, 0.88);
+    --neo-surface-strong: rgba(19, 32, 61, 0.96);
+    --neo-tray: rgba(11, 20, 41, 0.85);
+    --neo-input-bg: rgba(9, 17, 36, 0.9);
+    --neo-border-outer: rgba(96, 165, 250, 0.18);
+    --neo-border-highlight: rgba(147, 197, 253, 0.14);
+
+    --neo-shadow-card:
+      10px 14px 30px -4px rgba(2, 6, 18, 0.72),
+      -5px -5px 16px rgba(40, 68, 120, 0.2),
+      inset 0 1px 0 rgba(147, 197, 253, 0.14);
+    --neo-shadow-raised:
+      4px 6px 14px rgba(2, 6, 18, 0.65),
+      -3px -3px 10px rgba(44, 74, 130, 0.18),
+      inset 0 1px 0 rgba(147, 197, 253, 0.14);
+    --neo-shadow-inset:
+      inset 3px 3px 8px rgba(2, 6, 18, 0.78),
+      inset -2px -2px 6px rgba(45, 76, 132, 0.18);
+    --neo-shadow-cta:
+      0 10px 26px -6px rgba(37, 99, 235, 0.55),
+      0 2px 10px rgba(59, 130, 246, 0.35),
+      inset 0 1px 1px rgba(255, 255, 255, 0.28);
+  }
+
   [data-theme="midnight"] {
     --eguru-primary: #6366f1;
     --eguru-primary-hover: #4f46e5;
-    --eguru-soft: rgba(99, 102, 241, 0.16);
+    --eguru-secondary: #4338ca;
+    --eguru-soft: rgba(99, 102, 241, 0.18);
     --eguru-soft-text: #a5b4fc;
-    --eguru-border: #4338ca;
-    --eguru-sidebar-bg: #020617;
-    --eguru-sidebar-border: #1e293b;
+    --eguru-border: rgba(99, 102, 241, 0.45);
+    --eguru-glow: rgba(99, 102, 241, 0.42);
+    --eguru-glow-soft: rgba(99, 102, 241, 0.22);
+
+    --eguru-sidebar-bg: #030712;
+    --eguru-sidebar-bg-end: #0a1024;
+    --eguru-sidebar-border: rgba(129, 140, 248, 0.14);
+
     --eguru-hero-from: #312e81;
     --eguru-hero-via: #3730a3;
     --eguru-hero-to: #4c1d95;
+
+    --neo-canvas: linear-gradient(155deg, #070b17 0%, #0d1427 55%, #060914 100%);
+    --neo-surface: rgba(17, 24, 42, 0.88);
+    --neo-surface-strong: rgba(20, 28, 48, 0.96);
+    --neo-tray: rgba(12, 18, 34, 0.85);
+    --neo-input-bg: rgba(9, 14, 28, 0.92);
+    --neo-border-outer: rgba(129, 140, 248, 0.18);
+    --neo-border-highlight: rgba(165, 180, 252, 0.12);
+
+    --neo-shadow-card:
+      10px 14px 30px -4px rgba(1, 4, 12, 0.76),
+      -5px -5px 16px rgba(48, 60, 102, 0.18),
+      inset 0 1px 0 rgba(165, 180, 252, 0.12);
+    --neo-shadow-raised:
+      4px 6px 14px rgba(1, 4, 12, 0.65),
+      -3px -3px 10px rgba(48, 60, 102, 0.18),
+      inset 0 1px 0 rgba(165, 180, 252, 0.12);
+    --neo-shadow-inset:
+      inset 3px 3px 8px rgba(1, 4, 12, 0.78),
+      inset -2px -2px 6px rgba(48, 60, 102, 0.18);
+    --neo-shadow-cta:
+      0 10px 26px -6px rgba(99, 102, 241, 0.5),
+      0 2px 10px rgba(99, 102, 241, 0.3),
+      inset 0 1px 1px rgba(255, 255, 255, 0.25);
   }
 
   body {
     font-family: var(--font-sans);
-    background-color: #f8fafc;
+    background: var(--neo-canvas);
     color: #0f172a;
-    transition: background-color 180ms ease, color 180ms ease;
+    transition: background 220ms ease, color 180ms ease;
   }
 
+  [data-theme="neomorphic_dark"] body,
   [data-theme="midnight"] body {
-    background-color: #0b1120;
+    background: var(--neo-canvas);
     color: #e2e8f0;
   }
 
@@ -120,117 +262,278 @@
 /* =========================================================================
    Theme Accent Overrides (Scales cleanly across all interactive components)
    ========================================================================= */
-[data-theme]:not([data-theme="indigo"]) .bg-indigo-600 {
+.bg-indigo-600 {
   background-color: var(--eguru-primary) !important;
+  background-image: linear-gradient(135deg, var(--eguru-primary) 0%, var(--eguru-secondary) 100%) !important;
+  box-shadow: var(--neo-shadow-cta);
+  border-color: transparent;
 }
-[data-theme]:not([data-theme="indigo"]) .hover\:bg-indigo-700:hover,
-[data-theme]:not([data-theme="indigo"]) .hover\:bg-indigo-600:hover {
+.hover\:bg-indigo-700:hover,
+.hover\:bg-indigo-600:hover {
   background-color: var(--eguru-primary-hover) !important;
+  filter: brightness(1.06);
+  box-shadow: 0 12px 28px -5px var(--eguru-glow), inset 0 1px 1px rgba(255, 255, 255, 0.42);
 }
-[data-theme]:not([data-theme="indigo"]) .text-indigo-600,
-[data-theme]:not([data-theme="indigo"]) .text-indigo-700 {
+.bg-indigo-600:active {
+  transform: translateY(1px);
+  box-shadow: 0 4px 12px -2px var(--eguru-glow);
+}
+
+.text-indigo-600,
+.text-indigo-700 {
   color: var(--eguru-soft-text) !important;
 }
-[data-theme]:not([data-theme="indigo"]) .bg-indigo-50 {
+.bg-indigo-50 {
   background-color: var(--eguru-soft) !important;
 }
-[data-theme]:not([data-theme="indigo"]) .border-indigo-200,
-[data-theme]:not([data-theme="indigo"]) .border-indigo-300,
-[data-theme]:not([data-theme="indigo"]) .border-indigo-600 {
+.border-indigo-200,
+.border-indigo-300,
+.border-indigo-600 {
   border-color: var(--eguru-border) !important;
 }
-[data-theme]:not([data-theme="indigo"]) .accent-indigo-600 {
+.accent-indigo-600 {
   accent-color: var(--eguru-primary) !important;
 }
 
+/* =========================================================================
+   Modern Neomorphic 3D Workspace Architecture (Excludes Print & Paper Sheets)
+   ========================================================================= */
+.eguru-app-shell {
+  background: var(--neo-canvas) !important;
+  position: relative;
+}
+
 .eguru-sidebar-surface {
-  background-color: var(--eguru-sidebar-bg);
-  border-color: var(--eguru-sidebar-border);
+  background: linear-gradient(180deg, var(--eguru-sidebar-bg) 0%, var(--eguru-sidebar-bg-end) 100%) !important;
+  border-color: var(--eguru-sidebar-border) !important;
+  box-shadow:
+    12px 0 36px -10px rgba(7, 16, 38, 0.45),
+    inset -1px 0 0 rgba(147, 197, 253, 0.14);
+}
+
+.eguru-topbar-surface {
+  background-color: var(--neo-surface) !important;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-bottom: 1px solid var(--neo-border-outer) !important;
+  box-shadow:
+    0 10px 28px -12px rgba(96, 130, 186, 0.28),
+    inset 0 1px 0 var(--neo-border-highlight);
 }
 
 .eguru-hero-gradient {
   background-image: linear-gradient(
-    to right,
-    var(--eguru-hero-from),
-    var(--eguru-hero-via),
-    var(--eguru-hero-to)
+    115deg,
+    var(--eguru-hero-from) 0%,
+    var(--eguru-hero-via) 54%,
+    var(--eguru-hero-to) 100%
   ) !important;
+  border-radius: 1.5rem !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  box-shadow:
+    0 22px 48px -14px var(--eguru-glow),
+    0 6px 16px -4px rgba(15, 23, 42, 0.18),
+    inset 0 1px 1px rgba(255, 255, 255, 0.42) !important;
+}
+
+/* Soft 3D Extruded Surface Cards & Modals */
+.eguru-app-shell main .bg-white.rounded-xl:not(.eguru-paper-preview):not(.print-only-container):not(#official-print-sheet):not(#student-individual-print-sheet),
+.eguru-app-shell main .bg-white.rounded-2xl:not(.eguru-paper-preview):not(.print-only-container):not(#official-print-sheet):not(#student-individual-print-sheet),
+.eguru-app-shell .fixed .bg-white.rounded-xl:not(.eguru-paper-preview):not(.print-only-container):not(#official-print-sheet):not(#student-individual-print-sheet),
+.eguru-app-shell .fixed .bg-white.rounded-2xl:not(.eguru-paper-preview):not(.print-only-container):not(#official-print-sheet):not(#student-individual-print-sheet) {
+  background-color: var(--neo-surface) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-color: var(--neo-border-outer) !important;
+  border-radius: 1.25rem !important;
+  box-shadow: var(--neo-shadow-card);
+  transition: box-shadow 220ms ease, transform 220ms ease, border-color 220ms ease;
+}
+
+/* Soft 3D Dropdown Popovers */
+.eguru-app-shell header .shadow-xl.bg-white {
+  background-color: var(--neo-surface-strong) !important;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-color: var(--neo-border-outer) !important;
+  border-radius: 1.15rem !important;
+  box-shadow:
+    0 20px 42px -10px rgba(30, 64, 175, 0.22),
+    -4px -4px 12px rgba(255, 255, 255, 0.8),
+    inset 0 1px 0 var(--neo-border-highlight);
+}
+
+/* Soft Recessed Inner Panels & Filter Trays */
+.eguru-app-shell main .bg-slate-50.rounded-lg:not(.eguru-paper-preview):not(.eguru-paper-preview *),
+.eguru-app-shell main .bg-slate-50.rounded-xl:not(.eguru-paper-preview):not(.eguru-paper-preview *),
+.eguru-app-shell .fixed .bg-slate-50.rounded-lg:not(.eguru-paper-preview):not(.eguru-paper-preview *),
+.eguru-app-shell .fixed .bg-slate-50.rounded-xl:not(.eguru-paper-preview):not(.eguru-paper-preview *) {
+  background-color: var(--neo-tray) !important;
+  border-color: var(--neo-border-outer) !important;
+  border-radius: 1rem !important;
+  box-shadow: var(--neo-shadow-inset);
+}
+
+/* Soft 3D Raised Secondary Action Buttons */
+.eguru-app-shell button.bg-white:not(.eguru-paper-preview *),
+.eguru-app-shell label.bg-white:not(.eguru-paper-preview *),
+.eguru-app-shell a.bg-white:not(.eguru-paper-preview *) {
+  background-color: var(--neo-surface-strong) !important;
+  border-color: var(--neo-border-outer) !important;
+  border-radius: 0.875rem !important;
+  box-shadow: var(--neo-shadow-raised);
+  transition: transform 140ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+.eguru-app-shell button.bg-white:not(.eguru-paper-preview *):hover,
+.eguru-app-shell label.bg-white:not(.eguru-paper-preview *):hover {
+  box-shadow:
+    0 6px 18px -4px var(--eguru-glow-soft),
+    -3px -3px 10px rgba(255, 255, 255, 0.9),
+    inset 0 1px 0 var(--neo-border-highlight);
+}
+.eguru-app-shell button.bg-white:not(.eguru-paper-preview *):active {
+  box-shadow: var(--neo-shadow-inset);
+  transform: translateY(1px);
+}
+
+/* Smooth Rounded Primary Buttons */
+.eguru-app-shell button.bg-indigo-600,
+.eguru-app-shell button.bg-emerald-600,
+.eguru-app-shell button.bg-rose-600,
+.eguru-app-shell button.bg-slate-900 {
+  border-radius: 0.875rem !important;
+}
+
+/* Recessed Neomorphic Inputs, Selects & Textareas with Subtle Blue Focus Glow */
+.eguru-app-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(.eguru-paper-preview *),
+.eguru-app-shell select:not(.eguru-paper-preview *),
+.eguru-app-shell textarea:not(.eguru-paper-preview *) {
+  background-color: var(--neo-input-bg) !important;
+  border-color: var(--neo-border-outer) !important;
+  border-radius: 0.875rem !important;
+  box-shadow: var(--neo-shadow-inset) !important;
+  transition: box-shadow 180ms ease, border-color 180ms ease, background-color 180ms ease;
+}
+
+.eguru-app-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(.eguru-paper-preview *):focus,
+.eguru-app-shell select:not(.eguru-paper-preview *):focus,
+.eguru-app-shell textarea:not(.eguru-paper-preview *):focus {
+  outline: none !important;
+  border-color: var(--eguru-primary) !important;
+  box-shadow:
+    var(--neo-shadow-inset),
+    0 0 0 3px var(--eguru-glow-soft) !important;
+}
+
+/* Futuristic Deep-Sapphire Section Headers & Table Headers */
+.eguru-app-shell main thead.bg-slate-900:not(.eguru-paper-preview *),
+.eguru-app-shell .fixed thead.bg-slate-900:not(.eguru-paper-preview *),
+.eguru-app-shell main div.bg-slate-900:not(.eguru-paper-preview):not(.print-only-container),
+.eguru-app-shell .fixed div.bg-slate-900:not(.eguru-paper-preview):not(.print-only-container) {
+  background: linear-gradient(95deg, var(--eguru-sidebar-bg) 0%, var(--eguru-sidebar-bg-end) 100%) !important;
+  border-bottom: 1px solid var(--eguru-sidebar-border);
+}
+
+/* Dark Section Header text safeguard in light & dark modes */
+.eguru-app-shell main .bg-slate-900 .text-white,
+.eguru-app-shell .fixed .bg-slate-900 .text-white {
+  color: #ffffff !important;
 }
 
 /* =========================================================================
-   Midnight Dark Mode Surfaces (Excludes Paper Print Sheets)
+   Dark Neomorphic Surfaces (Neo Blue 3D Gelap & Midnight) — Excludes Print Sheets
    ========================================================================= */
+[data-theme="neomorphic_dark"] .eguru-app-shell,
 [data-theme="midnight"] .eguru-app-shell {
-  background-color: #0b1120 !important;
   color: #e2e8f0 !important;
 }
 
-[data-theme="midnight"] header.bg-white,
-[data-theme="midnight"] .eguru-app-shell main .bg-white:not(.print-only-container):not(.eguru-paper-preview),
-[data-theme="midnight"] .fixed .bg-white:not(.print-only-container):not(.eguru-paper-preview) {
-  background-color: #111827 !important;
-  border-color: #1f2937 !important;
+[data-theme="neomorphic_dark"] .eguru-topbar-surface,
+[data-theme="midnight"] .eguru-topbar-surface {
+  background-color: rgba(11, 20, 41, 0.84) !important;
+  border-color: rgba(96, 165, 250, 0.16) !important;
+  box-shadow:
+    0 12px 30px -10px rgba(2, 6, 18, 0.72),
+    inset 0 1px 0 rgba(147, 197, 253, 0.1);
+}
+
+[data-theme="neomorphic_dark"] .eguru-app-shell main .bg-white:not(.print-only-container):not(.eguru-paper-preview):not(.eguru-paper-preview *):not(#official-print-sheet):not(#student-individual-print-sheet),
+[data-theme="neomorphic_dark"] .eguru-app-shell .fixed .bg-white:not(.print-only-container):not(.eguru-paper-preview):not(.eguru-paper-preview *):not(#official-print-sheet):not(#student-individual-print-sheet),
+[data-theme="midnight"] .eguru-app-shell main .bg-white:not(.print-only-container):not(.eguru-paper-preview):not(.eguru-paper-preview *):not(#official-print-sheet):not(#student-individual-print-sheet),
+[data-theme="midnight"] .eguru-app-shell .fixed .bg-white:not(.print-only-container):not(.eguru-paper-preview):not(.eguru-paper-preview *):not(#official-print-sheet):not(#student-individual-print-sheet) {
+  background-color: var(--neo-surface) !important;
+  border-color: var(--neo-border-outer) !important;
   color: #f1f5f9 !important;
 }
 
-[data-theme="midnight"] .eguru-app-shell main .bg-slate-50:not(.eguru-paper-preview),
-[data-theme="midnight"] .eguru-app-shell main .bg-slate-100:not(.eguru-paper-preview),
-[data-theme="midnight"] .fixed .bg-slate-50:not(.eguru-paper-preview) {
-  background-color: #1e293b !important;
-  border-color: #334155 !important;
+[data-theme="neomorphic_dark"] .eguru-app-shell main .bg-slate-50:not(.eguru-paper-preview):not(.eguru-paper-preview *),
+[data-theme="neomorphic_dark"] .eguru-app-shell main .bg-slate-100:not(.eguru-paper-preview):not(.eguru-paper-preview *),
+[data-theme="neomorphic_dark"] .eguru-app-shell .fixed .bg-slate-50:not(.eguru-paper-preview):not(.eguru-paper-preview *),
+[data-theme="neomorphic_dark"] .eguru-app-shell .fixed .bg-slate-100:not(.eguru-paper-preview):not(.eguru-paper-preview *),
+[data-theme="midnight"] .eguru-app-shell main .bg-slate-50:not(.eguru-paper-preview):not(.eguru-paper-preview *),
+[data-theme="midnight"] .eguru-app-shell main .bg-slate-100:not(.eguru-paper-preview):not(.eguru-paper-preview *),
+[data-theme="midnight"] .eguru-app-shell .fixed .bg-slate-50:not(.eguru-paper-preview):not(.eguru-paper-preview *),
+[data-theme="midnight"] .eguru-app-shell .fixed .bg-slate-100:not(.eguru-paper-preview):not(.eguru-paper-preview *) {
+  background-color: var(--neo-tray) !important;
+  border-color: var(--neo-border-outer) !important;
 }
 
-[data-theme="midnight"] .eguru-app-shell header,
-[data-theme="midnight"] .eguru-app-shell .border-slate-200:not(.eguru-paper-preview),
-[data-theme="midnight"] .eguru-app-shell .border-slate-300:not(.eguru-paper-preview),
-[data-theme="midnight"] .fixed .border-slate-200:not(.eguru-paper-preview),
-[data-theme="midnight"] .fixed .border-slate-300:not(.eguru-paper-preview) {
-  border-color: #334155 !important;
+[data-theme="neomorphic_dark"] .eguru-app-shell .border-slate-200:not(.eguru-paper-preview):not(.eguru-paper-preview *),
+[data-theme="neomorphic_dark"] .eguru-app-shell .border-slate-300:not(.eguru-paper-preview):not(.eguru-paper-preview *),
+[data-theme="midnight"] .eguru-app-shell .border-slate-200:not(.eguru-paper-preview):not(.eguru-paper-preview *),
+[data-theme="midnight"] .eguru-app-shell .border-slate-300:not(.eguru-paper-preview):not(.eguru-paper-preview *) {
+  border-color: rgba(96, 165, 250, 0.18) !important;
 }
 
+[data-theme="neomorphic_dark"] .eguru-app-shell .divide-slate-200 > :not(:last-child),
+[data-theme="neomorphic_dark"] .eguru-app-shell .divide-slate-100 > :not(:last-child),
 [data-theme="midnight"] .eguru-app-shell .divide-slate-200 > :not(:last-child),
 [data-theme="midnight"] .eguru-app-shell .divide-slate-100 > :not(:last-child) {
-  border-color: #1f2937 !important;
+  border-color: rgba(96, 165, 250, 0.14) !important;
 }
 
-[data-theme="midnight"] .eguru-app-shell .text-slate-900:not(.eguru-paper-preview *),
-[data-theme="midnight"] .eguru-app-shell .text-slate-800:not(.eguru-paper-preview *),
-[data-theme="midnight"] .fixed .text-slate-900:not(.eguru-paper-preview *),
-[data-theme="midnight"] .fixed .text-slate-800:not(.eguru-paper-preview *) {
+[data-theme="neomorphic_dark"] .eguru-app-shell .text-slate-900:not(.eguru-paper-preview *):not(.print-only-container *),
+[data-theme="neomorphic_dark"] .eguru-app-shell .text-slate-800:not(.eguru-paper-preview *):not(.print-only-container *),
+[data-theme="midnight"] .eguru-app-shell .text-slate-900:not(.eguru-paper-preview *):not(.print-only-container *),
+[data-theme="midnight"] .eguru-app-shell .text-slate-800:not(.eguru-paper-preview *):not(.print-only-container *) {
   color: #f1f5f9 !important;
 }
 
-[data-theme="midnight"] .eguru-app-shell .text-slate-600:not(.eguru-paper-preview *),
-[data-theme="midnight"] .eguru-app-shell .text-slate-700:not(.eguru-paper-preview *),
-[data-theme="midnight"] .eguru-app-shell .text-slate-500:not(.eguru-paper-preview *),
-[data-theme="midnight"] .fixed .text-slate-600:not(.eguru-paper-preview *),
-[data-theme="midnight"] .fixed .text-slate-700:not(.eguru-paper-preview *),
-[data-theme="midnight"] .fixed .text-slate-500:not(.eguru-paper-preview *) {
+[data-theme="neomorphic_dark"] .eguru-app-shell .text-slate-600:not(.eguru-paper-preview *):not(.print-only-container *),
+[data-theme="neomorphic_dark"] .eguru-app-shell .text-slate-700:not(.eguru-paper-preview *):not(.print-only-container *),
+[data-theme="neomorphic_dark"] .eguru-app-shell .text-slate-500:not(.eguru-paper-preview *):not(.print-only-container *),
+[data-theme="midnight"] .eguru-app-shell .text-slate-600:not(.eguru-paper-preview *):not(.print-only-container *),
+[data-theme="midnight"] .eguru-app-shell .text-slate-700:not(.eguru-paper-preview *):not(.print-only-container *),
+[data-theme="midnight"] .eguru-app-shell .text-slate-500:not(.eguru-paper-preview *):not(.print-only-container *) {
   color: #94a3b8 !important;
 }
 
-[data-theme="midnight"] .eguru-app-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-[data-theme="midnight"] .eguru-app-shell select,
-[data-theme="midnight"] .eguru-app-shell textarea,
-[data-theme="midnight"] .fixed input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-[data-theme="midnight"] .fixed select,
-[data-theme="midnight"] .fixed textarea {
-  background-color: #0f172a !important;
+[data-theme="neomorphic_dark"] .eguru-app-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(.eguru-paper-preview *),
+[data-theme="neomorphic_dark"] .eguru-app-shell select:not(.eguru-paper-preview *),
+[data-theme="neomorphic_dark"] .eguru-app-shell textarea:not(.eguru-paper-preview *),
+[data-theme="midnight"] .eguru-app-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(.eguru-paper-preview *),
+[data-theme="midnight"] .eguru-app-shell select:not(.eguru-paper-preview *),
+[data-theme="midnight"] .eguru-app-shell textarea:not(.eguru-paper-preview *) {
+  background-color: var(--neo-input-bg) !important;
   color: #f8fafc !important;
-  border-color: #334155 !important;
+  border-color: rgba(96, 165, 250, 0.22) !important;
 }
 
+[data-theme="neomorphic_dark"] .eguru-app-shell .hover\:bg-slate-50:hover,
+[data-theme="neomorphic_dark"] .eguru-app-shell .hover\:bg-slate-100:hover,
 [data-theme="midnight"] .eguru-app-shell .hover\:bg-slate-50:hover,
 [data-theme="midnight"] .eguru-app-shell .hover\:bg-slate-100:hover {
-  background-color: #1e293b !important;
+  background-color: rgba(30, 48, 86, 0.72) !important;
 }
 
-/* Protect Official Paper Previews from Midnight Theme */
+/* Protect Official Paper Previews from Theme & Neomorphic Overrides */
 .eguru-paper-preview,
 #official-print-sheet,
 #student-individual-print-sheet {
   background-color: #ffffff !important;
   color: #020617 !important;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14) !important;
+  border-radius: 0.25rem !important;
 }
 
 /* Custom subtle scrollbars for long tables */
@@ -240,16 +543,27 @@
 }
 
 .eguru-scroll::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: rgba(203, 213, 225, 0.35);
+  border-radius: 9999px;
 }
 
 .eguru-scroll::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
+  background: rgba(148, 163, 184, 0.65);
+  border-radius: 9999px;
 }
 
 .eguru-scroll::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: rgba(100, 116, 139, 0.85);
+}
+
+[data-theme="neomorphic_dark"] .eguru-scroll::-webkit-scrollbar-track,
+[data-theme="midnight"] .eguru-scroll::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.65);
+}
+
+[data-theme="neomorphic_dark"] .eguru-scroll::-webkit-scrollbar-thumb,
+[data-theme="midnight"] .eguru-scroll::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.35);
 }
 
 /* Print Stylesheet for Official Reports */
@@ -258,7 +572,8 @@
     margin: 12mm;
   }
 
-  body {
+  body,
+  .eguru-app-shell {
     background: #ffffff !important;
     color: #000000 !important;
   }
@@ -272,6 +587,7 @@
     padding: 0 !important;
     border: none !important;
     box-shadow: none !important;
+    border-radius: 0 !important;
     width: 100% !important;
     max-width: none !important;
     overflow: visible !important;

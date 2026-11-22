@@ -150,8 +150,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {
         label: 'Kehadiran (%)',
         data: classRecap.map((c) => c.attPct),
-        backgroundColor: '#4f46e5',
-        borderRadius: 6,
+        backgroundColor: '#2563eb',
+        borderRadius: 10,
         maxBarThickness: 42,
       },
     ],
@@ -163,19 +163,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {
         label: 'Rata-Rata Nilai',
         data: classRecap.map((c) => c.avgGrade),
-        backgroundColor: '#0f172a',
-        borderRadius: 6,
+        backgroundColor: '#0f1d3d',
+        borderRadius: 10,
         maxBarThickness: 42,
       },
     ],
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       {/* Banner Gradient Dinamis sesuai Tema */}
-      <section className="eguru-hero-gradient rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-violet-700 text-white p-6 sm:p-8 shadow-sm">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-          <div className="flex items-center gap-4 min-w-0">
+      <section className="eguru-hero-gradient relative overflow-hidden rounded-3xl bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 text-white p-5 sm:p-6 lg:p-8 shadow-sm">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-20 -right-16 w-64 h-64 rounded-full bg-white/15 blur-2xl"
+        />
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 sm:gap-6">
+          <div className="flex items-start sm:items-center gap-3.5 sm:gap-4 min-w-0">
             <img
               src={getUserPhotoUrl({
                 photoDataUrl:
@@ -194,22 +198,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 });
               }}
               alt={currentUserName || settings.teacherProfile.name}
-              className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl object-cover object-top border-2 border-white/40 bg-white shrink-0"
+              className="w-13 h-13 sm:w-16 sm:h-16 rounded-2xl object-cover object-top border-2 border-white/60 bg-white shrink-0 shadow-[0_10px_24px_rgba(15,23,42,0.28)]"
             />
             <div className="space-y-1 min-w-0">
-              <p className="text-xs font-medium text-indigo-100">
-                {settings.teacherProfile.school} · Tahun Ajaran {settings.academicYear} · Semester{' '}
+              <p className="text-[11px] sm:text-xs font-medium text-blue-100 leading-snug">
+                {settings.teacherProfile.school} · TA {settings.academicYear} · Semester{' '}
                 {settings.semester}
               </p>
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white [text-wrap:balance]">
+              <h2 className="text-xl sm:text-3xl font-bold tracking-tight text-white [text-wrap:balance] leading-snug">
                 Selamat Datang, {currentUserName || settings.teacherProfile.name}
               </h2>
-              <p className="text-sm text-indigo-100 max-w-2xl">
+              <p className="text-xs sm:text-sm text-blue-100/95 max-w-2xl leading-relaxed">
                 Pantau ringkasan keaktifan pembelajaran, persentase kehadiran peserta didik, dan capaian nilai kelas
                 secara langsung.
               </p>
               {scopeSummary && (
-                <p className="text-xs text-indigo-100/95 pt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                <p className="text-xs text-blue-100/95 pt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="font-semibold text-white">Tanggung Jawab Aktif</span>
                   <span aria-hidden="true">·</span>
                   <span>{scopeSummary}</span>
@@ -219,7 +223,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <button
                         type="button"
                         onClick={onOpenProfileModal}
-                        className="underline font-semibold text-white hover:text-indigo-100 cursor-pointer"
+                        className="underline font-semibold text-white hover:text-blue-100 cursor-pointer"
                       >
                         Atur Kelas &amp; Mapel
                       </button>
@@ -229,24 +233,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               )}
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 sm:gap-2.5 shrink-0">
             {rolePerms.canManageJournals && rolePerms.allowedMenus.includes('jurnal') && (
               <button
                 type="button"
                 onClick={() => onNavigate('jurnal')}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white text-indigo-700 hover:bg-indigo-50 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                className="flex items-center justify-center gap-2 min-h-[42px] px-4 py-2.5 rounded-full sm:rounded-2xl bg-white text-blue-700 hover:bg-blue-50 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap shrink-0 shadow-[0_8px_20px_rgba(15,23,42,0.22),inset_0_1px_1px_rgba(255,255,255,0.95)]"
               >
-                <PlusCircle className="w-4 h-4" />
-                <span>Catat Jurnal Baru</span>
+                <PlusCircle className="w-4 h-4 shrink-0" />
+                <span>Catat Jurnal</span>
               </button>
             )}
             {rolePerms.canManageGrades && rolePerms.allowedMenus.includes('nilai') && (
               <button
                 type="button"
                 onClick={() => onNavigate('nilai')}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-950/50 hover:bg-indigo-950/70 text-white border border-white/20 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                className="flex items-center justify-center gap-2 min-h-[42px] px-4 py-2.5 rounded-full sm:rounded-2xl bg-slate-950/35 hover:bg-slate-950/55 backdrop-blur-md text-white border border-white/25 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap shrink-0 shadow-[0_6px_16px_rgba(15,23,42,0.2)]"
               >
-                <FileSpreadsheet className="w-4 h-4" />
+                <FileSpreadsheet className="w-4 h-4 shrink-0" />
                 <span>Input Nilai</span>
               </button>
             )}
@@ -254,19 +258,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <button
                 type="button"
                 onClick={() => onNavigate('siswa')}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white text-indigo-700 hover:bg-indigo-50 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                className="flex items-center justify-center gap-2 min-h-[42px] px-4 py-2.5 rounded-full sm:rounded-2xl bg-white text-blue-700 hover:bg-blue-50 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap shrink-0 shadow-[0_8px_20px_rgba(15,23,42,0.22)]"
               >
-                <Users className="w-4 h-4" />
-                <span>Kelola Data Siswa</span>
+                <Users className="w-4 h-4 shrink-0" />
+                <span>Kelola Siswa</span>
               </button>
             )}
             {rolePerms.allowedMenus.includes('laporan') && (
               <button
                 type="button"
                 onClick={() => onNavigate('laporan')}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-950/50 hover:bg-indigo-950/70 text-white border border-white/20 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                className="col-span-2 sm:col-span-1 flex items-center justify-center gap-2 min-h-[42px] px-4 py-2.5 rounded-full sm:rounded-2xl bg-slate-950/35 hover:bg-slate-950/55 backdrop-blur-md text-white border border-white/25 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap shrink-0 shadow-[0_6px_16px_rgba(15,23,42,0.2)]"
               >
-                <Printer className="w-4 h-4" />
+                <Printer className="w-4 h-4 shrink-0" />
                 <span>Cetak Laporan</span>
               </button>
             )}
@@ -275,46 +279,62 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </section>
 
       {/* 5 Primary Stat Cards */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
+      <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+        <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5">
           <p className="text-xs font-medium text-slate-500">Total Jurnal</p>
-          <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">{stats.totalJournals}</p>
-          <p className="mt-1 text-xs text-slate-500">Pertemuan tercatat</p>
+          <p className="mt-1.5 sm:mt-2 text-xl sm:text-2xl font-bold text-slate-900 tabular-nums">
+            {stats.totalJournals}
+          </p>
+          <p className="mt-1 text-[11px] sm:text-xs text-slate-500">Pertemuan tercatat</p>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5">
           <p className="text-xs font-medium text-slate-500">Kehadiran (H)</p>
-          <p className="mt-2 text-2xl font-bold text-emerald-700 tabular-nums">{stats.attendancePct}%</p>
-          <p className="mt-1 text-xs text-slate-500 tabular-nums">{stats.counts.H} hadir tercatat</p>
+          <p className="mt-1.5 sm:mt-2 text-xl sm:text-2xl font-bold text-emerald-700 tabular-nums">
+            {stats.attendancePct}%
+          </p>
+          <p className="mt-1 text-[11px] sm:text-xs text-slate-500 tabular-nums">
+            {stats.counts.H} hadir tercatat
+          </p>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5">
           <p className="text-xs font-medium text-slate-500">Rata-Rata Nilai</p>
-          <p className="mt-2 text-2xl font-bold text-indigo-700 tabular-nums">{stats.avgScore}</p>
-          <p className="mt-1 text-xs text-slate-500 tabular-nums">Standar KKM {settings.kkm}</p>
+          <p className="mt-1.5 sm:mt-2 text-xl sm:text-2xl font-bold text-indigo-700 tabular-nums">
+            {stats.avgScore}
+          </p>
+          <p className="mt-1 text-[11px] sm:text-xs text-slate-500 tabular-nums">
+            Standar KKM {settings.kkm}
+          </p>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5">
           <p className="text-xs font-medium text-slate-500">Total Siswa</p>
-          <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">{stats.totalStudents}</p>
-          <p className="mt-1 text-xs text-slate-500 tabular-nums">{settings.classes.length} rombongan belajar</p>
+          <p className="mt-1.5 sm:mt-2 text-xl sm:text-2xl font-bold text-slate-900 tabular-nums">
+            {stats.totalStudents}
+          </p>
+          <p className="mt-1 text-[11px] sm:text-xs text-slate-500 tabular-nums">
+            {settings.classes.length} rombongan belajar
+          </p>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <div className="col-span-2 sm:col-span-1 bg-white rounded-xl border border-slate-200 p-4 sm:p-5">
           <p className="text-xs font-medium text-slate-500">Total Ujian Dinilai</p>
-          <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">{stats.evaluatedExams}</p>
-          <p className="mt-1 text-xs text-slate-500">Sesi evaluasi terinput</p>
+          <p className="mt-1.5 sm:mt-2 text-xl sm:text-2xl font-bold text-slate-900 tabular-nums">
+            {stats.evaluatedExams}
+          </p>
+          <p className="mt-1 text-[11px] sm:text-xs text-slate-500">Sesi evaluasi terinput</p>
         </div>
       </section>
 
       {/* 3 Interactive Chart.js Charts */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <div className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col">
-          <div className="mb-4">
+      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+        <div className="min-w-0 bg-white rounded-xl border border-slate-200 p-4 sm:p-5 flex flex-col">
+          <div className="mb-3 sm:mb-4">
             <h3 className="text-sm font-bold text-slate-900">Komposisi Kehadiran</h3>
             <p className="text-xs text-slate-500">Distribusi H, S, I, A, dan D keseluruhan</p>
           </div>
-          <div className="h-60 flex items-center justify-center">
+          <div className="h-56 sm:h-60 flex items-center justify-center">
             <Doughnut
               data={doughnutData}
               options={{
@@ -329,12 +349,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col">
-          <div className="mb-4">
+        <div className="min-w-0 bg-white rounded-xl border border-slate-200 p-4 sm:p-5 flex flex-col">
+          <div className="mb-3 sm:mb-4">
             <h3 className="text-sm font-bold text-slate-900">Persentase Kehadiran per Kelas</h3>
             <p className="text-xs text-slate-500">Rasio hadir (%) setiap rombongan belajar</p>
           </div>
-          <div className="h-60">
+          <div className="h-56 sm:h-60">
             <Bar
               data={barAttendanceData}
               options={{
@@ -349,12 +369,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col">
-          <div className="mb-4">
+        <div className="min-w-0 md:col-span-2 lg:col-span-1 bg-white rounded-xl border border-slate-200 p-4 sm:p-5 flex flex-col">
+          <div className="mb-3 sm:mb-4">
             <h3 className="text-sm font-bold text-slate-900">Rata-Rata Nilai per Kelas</h3>
             <p className="text-xs text-slate-500">Perbandingan capaian skor seluruh kelas</p>
           </div>
-          <div className="h-60">
+          <div className="h-56 sm:h-60">
             <Bar
               data={barGradeData}
               options={{
@@ -371,14 +391,54 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </section>
 
       {/* Bottom Tables: Rekap Kelas + Kegiatan Mengajar Terbaru */}
-      <section className="grid grid-cols-1 xl:grid-cols-12 gap-5">
+      <section className="grid grid-cols-1 xl:grid-cols-12 gap-4 sm:gap-5">
         {/* Table 1: Rekap Kehadiran & Nilai per Kelas */}
-        <div className="xl:col-span-5 bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-200">
-            <h3 className="text-sm font-bold text-slate-900">Rekap Kehadiran & Nilai Kelas</h3>
+        <div className="min-w-0 xl:col-span-5 bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-200">
+            <h3 className="text-sm font-bold text-slate-900">Rekap Kehadiran &amp; Nilai Kelas</h3>
             <p className="text-xs text-slate-500">Ringkasan per rombongan belajar aktif</p>
           </div>
-          <div className="max-h-[420px] overflow-auto eguru-scroll">
+
+          {/* Mobile Card List */}
+          <div className="md:hidden divide-y divide-slate-200 max-h-[380px] overflow-y-auto eguru-scroll">
+            {classRecap.map((row) => (
+              <div key={row.className} className="p-3.5 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  {onViewClass ? (
+                    <button
+                      type="button"
+                      onClick={() => onViewClass(row.className)}
+                      className="font-bold text-sm text-indigo-700 hover:underline cursor-pointer text-left"
+                    >
+                      {row.className}
+                    </button>
+                  ) : (
+                    <div className="font-bold text-sm text-slate-900">{row.className}</div>
+                  )}
+                  <p className="text-xs text-slate-500 tabular-nums mt-0.5">
+                    {row.studentCount} siswa · {row.journalCount} jurnal
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 shrink-0 tabular-nums">
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
+                      Hadir
+                    </div>
+                    <div className="text-xs font-bold text-emerald-700">{row.attPct}%</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
+                      Rata-rata
+                    </div>
+                    <div className="text-xs font-bold text-indigo-700">{row.avgGrade}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop/Tablet Table */}
+          <div className="hidden md:block max-h-[420px] overflow-auto eguru-scroll">
             <table className="w-full text-left border-collapse">
               <thead className="sticky top-0 z-10 bg-slate-900 text-white text-xs">
                 <tr>
@@ -422,9 +482,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Table 2: Kegiatan Mengajar Terbaru */}
-        <div className="xl:col-span-7 bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-4">
-            <div>
+        <div className="min-w-0 xl:col-span-7 bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-200 flex items-center justify-between gap-4">
+            <div className="min-w-0">
               <h3 className="text-sm font-bold text-slate-900">Kegiatan Mengajar Terbaru</h3>
               <p className="text-xs text-slate-500">
                 {rolePerms.canManageJournals
@@ -436,19 +496,90 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <button
                 type="button"
                 onClick={() => onNavigate('jurnal')}
-                className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 whitespace-nowrap shrink-0 cursor-pointer"
+                className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 whitespace-nowrap shrink-0 cursor-pointer py-1"
               >
                 Lihat Semua
               </button>
             )}
           </div>
-          <div className="max-h-[420px] overflow-auto eguru-scroll">
+
+          {/* Mobile Card List */}
+          <div className="md:hidden divide-y divide-slate-200 max-h-[440px] overflow-y-auto eguru-scroll">
+            {latestJournals.length === 0 ? (
+              <div className="py-10 px-4 text-center text-slate-500 text-sm">
+                Belum ada jurnal mengajar tersimpan.
+              </div>
+            ) : (
+              latestJournals.map((j) => (
+                <div key={j.id} className="p-3.5 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 text-xs text-slate-500 tabular-nums">
+                        <span className="font-semibold text-slate-700">{formatTanggalID(j.date)}</span>
+                        <span>·</span>
+                        <span>Jam {j.period}</span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+                        {onViewClass ? (
+                          <button
+                            type="button"
+                            onClick={() => onViewClass(j.className)}
+                            className="font-bold text-slate-900 hover:text-indigo-600 hover:underline cursor-pointer"
+                          >
+                            {j.className}
+                          </button>
+                        ) : (
+                          <span className="font-bold text-slate-900">{j.className}</span>
+                        )}
+                        <span className="text-slate-300">•</span>
+                        {onViewSubject ? (
+                          <button
+                            type="button"
+                            onClick={() => onViewSubject(j.subject)}
+                            className="font-semibold text-indigo-700 hover:underline text-left cursor-pointer"
+                          >
+                            {j.subject}
+                          </button>
+                        ) : (
+                          <span className="font-semibold text-slate-900">{j.subject}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-600 line-clamp-2">{j.topic}</p>
+                  {rolePerms.canManageJournals && (
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => onEditJournal(j)}
+                        className="flex-1 min-h-[38px] inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 cursor-pointer"
+                      >
+                        <FileEdit className="w-3.5 h-3.5" />
+                        <span>Edit</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDuplicateJournal(j)}
+                        className="flex-1 min-h-[38px] inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 cursor-pointer"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Duplikat</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Desktop/Tablet Table */}
+          <div className="hidden md:block max-h-[420px] overflow-auto eguru-scroll">
             <table className="w-full text-left border-collapse">
               <thead className="sticky top-0 z-10 bg-slate-900 text-white text-xs">
                 <tr>
                   <th className="py-2.5 px-4 font-semibold">Tanggal</th>
                   <th className="py-2.5 px-3 font-semibold">Kelas</th>
-                  <th className="py-2.5 px-3 font-semibold">Mata Pelajaran & Materi</th>
+                  <th className="py-2.5 px-3 font-semibold">Mata Pelajaran &amp; Materi</th>
                   {rolePerms.canManageJournals && (
                     <th className="py-2.5 px-4 font-semibold text-right">Aksi</th>
                   )}

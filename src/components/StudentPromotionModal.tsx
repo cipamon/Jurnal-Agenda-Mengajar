@@ -173,26 +173,26 @@ export const StudentPromotionModal: React.FC<StudentPromotionModalProps> = ({
 
   return (
     <div
-      className="no-print fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-[1px]"
+      className="no-print fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-950/60 backdrop-blur-[1px]"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="promotion-modal-title"
     >
       <div
-        className="w-full max-w-3xl bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+        className="w-full max-w-3xl bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92dvh]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+        <div className="px-4 py-3.5 sm:px-6 sm:py-4 bg-slate-900 text-white flex items-center justify-between gap-3 sm:gap-4">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 rounded-lg bg-indigo-600/30 border border-indigo-400/40 flex items-center justify-center shrink-0">
               <GraduationCap className="w-5 h-5 text-indigo-200" />
             </div>
-            <div>
-              <h2 id="promotion-modal-title" className="text-base font-bold">
+            <div className="min-w-0">
+              <h2 id="promotion-modal-title" className="text-sm sm:text-base font-bold truncate">
                 Kenaikan Kelas & Mutasi Status Siswa
               </h2>
-              <p className="text-xs text-slate-300">
+              <p className="text-xs text-slate-300 truncate">
                 Pindahkan rombongan belajar secara massal atau tandai kelulusan/mutasi tanpa menghapus riwayat nilai & presensi
               </p>
             </div>
@@ -200,14 +200,14 @@ export const StudentPromotionModal: React.FC<StudentPromotionModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+            className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer shrink-0"
             aria-label="Tutup jendela kenaikan kelas"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto eguru-scroll">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto eguru-scroll">
           {error && (
             <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700 font-medium">
               {error}
@@ -363,13 +363,13 @@ export const StudentPromotionModal: React.FC<StudentPromotionModalProps> = ({
               </button>
             </div>
 
-            <div className="max-h-60 overflow-y-auto eguru-scroll">
+            <div className="max-h-60 overflow-auto eguru-scroll">
               {candidateStudents.length === 0 ? (
                 <div className="py-8 text-center text-xs text-slate-500">
                   Tidak ada siswa aktif pada sumber yang dipilih.
                 </div>
               ) : (
-                <table className="w-full text-left border-collapse text-xs">
+                <table className="w-full min-w-[560px] text-left border-collapse text-xs">
                   <thead className="sticky top-0 bg-slate-900 text-white">
                     <tr>
                       <th className="py-2 px-3 w-10 text-center">Pilih</th>
@@ -420,21 +420,21 @@ export const StudentPromotionModal: React.FC<StudentPromotionModalProps> = ({
             </div>
           </div>
 
-          <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-3">
+          <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <p className="text-[11px] text-slate-500">
               Catatan: Riwayat jurnal & nilai terdahulu tidak terhapus saat siswa naik kelas atau lulus.
             </p>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer whitespace-nowrap"
+                className="flex-1 sm:flex-none px-4 py-2 min-h-[40px] rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer whitespace-nowrap text-center"
               >
                 Batal
               </button>
               <button
                 type="submit"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 min-h-[40px] rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
               >
                 <Check className="w-4 h-4" />
                 <span>Proses ({checkedIds.length} Siswa)</span>

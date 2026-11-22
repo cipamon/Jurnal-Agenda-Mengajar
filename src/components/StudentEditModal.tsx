@@ -182,22 +182,22 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
 
   return (
     <div
-      className="no-print fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-[1px]"
+      className="no-print fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-950/60 backdrop-blur-[1px]"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="edit-student-modal-title"
     >
       <div
-        className="w-full max-w-3xl bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+        className="w-full max-w-3xl bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92dvh]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between gap-4">
-          <div>
-            <h2 id="edit-student-modal-title" className="text-base font-bold">
+        <div className="px-4 py-3.5 sm:px-6 sm:py-4 bg-slate-900 text-white flex items-center justify-between gap-3 sm:gap-4">
+          <div className="min-w-0">
+            <h2 id="edit-student-modal-title" className="text-sm sm:text-base font-bold truncate">
               {effectiveMode === 'create' ? 'Tambah Siswa Baru' : 'Edit Biodata Siswa'}
             </h2>
-            <p className="text-xs text-slate-300">
+            <p className="text-xs text-slate-300 truncate">
               {effectiveMode === 'create'
                 ? 'Lengkapi identitas NIS/NISN, foto, kelahiran, kontak, wali kelas, dan guru BK peserta didik'
                 : 'Perbarui identitas NIS/NISN, foto, kelahiran, kontak, wali kelas, dan guru BK peserta didik'}
@@ -206,14 +206,14 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+            className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer shrink-0"
             aria-label="Tutup jendela siswa"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto eguru-scroll">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto eguru-scroll">
           {error && (
             <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700">
               {error}
@@ -221,8 +221,8 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
           )}
 
           {/* Foto & Preview (Unggah atau Link URL) */}
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-            <div className="flex flex-wrap items-center gap-4">
+          <div className="p-3.5 sm:p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+            <div className="flex flex-wrap items-center gap-3.5 sm:gap-4">
               <img
                 src={previewPhoto}
                 referrerPolicy="no-referrer"
@@ -235,7 +235,7 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
                 alt="Foto Siswa"
                 className="w-16 h-16 rounded-xl object-cover object-top border border-slate-300 bg-white shrink-0"
               />
-              <div className="space-y-1.5 flex-1 min-w-[200px]">
+              <div className="space-y-1.5 flex-1 min-w-0">
                 <p className="text-xs font-bold text-slate-900">
                   Foto Siswa{' '}
                   {hasRealPhoto(photoDataUrl) ? (
@@ -247,7 +247,7 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
                   )}
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
-                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer">
+                  <label className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[38px] rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer">
                     <ImagePlus className="w-3.5 h-3.5" />
                     <span>{hasRealPhoto(photoDataUrl) ? 'Ganti File Foto' : 'Unggah Foto'}</span>
                     <input
@@ -261,7 +261,7 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setPhotoDataUrl('')}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-rose-200 bg-white text-xs font-medium text-rose-700 hover:bg-rose-50 cursor-pointer"
+                      className="inline-flex items-center gap-1 px-2.5 py-2 min-h-[38px] rounded-lg border border-rose-200 bg-white text-xs font-medium text-rose-700 hover:bg-rose-50 cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       <span>Hapus Foto Asli</span>
@@ -502,17 +502,17 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
             />
           </div>
 
-          <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2.5">
+          <div className="pt-3 border-t border-slate-200 flex flex-col-reverse sm:flex-row sm:items-center justify-end gap-2.5">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              className="w-full sm:w-auto px-4 py-2 min-h-[42px] rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer text-center"
             >
               Batal
             </button>
             <button
               type="submit"
-              className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-5 py-2 min-h-[42px] rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer"
             >
               {effectiveMode === 'create' ? (
                 <Plus className="w-4 h-4" />

@@ -183,7 +183,7 @@ const MasterListCard: React.FC<MasterListCardProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col justify-between gap-3">
+    <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 flex flex-col justify-between gap-3">
       <div>
         <div className="flex items-start justify-between gap-2">
           <div>
@@ -446,7 +446,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   }, [settings, isFormatLockedUi, isKopLockedUi]);
 
   const normBrand = normalizeWebBrand(draft);
-  const activeThemeId: ThemeId = draft.themeId || 'indigo';
+  const activeThemeId: ThemeId = draft.themeId || 'neomorphic';
   const isKopDirty = JSON.stringify(draft.kopSurat) !== JSON.stringify(settings.kopSurat);
   const isFormatDirty = getFormatSignature(draft) !== getFormatSignature(settings);
 
@@ -591,7 +591,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {/* 1. PENGATURAN PERIODE AKTIF & PEJABAT KEPALA SEKOLAH */}
       {/* ===================================================================== */}
       <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3">
+        <div className="px-4 sm:px-6 py-4 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-bold">Periode Aktif & Pejabat Penandatangan</h2>
             <p className="text-xs text-slate-300">
@@ -600,14 +600,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
           <button
             type="submit"
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap min-h-[40px]"
           >
             <Save className="w-4 h-4" />
             <span>Simpan Semua Pengaturan</span>
           </button>
         </div>
 
-        <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1.5">Tahun Ajaran Aktif</label>
             <select
@@ -696,7 +696,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {/* 1B. PENGATURAN LOGO WEB & NAMA WEB DI TAB BROWSER */}
       {/* ===================================================================== */}
       <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+        <div className="px-4 sm:px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <Globe className="w-4 h-4 text-indigo-600" />
@@ -706,7 +706,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               Atur nama portal pada sidebar/login, judul tab browser, dan ikon favicon web aplikasi
             </p>
           </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-t-lg border border-b-0 border-slate-300 bg-slate-100 max-w-xs">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-t-lg border border-b-0 border-slate-300 bg-slate-100 max-w-full sm:max-w-xs">
             <img
               src={normBrand.webLogoDataUrl}
               alt="Preview Favicon"
@@ -716,7 +716,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
-        <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
+        <div className="p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
           <div className="lg:col-span-3">
             <label className="block text-xs font-semibold text-slate-700 mb-1.5">
               Nama Web / Aplikasi (Sidebar & Login)
@@ -830,7 +830,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {/* 1C. PILIHAN TEMA TAMPILAN APLIKASI */}
       {/* ===================================================================== */}
       <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+        <div className="px-4 sm:px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <Palette className="w-4 h-4 text-indigo-600" />
@@ -841,11 +841,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </p>
           </div>
           <span className="text-xs font-semibold text-indigo-700">
-            Tema Aktif: {THEME_PRESETS.find((t) => t.id === activeThemeId)?.name || 'Royal Indigo'}
+            Tema Aktif: {THEME_PRESETS.find((t) => t.id === activeThemeId)?.name || 'Neo Blue 3D (Futuristik)'}
           </span>
         </div>
 
-        <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {THEME_PRESETS.map((preset) => {
             const selected = preset.id === activeThemeId;
             return (
@@ -857,9 +857,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   onUpdateSettings({ ...settings, themeId: preset.id });
                   onNotify(`Tema tampilan diubah ke "${preset.name}".`);
                 }}
-                className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2.5 ${
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2.5 ${
                   selected
-                    ? 'border-indigo-600 bg-indigo-50/70 ring-2 ring-indigo-600/20'
+                    ? 'border-blue-500/70 bg-indigo-50/70 ring-2 ring-blue-500/25 shadow-[0_10px_24px_-6px_var(--eguru-glow)]'
                     : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
                 }`}
               >
@@ -901,7 +901,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {/* 1D. STANDAR FORMAT DOKUMEN, JENIS HURUF & KERTAS RESMI (GLOBAL ADMIN) */}
       {/* ===================================================================== */}
       <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+        <div className="px-4 sm:px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-base font-bold text-slate-900">
@@ -932,12 +932,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               Tetapkan jenis huruf, ukuran kertas (A4, F4/Folio, Letter, Legal), dan orientasi baku. Setelah disimpan, panel otomatis terkunci agar tidak berubah saat berganti akun.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             {isFormatLockedUi ? (
               <button
                 type="button"
                 onClick={() => setIsFormatLockedUi(false)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap min-h-[40px]"
               >
                 <Unlock className="w-3.5 h-3.5 text-indigo-600" />
                 <span>Buka Kunci / Edit</span>
@@ -947,7 +947,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <button
                   type="button"
                   onClick={handleResetFormatDraft}
-                  className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700 cursor-pointer whitespace-nowrap"
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700 cursor-pointer whitespace-nowrap min-h-[40px]"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>Batal</span>
@@ -956,7 +956,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   type="button"
                   disabled={isSavingFormat}
                   onClick={handleSaveFormatDokumen}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shadow-sm"
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shadow-sm min-h-[40px]"
                 >
                   <Lock className="w-3.5 h-3.5" />
                   <span>{isSavingFormat ? 'Menyimpan...' : 'Simpan & Kunci Format'}</span>
@@ -966,7 +966,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
-        <div className="p-6 space-y-5">
+        <div className="p-4 sm:p-6 space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">
@@ -1096,7 +1096,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {/* 2. PENGATURAN KOP SURAT STANDAR DINAS (6 BARIS + 2 LOGO + LIVE PREVIEW) */}
       {/* ===================================================================== */}
       <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+        <div className="px-4 sm:px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-base font-bold text-slate-900">Pengaturan Kop Surat Standar Dinas</h3>
@@ -1125,12 +1125,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               Klik Buka Kunci untuk mengedit 6 baris teks &amp; logo kop surat, lalu klik Simpan &amp; Kunci Kop Surat agar terkunci permanen
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             {isKopLockedUi ? (
               <button
                 type="button"
                 onClick={() => setIsKopLockedUi(false)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap min-h-[40px]"
               >
                 <Unlock className="w-3.5 h-3.5 text-indigo-600" />
                 <span>Buka Kunci / Edit Kop</span>
@@ -1140,7 +1140,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <button
                   type="button"
                   onClick={handleResetKopDraft}
-                  className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700 cursor-pointer whitespace-nowrap"
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700 cursor-pointer whitespace-nowrap min-h-[40px]"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>Batal</span>
@@ -1149,7 +1149,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   type="button"
                   disabled={isSavingKop}
                   onClick={handleSaveKopSurat}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shadow-sm"
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shadow-sm min-h-[40px]"
                 >
                   <Lock className="w-3.5 h-3.5" />
                   <span>{isSavingKop ? 'Menyimpan...' : 'Simpan & Kunci Kop Surat'}</span>
@@ -1159,7 +1159,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-4 sm:p-6 space-y-6">
           <fieldset disabled={isKopLockedUi} className="space-y-6 disabled:opacity-80">
           {/* Pengaturan Jenis Huruf (Font) & Ukuran Logo Kop Surat */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-xl border border-slate-200 bg-slate-50">
@@ -1547,12 +1547,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             const normKop = normalizeKopSurat(draft.kopSurat);
             const logoSlotSize = Math.max(normKop.leftLogoSize, normKop.rightLogoSize);
             return (
-              <div className="eguru-paper-preview p-5 rounded-xl border border-slate-300 bg-white">
+              <div className="eguru-paper-preview p-3.5 sm:p-5 rounded-xl border border-slate-300 bg-white">
                 <p className="text-xs font-semibold text-slate-500 mb-3">
                   Pratinjau Langsung Kop Surat Bergaris Ganda ({normKop.fontFamily} · Logo Kiri {normKop.leftLogoSize}px · Logo Kanan {normKop.rightLogoSize}px):
                 </p>
-                <div className="eguru-paper-preview border border-slate-200 p-5 rounded-lg bg-white overflow-x-auto">
-                  <div className="pb-2 border-b-[3px] border-double border-slate-900">
+                <div className="eguru-paper-preview eguru-scroll border border-slate-200 p-4 sm:p-5 rounded-lg bg-white overflow-x-auto">
+                  <div className="min-w-[540px] sm:min-w-0 pb-2 border-b-[3px] border-double border-slate-900">
                     <div className="flex items-center justify-between gap-4 pb-2 border-b border-slate-900">
                       <div
                         style={{ width: logoSlotSize, minHeight: normKop.leftLogoSize }}
@@ -1628,12 +1628,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   ? 'Terdapat perubahan Kop Surat yang belum disimpan.'
                   : 'Mode edit terbuka. Klik Simpan & Kunci Kop Surat setelah selesai mengubah.'}
             </span>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
               {isKopLockedUi ? (
                 <button
                   type="button"
                   onClick={() => setIsKopLockedUi(false)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-xs font-semibold cursor-pointer"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-xs font-semibold cursor-pointer min-h-[40px]"
                 >
                   <Unlock className="w-3.5 h-3.5 text-indigo-600" />
                   <span>Buka Kunci / Edit Kop</span>
@@ -1643,7 +1643,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <button
                     type="button"
                     onClick={handleResetKopDraft}
-                    className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700 cursor-pointer"
+                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700 cursor-pointer min-h-[40px]"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
                     <span>Batal</span>
@@ -1652,7 +1652,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     type="button"
                     disabled={isSavingKop}
                     onClick={handleSaveKopSurat}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs font-semibold cursor-pointer shadow-sm"
+                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs font-semibold cursor-pointer shadow-sm min-h-[40px]"
                   >
                     <Lock className="w-3.5 h-3.5" />
                     <span>{isSavingKop ? 'Menyimpan...' : 'Simpan & Kunci Kop Surat'}</span>
@@ -1668,7 +1668,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {/* 2B. TANDA TANGAN DIGITAL, STEMPEL SEKOLAH & FONT LAPORAN DEFAULT */}
       {/* ===================================================================== */}
       <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="px-4 sm:px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h3 className="text-base font-bold text-slate-900">
               Tanda Tangan Digital, Stempel Sekolah &amp; Font Laporan Default
@@ -1780,7 +1780,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             draft.reportFontFamily || normalizeKopSurat(draft.kopSurat).fontFamily || 'Times New Roman';
 
           return (
-            <div className="p-6 space-y-6">
+            <div className="p-4 sm:p-6 space-y-6">
               {/* Ringkasan Font, Ukuran, Penempatan Stempel & Saklar */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200">
                 <div>
@@ -2185,6 +2185,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </button>
                 </div>
 
+                <div className="overflow-x-auto eguru-scroll rounded-lg border border-slate-200 bg-white">
                 <div
                   style={{
                     fontFamily: getPrintFontCss(activeFont),
@@ -2194,7 +2195,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     paddingBottom:
                       34 + Math.max(0, sigStamp.principalBlockOffsetY, sigStamp.teacherBlockOffsetY),
                   }}
-                  className="eguru-paper-preview grid grid-cols-1 sm:grid-cols-2 gap-6 text-xs text-slate-950 px-6 rounded-lg border border-slate-200 bg-white select-none overflow-visible"
+                  className="eguru-paper-preview min-w-[540px] sm:min-w-0 grid grid-cols-2 gap-6 text-xs text-slate-950 px-6 bg-white select-none overflow-visible"
                 >
                   {/* Area Kepala Sekolah */}
                   <div className="pl-2 overflow-visible">
@@ -2348,6 +2349,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     </div>
                   </div>
                 </div>
+                </div>
               </div>
             </div>
           );
@@ -2410,7 +2412,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {/* 3B. PENGATURAN BOBOT PENILAIAN (%) */}
       {/* ===================================================================== */}
       <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="px-4 sm:px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h3 className="text-base font-bold text-slate-900">
               Bobot Penilaian per Jenis Ujian (%)
@@ -2420,7 +2422,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3 shrink-0">
-            <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-800 cursor-pointer">
+            <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-800 cursor-pointer min-h-[34px]">
               <input
                 type="checkbox"
                 checked={Boolean(draft.useWeightedAverage)}
@@ -2455,14 +2457,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 onUpdateSettings(next);
                 onNotify('Bobot penilaian dibagi rata menjadi total 100%.');
               }}
-              className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 cursor-pointer whitespace-nowrap"
+              className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 cursor-pointer whitespace-nowrap min-h-[36px]"
             >
               Bagi Rata 100%
             </button>
           </div>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="p-4 sm:p-6 space-y-4">
           {(() => {
             const totalWeight = draft.examTypes.reduce(
               (acc, ex) => acc + Number(draft.examWeights?.[ex] ?? 0),
@@ -2540,7 +2542,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {/* 4. CADANGAN & UPGRADE AMAN (BACKUP & RESTORE JSON DATABASE) */}
       {/* ===================================================================== */}
       <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+        <div className="px-4 sm:px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <DatabaseBackup className="w-4 h-4 text-indigo-600" />
@@ -2555,7 +2557,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </span>
         </div>
 
-        <div className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="p-4 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1 text-xs text-slate-600">
             <p className="font-semibold text-slate-800">
               Ekspor seluruh data portal ke berkas JSON terenkapsulasi atau pulihkan dari cadangan sebelumnya.
@@ -2565,7 +2567,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-center gap-2 shrink-0 w-full sm:w-auto">
             <button
               type="button"
               onClick={() => {
@@ -2592,7 +2594,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 URL.revokeObjectURL(url);
                 onNotify('Cadangan database JSON berhasil diunduh.');
               }}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap min-h-[40px]"
             >
               <HardDriveDownload className="w-3.5 h-3.5 text-indigo-600" />
               <span>Unduh Cadangan JSON</span>
@@ -2636,7 +2638,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <button
               type="button"
               onClick={() => backupFileRef.current?.click()}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap min-h-[40px]"
             >
               <Upload className="w-3.5 h-3.5 text-emerald-300" />
               <span>Pulihkan dari JSON</span>

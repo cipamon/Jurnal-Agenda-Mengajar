@@ -374,9 +374,9 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
   }, [filteredStudents]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       {/* Top Action Card */}
-      <section className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+      <section className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div className="space-y-1">
           <h2 className="text-base font-bold text-slate-900">
             Manajemen Biodata, Kenaikan Kelas &amp; Peserta Didik
@@ -388,14 +388,14 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 sm:gap-2.5 shrink-0">
           {canManageStudents && (
             <button
               type="button"
               onClick={onCreateStudentModal}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+              className="col-span-2 sm:col-span-1 inline-flex items-center justify-center gap-1.5 min-h-[42px] px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-4 h-4 shrink-0" />
               <span>Tambah Siswa Baru</span>
             </button>
           )}
@@ -404,12 +404,12 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
             <button
               type="button"
               onClick={() => onOpenPromotionModal(selectedIds)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+              className="inline-flex items-center justify-center gap-1.5 min-h-[42px] px-3 sm:px-3.5 py-2 rounded-lg border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
             >
-              <GraduationCap className="w-4 h-4 text-indigo-700" />
-              <span>
+              <GraduationCap className="w-4 h-4 text-indigo-700 shrink-0" />
+              <span className="truncate">
                 {selectedIds.length > 0
-                  ? `Naik Kelas / Mutasi (${selectedIds.length})`
+                  ? `Naik Kelas (${selectedIds.length})`
                   : 'Naik Kelas / Mutasi'}
               </span>
             </button>
@@ -420,18 +420,18 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
               <button
                 type="button"
                 onClick={handleDownloadTemplate}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+                className="inline-flex items-center justify-center gap-1.5 min-h-[42px] px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
               >
-                <Download className="w-3.5 h-3.5 text-indigo-600" />
+                <Download className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                 <span>Unduh Template</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setShowImportPanel((v) => !v)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+                className="inline-flex items-center justify-center gap-1.5 min-h-[42px] px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
               >
-                <Upload className="w-3.5 h-3.5 text-indigo-300" />
+                <Upload className="w-3.5 h-3.5 text-indigo-300 shrink-0" />
                 <span>{showImportPanel ? 'Tutup Impor' : 'Impor Data'}</span>
               </button>
             </>
@@ -440,11 +440,11 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
           <button
             type="button"
             onClick={handleExportStudents}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 min-h-[42px] px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
           >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
+            <FileSpreadsheet className="w-3.5 h-3.5 shrink-0" />
             <span>
-              {selectedIds.length > 0 ? `Ekspor Terpilih (${selectedIds.length})` : 'Ekspor Excel'}
+              {selectedIds.length > 0 ? `Ekspor (${selectedIds.length})` : 'Ekspor Excel'}
             </span>
           </button>
         </div>
@@ -452,7 +452,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
 
       {/* Collapsible Kotak Impor Data */}
       {canManageStudents && showImportPanel && (
-        <section className="bg-white rounded-xl border border-indigo-200 p-5 space-y-4">
+        <section className="bg-white rounded-xl border border-indigo-200 p-4 sm:p-5 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-bold text-slate-900">Kotak Impor Data Siswa</h3>
@@ -513,7 +513,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
 
       {/* Tabel Data Siswa */}
       <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="px-4 sm:px-6 py-4 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3.5">
           <div>
             <h3 className="text-base font-bold text-slate-900">Daftar Peserta Didik</h3>
             <p className="text-xs text-slate-500 tabular-nums">
@@ -521,48 +521,50 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            <div className="relative">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2.5 w-full lg:w-auto">
+            <div className="relative w-full sm:w-64">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Cari NIS, NISN, nama, HP, wali..."
-                className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600 w-56 sm:w-64"
+                className="w-full min-h-[40px] pl-8 pr-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
               />
             </div>
 
-            <select
-              value={filterClass}
-              onChange={(e) => setFilterClass(e.target.value)}
-              className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
-            >
-              <option value="ALL">Semua Kelas</option>
-              {settings.classes.map((cls) => (
-                <option key={cls} value={cls}>
-                  {cls}
-                </option>
-              ))}
-            </select>
+            <div className="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
+              <select
+                value={filterClass}
+                onChange={(e) => setFilterClass(e.target.value)}
+                className="w-full sm:w-auto min-h-[40px] px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              >
+                <option value="ALL">Semua Kelas</option>
+                {settings.classes.map((cls) => (
+                  <option key={cls} value={cls}>
+                    {cls}
+                  </option>
+                ))}
+              </select>
 
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value as 'ALL' | StudentStatus)}
-              className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
-            >
-              <option value="aktif">Status: Aktif</option>
-              <option value="lulus">Status: Lulus / Alumni</option>
-              <option value="pindah">Status: Pindah</option>
-              <option value="keluar">Status: Keluar</option>
-              <option value="ALL">Semua Status</option>
-            </select>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value as 'ALL' | StudentStatus)}
+                className="w-full sm:w-auto min-h-[40px] px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              >
+                <option value="aktif">Status: Aktif</option>
+                <option value="lulus">Status: Lulus / Alumni</option>
+                <option value="pindah">Status: Pindah</option>
+                <option value="keluar">Status: Keluar</option>
+                <option value="ALL">Semua Status</option>
+              </select>
+            </div>
 
             {canManageStudents && selectedIds.length > 0 && (
               <button
                 type="button"
                 onClick={handleBulkDelete}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+                className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Hapus Terpilih ({selectedIds.length})</span>
@@ -571,7 +573,167 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
           </div>
         </div>
 
-        <div className="max-h-[480px] overflow-auto eguru-scroll">
+        {/* Mobile & Tablet Card List View */}
+        <div className="lg:hidden">
+          {filteredStudents.length > 0 && (
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
+              <label className="inline-flex items-center gap-2.5 text-xs font-semibold text-slate-700 cursor-pointer min-h-[36px]">
+                <input
+                  type="checkbox"
+                  checked={
+                    filteredStudents.length > 0 &&
+                    filteredStudents.every((s) => selectedIds.includes(s.id))
+                  }
+                  onChange={toggleSelectAllFiltered}
+                  className="w-4 h-4 rounded border-slate-300 cursor-pointer"
+                />
+                <span>Pilih Semua ({filteredStudents.length})</span>
+              </label>
+              {selectedIds.length > 0 && (
+                <span className="text-[11px] font-semibold text-indigo-700 tabular-nums">
+                  {selectedIds.length} terpilih
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="divide-y divide-slate-200 max-h-[600px] overflow-y-auto eguru-scroll">
+            {filteredStudents.length === 0 ? (
+              <div className="py-10 px-4 text-center text-slate-500 text-sm">
+                Tidak ada data siswa yang cocok dengan filter kelas/status.
+              </div>
+            ) : (
+              filteredStudents.map((st, idx) => {
+                const stStatus: StudentStatus = st.status || 'aktif';
+                const displayTtl = formatStudentTtl(st);
+                const checked = selectedIds.includes(st.id);
+                return (
+                  <div
+                    key={st.id}
+                    className={`p-4 space-y-3 ${checked ? 'bg-indigo-50/40' : 'bg-white'}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleSelectRow(st.id)}
+                        aria-label={`Pilih siswa ${st.name}`}
+                        className="mt-2 w-4 h-4 rounded border-slate-300 cursor-pointer shrink-0"
+                      />
+                      <div className="w-11 h-11 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 overflow-hidden">
+                        <img
+                          src={getStudentPhotoUrl(st)}
+                          referrerPolicy="no-referrer"
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = getStudentPhotoUrl({
+                              photoDataUrl: '',
+                              gender: st.gender,
+                            });
+                          }}
+                          alt={st.name}
+                          className="w-full h-full object-cover object-top"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onViewStudent(st)}
+                            className="text-left font-bold text-sm text-slate-900 hover:text-indigo-600 hover:underline cursor-pointer truncate"
+                          >
+                            {st.name}
+                          </button>
+                          <span
+                            className={`text-[11px] font-semibold px-2 py-0.5 rounded border shrink-0 ${
+                              stStatus === 'aktif'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200'
+                            }`}
+                          >
+                            {STUDENT_STATUS_LABELS[stStatus]}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500">
+                          {onViewClass ? (
+                            <button
+                              type="button"
+                              onClick={() => onViewClass(st.className)}
+                              className="font-semibold text-indigo-700 hover:underline cursor-pointer"
+                            >
+                              {st.className}
+                            </button>
+                          ) : (
+                            <span className="font-semibold text-indigo-700">{st.className}</span>
+                          )}
+                          <span>·</span>
+                          <span className="font-mono tabular-nums">
+                            Absen {st.absenNo || String(idx + 1).padStart(2, '0')}
+                          </span>
+                          <span>·</span>
+                          <span>{st.gender === 'L' ? 'Laki-laki' : 'Perempuan'}</span>
+                        </div>
+                        <p className="mt-0.5 text-[11px] font-mono text-slate-500 tabular-nums">
+                          NIS {st.nis}
+                          {st.nisn ? ` · NISN ${st.nisn}` : ''}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pl-7 text-xs text-slate-600">
+                      <div className="truncate">
+                        <span className="text-slate-400">TTL:</span> {displayTtl || '-'}
+                      </div>
+                      <div className="truncate font-mono">
+                        <span className="text-slate-400 font-sans">HP:</span> {st.phone || '-'}
+                      </div>
+                      <div className="truncate sm:col-span-2">
+                        <span className="text-slate-400">WK:</span> {st.homeroomTeacher || '-'} ·{' '}
+                        <span className="text-slate-400">BK:</span> {st.counselor || '-'}
+                      </div>
+                    </div>
+
+                    <div className="pl-7 flex flex-wrap items-center gap-2 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => onViewStudent(st)}
+                        className="flex-1 min-w-[84px] min-h-[38px] inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 cursor-pointer"
+                      >
+                        <span>Detail</span>
+                      </button>
+                      {canManageStudents && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => onEditStudentModal(st)}
+                            className="flex-1 min-w-[84px] min-h-[38px] inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 cursor-pointer"
+                          >
+                            <FileEdit className="w-3.5 h-3.5" />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedIds((prev) => prev.filter((id) => id !== st.id));
+                              onDeleteStudent(st.id);
+                            }}
+                            className="min-h-[38px] min-w-[40px] inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg border border-rose-200 text-xs font-semibold text-rose-700 hover:bg-rose-50 cursor-pointer"
+                            aria-label={`Hapus ${st.name}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Desktop 10-Column Table */}
+        <div className="hidden lg:block max-h-[480px] overflow-auto eguru-scroll">
           <table className="w-full text-left border-collapse">
             <thead className="sticky top-0 z-10 bg-slate-900 text-white text-xs">
               <tr>

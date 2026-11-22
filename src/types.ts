@@ -22,6 +22,8 @@ export type PrintFontFamily =
   | 'Georgia';
 
 export type ThemeId =
+  | 'neomorphic'
+  | 'neomorphic_dark'
   | 'indigo'
   | 'emerald'
   | 'teal'
@@ -41,6 +43,8 @@ export type ReportType =
   | 'daftar_siswa'
   | 'aktivitas_guru'
   | 'semua';
+
+export type SingleReportType = Exclude<ReportType, 'semua'>;
 
 export type PaperSize = 'A4' | 'F4' | 'Letter' | 'Legal';
 

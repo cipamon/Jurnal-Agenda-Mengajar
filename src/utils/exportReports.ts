@@ -11,6 +11,7 @@ import {
   PaperSize,
   PrintFontFamily,
   ReportType,
+  SingleReportType,
   Student,
   SystemSettings,
 } from '../types';
@@ -30,7 +31,8 @@ import {
 } from './helpers';
 
 export interface ReportFilterOptions {
-  reportType: ReportType;
+  reportType?: ReportType;
+  reportTypes?: SingleReportType[];
   selectedClasses: string[];
   selectedSubject: string; // 'ALL' or subject name
   selectedTeacherId?: string; // 'ALL', user.id, or 'name:<teacherName>'
@@ -44,6 +46,43 @@ export interface ReportFilterOptions {
   paperSize?: PaperSize;
   orientation: PaperOrientation;
   fontFamily: PrintFontFamily;
+}
+
+export function resolveSelectedReportTypes(
+  opts: ReportFilterOptions,
+  includeActivityInSemua = false
+): SingleReportType[] {
+  if (Array.isArray(opts.reportTypes)) {
+    return Array.from(new Set(opts.reportTypes));
+  }
+  if (opts.reportType === 'semua') {
+    return includeActivityInSemua
+      ? ['jurnal', 'aktivitas_guru', 'kehadiran', 'nilai']
+      : ['jurnal', 'kehadiran', 'nilai'];
+  }
+  if (opts.reportType) {
+    return [opts.reportType];
+  }
+  return [];
+}
+
+function buildReportFileTag(selected: SingleReportType[]): string {
+  if (selected.length === 0) return 'KOSONG';
+  if (selected.length === 1) return selected[0].toUpperCase();
+  if (selected.length >= 9) return 'LENGKAP_9JENIS';
+  return `GABUNGAN_${selected.length}JENIS`;
+}
+
+function appendUniqueSheet(wb: XLSX.WorkBook, ws: XLSX.WorkSheet, rawName: string) {
+  const cleaned = rawName.replace(/[:\\/?*[\]]/g, '').trim() || 'Sheet';
+  let candidate = cleaned.slice(0, 31);
+  let counter = 2;
+  while (wb.SheetNames.includes(candidate)) {
+    const suffix = ` ${counter}`;
+    candidate = `${cleaned.slice(0, 31 - suffix.length)}${suffix}`;
+    counter += 1;
+  }
+  XLSX.utils.book_append_sheet(wb, ws, candidate);
 }
 
 export interface ComputedClassAttendanceMatrix {
@@ -836,8 +875,10 @@ export function exportReportToSpreadsheet(
   const wb = XLSX.utils.book_new();
   const filteredJournals = filterJournalsForReport(journals, opts);
   const filteredGrades = filterGradesForReport(grades, opts);
+  const selectedReports = resolveSelectedReportTypes(opts, true);
+  const hasReport = (id: SingleReportType) => selectedReports.includes(id);
 
-  if (opts.reportType === 'jurnal' || opts.reportType === 'semua') {
+  if (hasReport('jurnal')) {
     const rows = filteredJournals.map((j, idx) => {
       const counts = { H: 0, S: 0, I: 0, A: 0, D: 0 };
       Object.values(j.attendance).forEach((item) => {
@@ -864,10 +905,10 @@ export function exportReportToSpreadsheet(
         ? rows
         : [{ Keterangan: 'Tidak ada data jurnal pada filter yang dipilih.' }]
     );
-    XLSX.utils.book_append_sheet(wb, ws, 'Jurnal Mengajar');
+    appendUniqueSheet(wb, ws, 'Jurnal Mengajar');
   }
 
-  if (opts.reportType === 'aktivitas_guru' || opts.reportType === 'semua') {
+  if (hasReport('aktivitas_guru')) {
     const summaryRows = buildTeacherActivitySummary(filteredJournals, filteredGrades, opts.users).map(
       (row, idx) => ({
         No: idx + 1,
@@ -885,7 +926,7 @@ export function exportReportToSpreadsheet(
         ? summaryRows
         : [{ Keterangan: 'Belum ada aktivitas mengajar atau penilaian guru pada filter ini.' }]
     );
-    XLSX.utils.book_append_sheet(wb, wsSummary, 'Ringkasan Guru');
+    appendUniqueSheet(wb, wsSummary, 'Ringkasan Guru');
 
     const activityJournalRows = filteredJournals.map((j, idx) => {
       const c = { H: 0, S: 0, I: 0, A: 0, D: 0 };
@@ -909,7 +950,7 @@ export function exportReportToSpreadsheet(
         ? activityJournalRows
         : [{ Keterangan: 'Belum ada riwayat jurnal mengajar guru.' }]
     );
-    XLSX.utils.book_append_sheet(wb, wsJrn, 'Aktivitas Mengajar');
+    appendUniqueSheet(wb, wsJrn, 'Aktivitas Mengajar');
 
     const studentMap = new Map(students.map((s) => [s.id, s]));
     const activityGradeRows = filteredGrades.map((g, idx) => {
@@ -934,14 +975,14 @@ export function exportReportToSpreadsheet(
         ? activityGradeRows
         : [{ Keterangan: 'Belum ada riwayat penilaian guru.' }]
     );
-    XLSX.utils.book_append_sheet(wb, wsGrd, 'Riwayat Penilaian Guru');
+    appendUniqueSheet(wb, wsGrd, 'Riwayat Penilaian Guru');
   }
 
-  if (opts.reportType === 'kehadiran' || opts.reportType === 'semua') {
+  if (hasReport('kehadiran')) {
     const matrices = buildAttendanceMatrices(students, filteredJournals, opts.selectedClasses);
     if (matrices.length === 0) {
       const ws = XLSX.utils.json_to_sheet([{ Keterangan: 'Belum ada data kehadiran.' }]);
-      XLSX.utils.book_append_sheet(wb, ws, 'Kehadiran');
+      appendUniqueSheet(wb, ws, 'Kehadiran');
     } else {
       matrices.forEach((m) => {
         const rows = m.students.map((st, idx) => {
@@ -964,18 +1005,17 @@ export function exportReportToSpreadsheet(
           row['% Hadir'] = `${sum.pct}%`;
           return row;
         });
-        const sheetName = `Absen ${m.className}`.slice(0, 31);
         const ws = XLSX.utils.json_to_sheet(rows);
-        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        appendUniqueSheet(wb, ws, `Absen ${m.className}`);
       });
     }
   }
 
-  if (opts.reportType === 'nilai' || opts.reportType === 'semua') {
+  if (hasReport('nilai')) {
     const matrices = buildGradeMatrices(students, grades, settings, opts);
     if (matrices.length === 0) {
       const ws = XLSX.utils.json_to_sheet([{ Keterangan: 'Belum ada data nilai pada filter ini.' }]);
-      XLSX.utils.book_append_sheet(wb, ws, 'Rekap Nilai');
+      appendUniqueSheet(wb, ws, 'Rekap Nilai');
     } else {
       matrices.forEach((m) => {
         const rows = m.students.map((st, idx) => {
@@ -995,19 +1035,17 @@ export function exportReportToSpreadsheet(
             avg !== null ? (avg >= settings.kkm ? 'Tuntas' : 'Remedial') : '-';
           return row;
         });
-        const rawTitle = `Nilai ${m.className} ${m.subject}`.replace(/[:\\/?*[\]]/g, '');
-        const sheetName = rawTitle.slice(0, 31);
         const ws = XLSX.utils.json_to_sheet(rows);
-        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        appendUniqueSheet(wb, ws, `Nilai ${m.className} ${m.subject}`);
       });
     }
   }
 
-  if (opts.reportType === 'rekap_presensi') {
+  if (hasReport('rekap_presensi')) {
     const recaps = buildAttendanceRecapByClass(students, filteredJournals, opts.selectedClasses);
     if (recaps.length === 0) {
       const ws = XLSX.utils.json_to_sheet([{ Keterangan: 'Belum ada data siswa/presensi.' }]);
-      XLSX.utils.book_append_sheet(wb, ws, 'Rekap Presensi');
+      appendUniqueSheet(wb, ws, 'Rekap Presensi');
     } else {
       recaps.forEach((recap) => {
         const rows = recap.rows.map((r, idx) => ({
@@ -1025,12 +1063,12 @@ export function exportReportToSpreadsheet(
           Status: r.statusLabel,
         }));
         const ws = XLSX.utils.json_to_sheet(rows);
-        XLSX.utils.book_append_sheet(wb, ws, `Rekap ${recap.className}`.slice(0, 31));
+        appendUniqueSheet(wb, ws, `Rekap ${recap.className}`);
       });
     }
   }
 
-  if (opts.reportType === 'ketidakhadiran') {
+  if (hasReport('ketidakhadiran')) {
     const abs = buildAbsenceLog(students, filteredJournals);
     const sumRows = abs.summary.map((s, idx) => ({
       No: idx + 1,
@@ -1044,7 +1082,7 @@ export function exportReportToSpreadsheet(
       Dispen: s.D,
       'Total Tidak Hadir': s.total,
     }));
-    XLSX.utils.book_append_sheet(
+    appendUniqueSheet(
       wb,
       XLSX.utils.json_to_sheet(
         sumRows.length > 0 ? sumRows : [{ Keterangan: 'Semua siswa tercatat hadir pada filter ini.' }]
@@ -1064,7 +1102,7 @@ export function exportReportToSpreadsheet(
       Status: `${l.status} (${l.statusLabel})`,
       Catatan: l.note,
     }));
-    XLSX.utils.book_append_sheet(
+    appendUniqueSheet(
       wb,
       XLSX.utils.json_to_sheet(
         logRows.length > 0 ? logRows : [{ Keterangan: 'Belum ada catatan ketidakhadiran.' }]
@@ -1073,7 +1111,7 @@ export function exportReportToSpreadsheet(
     );
   }
 
-  if (opts.reportType === 'remedial') {
+  if (hasReport('remedial')) {
     const blocks = buildRemedialAnalysis(students, grades, settings, opts);
     const summaryRows = blocks.map((b, idx) => ({
       No: idx + 1,
@@ -1088,7 +1126,7 @@ export function exportReportToSpreadsheet(
       Tertinggi: b.highest ?? '-',
       Terendah: b.lowest ?? '-',
     }));
-    XLSX.utils.book_append_sheet(
+    appendUniqueSheet(
       wb,
       XLSX.utils.json_to_sheet(
         summaryRows.length > 0 ? summaryRows : [{ Keterangan: 'Belum ada data nilai untuk dianalisis.' }]
@@ -1109,7 +1147,7 @@ export function exportReportToSpreadsheet(
         'Tindak Lanjut': r.actionNote,
       }))
     );
-    XLSX.utils.book_append_sheet(
+    appendUniqueSheet(
       wb,
       XLSX.utils.json_to_sheet(
         remedialList.length > 0
@@ -1120,10 +1158,10 @@ export function exportReportToSpreadsheet(
     );
   }
 
-  if (opts.reportType === 'leger_kelas') {
+  if (hasReport('leger_kelas')) {
     const ledgers = buildClassMultiSubjectLedger(students, grades, settings, opts);
     if (ledgers.length === 0) {
-      XLSX.utils.book_append_sheet(
+      appendUniqueSheet(
         wb,
         XLSX.utils.json_to_sheet([{ Keterangan: 'Belum ada data leger nilai kelas.' }]),
         'Leger Nilai'
@@ -1147,19 +1185,15 @@ export function exportReportToSpreadsheet(
           row['Keterangan'] = r.statusLabel;
           return row;
         });
-        XLSX.utils.book_append_sheet(
-          wb,
-          XLSX.utils.json_to_sheet(rows),
-          `Leger ${l.className}`.slice(0, 31)
-        );
+        appendUniqueSheet(wb, XLSX.utils.json_to_sheet(rows), `Leger ${l.className}`);
       });
     }
   }
 
-  if (opts.reportType === 'daftar_siswa') {
+  if (hasReport('daftar_siswa')) {
     const blocks = buildStudentRosterByClass(students, opts.selectedClasses);
     if (blocks.length === 0) {
-      XLSX.utils.book_append_sheet(
+      appendUniqueSheet(
         wb,
         XLSX.utils.json_to_sheet([{ Keterangan: 'Belum ada data siswa pada kelas terpilih.' }]),
         'Daftar Siswa'
@@ -1178,17 +1212,21 @@ export function exportReportToSpreadsheet(
           'Wali Kelas': item.student.homeroomTeacher || '-',
           Status: item.statusText,
         }));
-        XLSX.utils.book_append_sheet(
-          wb,
-          XLSX.utils.json_to_sheet(rows),
-          `Siswa ${b.className}`.slice(0, 31)
-        );
+        appendUniqueSheet(wb, XLSX.utils.json_to_sheet(rows), `Siswa ${b.className}`);
       });
     }
   }
 
+  if (wb.SheetNames.length === 0) {
+    appendUniqueSheet(
+      wb,
+      XLSX.utils.json_to_sheet([{ Keterangan: 'Pilih minimal satu jenis laporan terlebih dahulu.' }]),
+      'Info Laporan'
+    );
+  }
+
   const stamp = getTodayIso();
-  const fileName = `Laporan_${opts.reportType.toUpperCase()}_${settings.semester}_${stamp}.${format}`;
+  const fileName = `Laporan_${buildReportFileTag(selectedReports)}_${settings.semester}_${stamp}.${format}`;
 
   if (format === 'xls') {
     XLSX.writeFile(wb, fileName, { bookType: 'biff8' });
@@ -1418,6 +1456,9 @@ export async function exportReportToPdf(
 
   const filteredJournals = filterJournalsForReport(journals, opts);
   const filteredGrades = filterGradesForReport(grades, opts);
+  const selectedReports = resolveSelectedReportTypes(opts, false);
+  const hasReport = (id: SingleReportType) => selectedReports.includes(id);
+
   let y = drawHeader();
   let isFirstSection = true;
 
@@ -1430,7 +1471,7 @@ export async function exportReportToPdf(
   };
 
   // 1. JURNAL MENGAJAR
-  if (opts.reportType === 'jurnal' || opts.reportType === 'semua') {
+  if (hasReport('jurnal')) {
     ensureNewSectionPage();
     doc.setFont(pdfFont, 'bold');
     doc.setFontSize(11.5);
@@ -1498,7 +1539,7 @@ export async function exportReportToPdf(
   }
 
   // 1B. RIWAYAT AKTIVITAS MENGAJAR & PENILAIAN GURU (KHUSUS ADMIN / PIMPINAN)
-  if (opts.reportType === 'aktivitas_guru') {
+  if (hasReport('aktivitas_guru')) {
     ensureNewSectionPage();
     doc.setFont(pdfFont, 'bold');
     doc.setFontSize(11.5);
@@ -1646,7 +1687,7 @@ export async function exportReportToPdf(
   }
 
   // 2. KEHADIRAN MENDATAR
-  if (opts.reportType === 'kehadiran' || opts.reportType === 'semua') {
+  if (hasReport('kehadiran')) {
     const matrices = buildAttendanceMatrices(students, filteredJournals, opts.selectedClasses);
     matrices.forEach((m) => {
       ensureNewSectionPage();
@@ -1716,7 +1757,7 @@ export async function exportReportToPdf(
   }
 
   // 3. REKAP NILAI
-  if (opts.reportType === 'nilai' || opts.reportType === 'semua') {
+  if (hasReport('nilai')) {
     const matrices = buildGradeMatrices(students, grades, settings, opts);
     matrices.forEach((m) => {
       ensureNewSectionPage();
@@ -1785,7 +1826,7 @@ export async function exportReportToPdf(
   }
 
   // 4. REKAP PRESENSI RINGKAS PER SISWA & KELAS
-  if (opts.reportType === 'rekap_presensi') {
+  if (hasReport('rekap_presensi')) {
     const recaps = buildAttendanceRecapByClass(students, filteredJournals, opts.selectedClasses);
     if (recaps.length === 0) {
       ensureNewSectionPage();
@@ -1857,7 +1898,7 @@ export async function exportReportToPdf(
   }
 
   // 5. MONITORING KETIDAKHADIRAN (S / I / A / D)
-  if (opts.reportType === 'ketidakhadiran') {
+  if (hasReport('ketidakhadiran')) {
     ensureNewSectionPage();
     const abs = buildAbsenceLog(students, filteredJournals);
     doc.setFont(pdfFont, 'bold');
@@ -1958,7 +1999,7 @@ export async function exportReportToPdf(
   }
 
   // 6. ANALISIS KETUNTASAN & DAFTAR REMEDIAL
-  if (opts.reportType === 'remedial') {
+  if (hasReport('remedial')) {
     ensureNewSectionPage();
     const blocks = buildRemedialAnalysis(students, grades, settings, opts);
     doc.setFont(pdfFont, 'bold');
@@ -2064,7 +2105,7 @@ export async function exportReportToPdf(
   }
 
   // 7. LEGER NILAI GABUNGAN SEMUA MAPEL PER KELAS
-  if (opts.reportType === 'leger_kelas') {
+  if (hasReport('leger_kelas')) {
     const ledgers = buildClassMultiSubjectLedger(students, grades, settings, opts);
     ledgers.forEach((l) => {
       ensureNewSectionPage();
@@ -2124,7 +2165,7 @@ export async function exportReportToPdf(
   }
 
   // 8. DAFTAR INDUK & PROFIL SISWA PER KELAS
-  if (opts.reportType === 'daftar_siswa') {
+  if (hasReport('daftar_siswa')) {
     const blocks = buildStudentRosterByClass(students, opts.selectedClasses);
     blocks.forEach((b) => {
       ensureNewSectionPage();
@@ -2180,7 +2221,21 @@ export async function exportReportToPdf(
     });
   }
 
-  doc.save(`Laporan_Resmi_${opts.reportType.toUpperCase()}_${getTodayIso()}.pdf`);
+  if (isFirstSection) {
+    doc.setFont(pdfFont, 'bold');
+    doc.setFontSize(11);
+    doc.text('LAPORAN RESMI PORTAL E-GURU', pageWidth / 2, y + 6, { align: 'center' });
+    doc.setFont(pdfFont, 'normal');
+    doc.setFontSize(9.5);
+    doc.text(
+      'Tidak ada data yang tersedia untuk kombinasi jenis laporan dan filter yang dipilih.',
+      pageWidth / 2,
+      y + 14,
+      { align: 'center' }
+    );
+  }
+
+  doc.save(`Laporan_Resmi_${buildReportFileTag(selectedReports)}_${getTodayIso()}.pdf`);
 }
 
 // =========================================================================

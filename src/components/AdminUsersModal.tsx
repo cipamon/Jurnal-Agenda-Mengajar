@@ -510,18 +510,18 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
       className={
         isPage
           ? 'w-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col'
-          : 'w-full max-w-5xl bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]'
+          : 'w-full max-w-5xl bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92dvh]'
       }
       onClick={isPage ? undefined : (e) => e.stopPropagation()}
     >
       {/* Header */}
-      <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between gap-4">
+      <div className="px-4 py-3.5 sm:px-6 sm:py-4 bg-slate-900 text-white flex items-center justify-between gap-3 sm:gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-10 h-10 rounded-lg bg-indigo-600/30 border border-indigo-400/40 flex items-center justify-center shrink-0">
             <ShieldCheck className="w-5 h-5 text-indigo-300" />
           </div>
           <div className="min-w-0">
-            <h2 id="admin-users-modal-title" className="text-base font-bold text-white truncate">
+            <h2 id="admin-users-modal-title" className="text-sm sm:text-base font-bold text-white truncate">
               Pengaturan Admin & Manajemen Pengguna (Multi-Role)
             </h2>
             <p className="text-xs text-slate-300 truncate">
@@ -534,7 +534,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer shrink-0"
+            className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer shrink-0"
             aria-label="Tutup pop-up admin dan pengguna"
           >
             <X className="w-5 h-5" />
@@ -543,7 +543,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
       </div>
 
       {/* Body */}
-      <div className={isPage ? 'p-6 space-y-6' : 'p-6 space-y-6 overflow-y-auto eguru-scroll'}>
+      <div className={isPage ? 'p-4 sm:p-6 space-y-5 sm:space-y-6' : 'p-4 sm:p-6 space-y-5 sm:space-y-6 overflow-y-auto eguru-scroll'}>
           {currentUserRole !== 'admin' ? (
             <div className="p-5 rounded-xl border border-amber-200 bg-amber-50 space-y-4">
               <div className="flex items-start gap-3">
@@ -613,7 +613,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
               {/* Form Tambah / Edit User */}
               <form
                 onSubmit={handleSaveUser}
-                className="p-5 rounded-xl border border-slate-200 bg-slate-50 space-y-4"
+                className="p-4 sm:p-5 rounded-xl border border-slate-200 bg-slate-50 space-y-4"
               >
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
@@ -755,7 +755,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Foto Pengguna (Unggah atau Link URL)
                     </label>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <img
                         src={getUserPhotoUrl({
                           photoDataUrl: userPhotoDataUrl,
@@ -774,7 +774,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                         alt="Preview User"
                         className="w-9 h-9 rounded-lg object-cover object-top border border-slate-300 bg-white shrink-0"
                       />
-                      <div className="relative flex-1 min-w-[110px]">
+                      <div className="relative flex-1 min-w-[140px]">
                         <Link2 className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                         <input
                           type="url"
@@ -784,7 +784,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                           className="w-full pl-8 pr-2.5 py-2 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
                         />
                       </div>
-                      <label className="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700 cursor-pointer whitespace-nowrap shrink-0">
+                      <label className="inline-flex items-center justify-center gap-1 px-3 py-2 min-h-[38px] rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700 cursor-pointer whitespace-nowrap shrink-0">
                         <ImagePlus className="w-3.5 h-3.5 text-indigo-600" />
                         <span>File</span>
                         <input
@@ -798,7 +798,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                         <button
                           type="button"
                           onClick={() => setUserPhotoDataUrl('')}
-                          className="px-2 py-2 rounded-lg border border-rose-200 bg-white text-xs text-rose-700 hover:bg-rose-50 cursor-pointer shrink-0"
+                          className="px-2.5 py-2 min-h-[38px] rounded-lg border border-rose-200 bg-white text-xs text-rose-700 hover:bg-rose-50 cursor-pointer shrink-0"
                           title="Kembali ke foto dummy"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -932,10 +932,10 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                     </div>
                   )}
 
-                  <div className="lg:col-span-6 lg:col-start-7 flex justify-end">
+                  <div className="sm:col-span-2 lg:col-span-6 lg:col-start-7 flex justify-end">
                     <button
                       type="submit"
-                      className="inline-flex items-center justify-center gap-1.5 px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-5 py-2.5 min-h-[42px] rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
                     >
                       <Plus className="w-4 h-4" />
                       <span>{editingUserId ? 'Simpan Perubahan Akun' : 'Tambah Akun User'}</span>
@@ -945,16 +945,16 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
               </form>
 
               {/* Toolbar Template / Impor / Ekspor / Hapus Terpilih Pengguna */}
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <p className="text-xs text-slate-600">
                   Total <span className="font-bold text-slate-900 tabular-nums">{users.length}</span>{' '}
                   akun terdaftar
                 </p>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto">
                   <button
                     type="button"
                     onClick={handleDownloadUserTemplate}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap"
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[40px] rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap"
                   >
                     <Download className="w-3.5 h-3.5 text-indigo-600" />
                     <span>Template</span>
@@ -962,7 +962,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowUserImport((v) => !v)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[40px] rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
                   >
                     <Upload className="w-3.5 h-3.5 text-indigo-300" />
                     <span>{showUserImport ? 'Tutup Impor' : 'Impor'}</span>
@@ -970,7 +970,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                   <button
                     type="button"
                     onClick={handleExportUsers}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[40px] rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
                   >
                     <FileSpreadsheet className="w-3.5 h-3.5" />
                     <span>
@@ -983,10 +983,10 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                     <button
                       type="button"
                       onClick={handleBulkDeleteUsers}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[40px] rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      <span>Hapus Terpilih ({selectedUserIds.length})</span>
+                      <span>Hapus ({selectedUserIds.length})</span>
                     </button>
                   )}
                 </div>
@@ -1051,8 +1051,147 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
             </>
           )}
 
-          {/* Tabel Daftar Pengguna & Role */}
-          <div className="border border-slate-200 rounded-xl overflow-hidden">
+          {/* Mobile & Tablet User Card List */}
+          <div className="lg:hidden border border-slate-200 rounded-xl overflow-hidden bg-white">
+            {currentUserRole === 'admin' && users.length > 0 && (
+              <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs">
+                <label className="inline-flex items-center gap-2 font-semibold text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={users.length > 0 && users.every((u) => selectedUserIds.includes(u.id))}
+                    onChange={toggleSelectAllUsers}
+                    className="rounded border-slate-300 cursor-pointer"
+                  />
+                  <span>Pilih Semua Akun ({users.length})</span>
+                </label>
+                {selectedUserIds.length > 0 && (
+                  <span className="font-semibold text-indigo-700 tabular-nums">
+                    {selectedUserIds.length} terpilih
+                  </span>
+                )}
+              </div>
+            )}
+
+            <div className="divide-y divide-slate-200">
+              {users.map((u) => {
+                const isCurrent = u.email.toLowerCase() === currentUserEmail.toLowerCase();
+                const isTeaching = u.role === 'guru' || u.role === 'wali_kelas';
+                const clsList = u.assignedClasses || [];
+                const subjList = u.assignedSubjects || [];
+                return (
+                  <div key={u.id} className="p-3.5 space-y-2.5">
+                    <div className="flex items-start gap-3">
+                      {currentUserRole === 'admin' && (
+                        <input
+                          type="checkbox"
+                          checked={selectedUserIds.includes(u.id)}
+                          onChange={() => toggleSelectUser(u.id)}
+                          aria-label={`Pilih pengguna ${u.name}`}
+                          className="mt-2 rounded border-slate-300 cursor-pointer shrink-0"
+                        />
+                      )}
+                      <img
+                        src={getUserPhotoUrl(u)}
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = getUserPhotoUrl({
+                            photoDataUrl: '',
+                            role: u.role,
+                            gender: u.gender,
+                          });
+                        }}
+                        alt={u.name}
+                        className="w-10 h-10 rounded-full object-cover object-top border border-slate-200 bg-white shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-slate-900 truncate">
+                              {u.name}{' '}
+                              {isCurrent && (
+                                <span className="text-[11px] font-semibold text-indigo-600">(Anda)</span>
+                              )}
+                            </p>
+                            <p className="text-[11px] text-slate-500 font-mono tabular-nums">
+                              NIP. {u.nip} · {u.gender} · {USER_ROLE_LABELS[u.role]}
+                            </p>
+                          </div>
+                          {currentUserRole === 'admin' ? (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleUserActive(u)}
+                              className={`px-2.5 py-1 min-h-[30px] rounded border text-[11px] font-semibold cursor-pointer shrink-0 ${
+                                u.active
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : 'bg-slate-100 text-slate-500 border-slate-200'
+                              }`}
+                            >
+                              {u.active ? 'Aktif' : 'Nonaktif'}
+                            </button>
+                          ) : (
+                            <span
+                              className={`text-[11px] font-semibold shrink-0 ${
+                                u.active ? 'text-emerald-700' : 'text-slate-400'
+                              }`}
+                            >
+                              {u.active ? 'Aktif' : 'Nonaktif'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pl-1 space-y-1 text-[11px] text-slate-600">
+                      <p className="font-mono text-slate-700 break-all">
+                        {u.email}
+                        {u.username ? ` · @${u.username}` : ''}
+                      </p>
+                      {isTeaching ? (
+                        <div className="space-y-0.5">
+                          <p>
+                            <span className="font-semibold text-slate-800">Kelas:</span>{' '}
+                            {clsList.length > 0 ? clsList.join(', ') : 'Semua Kelas'}
+                          </p>
+                          <p>
+                            <span className="font-semibold text-slate-800">Mapel:</span>{' '}
+                            {subjList.length > 0 ? subjList.join(', ') : 'Semua Mapel'}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-slate-500">Akses: Seluruh Data Sekolah</p>
+                      )}
+                    </div>
+
+                    {currentUserRole === 'admin' && (
+                      <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
+                        <button
+                          type="button"
+                          onClick={() => handleEditUserClick(u)}
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[38px] rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 cursor-pointer"
+                        >
+                          <FileEdit className="w-3.5 h-3.5" />
+                          <span>Edit Akun</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteUser(u)}
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[38px] rounded-lg border border-rose-200 bg-white text-xs font-semibold text-rose-700 hover:bg-rose-50 cursor-pointer"
+                          aria-label={`Hapus pengguna ${u.name}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Hapus</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Desktop Tabel Daftar Pengguna & Role */}
+          <div className="hidden lg:block border border-slate-200 rounded-xl overflow-hidden">
             <div className="max-h-[340px] overflow-auto eguru-scroll">
               <table className="w-full text-left border-collapse">
                 <thead className="sticky top-0 z-10 bg-slate-900 text-white text-xs">
@@ -1202,7 +1341,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
+        <div className="px-4 sm:px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <p className="text-xs text-slate-500">
             Perubahan daftar akun pengguna tersimpan otomatis secara persisten
           </p>
@@ -1210,7 +1349,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="ml-auto px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+              className="w-full sm:w-auto sm:ml-auto px-4 py-2 min-h-[40px] rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap text-center"
             >
               Tutup
             </button>
@@ -1225,7 +1364,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
 
   return (
     <div
-      className="no-print fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-[1px]"
+      className="no-print fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-950/60 backdrop-blur-[1px]"
       onClick={onClose}
       role="dialog"
       aria-modal="true"

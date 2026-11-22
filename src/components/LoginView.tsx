@@ -280,7 +280,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
   return (
     <div
       style={pageBgStyle}
-      className="relative min-h-screen w-full overflow-hidden flex flex-col items-center justify-center px-5 py-10 transition-colors duration-200"
+      className="relative min-h-screen w-full overflow-x-clip flex flex-col items-center justify-center px-4 sm:px-5 py-6 sm:py-10 transition-colors duration-200"
     >
       {/* Decorative soft sculpted background geometry matching the visual template */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">
@@ -343,7 +343,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
         onClick={toggleDarkMode}
         aria-label={isDark ? 'Aktifkan mode terang' : 'Aktifkan mode gelap'}
         title={isDark ? 'Mode Terang' : 'Mode Gelap'}
-        className={`fixed top-5 right-5 sm:top-7 sm:right-8 z-20 w-11 h-11 rounded-2xl flex items-center justify-center transition-transform duration-150 hover:scale-105 active:scale-95 cursor-pointer ${raisedSquircleClass}`}
+        className={`fixed top-4 right-4 sm:top-7 sm:right-8 z-20 w-11 h-11 rounded-2xl flex items-center justify-center transition-transform duration-150 hover:scale-105 active:scale-95 cursor-pointer ${raisedSquircleClass}`}
       >
         {isDark ? (
           <Sun className="w-5 h-5 text-amber-300" />
@@ -360,7 +360,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
       >
         {/* Top App Emblem Squircle */}
         <div
-          className={`w-24 h-24 rounded-[28px] p-4 flex items-center justify-center mb-6 ${raisedSquircleClass}`}
+          className={`w-20 h-20 sm:w-24 sm:h-24 rounded-[24px] sm:rounded-[28px] p-3.5 sm:p-4 flex items-center justify-center mb-4 sm:mb-6 ${raisedSquircleClass}`}
         >
           {!logoFailed && webBrand.webLogoDataUrl ? (
             <img
@@ -371,14 +371,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
               className="w-full h-full object-contain drop-shadow-sm"
             />
           ) : (
-            <ShieldCheck className="w-11 h-11 text-blue-600" />
+            <ShieldCheck className="w-10 h-10 sm:w-11 sm:h-11 text-blue-600" />
           )}
         </div>
 
         {/* Heading & Subtitle */}
-        <div className="text-center mb-7 space-y-1.5">
+        <div className="text-center mb-5 sm:mb-7 space-y-1.5">
           <h1
-            className={`font-display text-3xl sm:text-[34px] font-extrabold tracking-tight ${
+            className={`font-display text-2xl sm:text-[34px] font-extrabold tracking-tight ${
               isDark ? 'text-white' : 'text-[#0c1428]'
             }`}
           >
@@ -646,8 +646,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
             </div>
 
             {/* Compact Period Selectors */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className={`px-3.5 py-2.5 rounded-2xl ${frostedFieldClass}`}>
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+              <div className={`px-3 sm:px-3.5 py-2.5 rounded-2xl ${frostedFieldClass}`}>
                 <select
                   aria-label="Tahun Ajaran"
                   value={academicYear}
@@ -693,7 +693,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
               <button
                 type="button"
                 onClick={handleToggleRemember}
-                className="inline-flex items-center gap-2.5 cursor-pointer group"
+                className="inline-flex items-center gap-2.5 min-h-[38px] cursor-pointer group"
               >
                 <span
                   className={`w-4 h-4 rounded-md flex items-center justify-center transition-colors ${
@@ -720,7 +720,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShowForgotHelp((v) => !v)}
-                className={`font-semibold cursor-pointer hover:underline ${
+                className={`min-h-[38px] inline-flex items-center font-semibold cursor-pointer hover:underline ${
                   isDark ? 'text-blue-400' : 'text-[#1d6ef5]'
                 }`}
               >
@@ -763,7 +763,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
         )}
 
         {/* Quiet Unboxed Footer Tagline (No Social Login Buttons) */}
-        <footer className="mt-10 text-center">
+        <footer className="mt-7 sm:mt-10 text-center">
           <p
             className={`text-[11px] font-medium tracking-[0.26em] uppercase ${
               isDark ? 'text-slate-400' : 'text-slate-500'

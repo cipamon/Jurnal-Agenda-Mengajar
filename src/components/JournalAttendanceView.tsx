@@ -560,8 +560,8 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
       {/* ===================================================================== */}
       {!readOnly && (
       <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3">
-          <div>
+        <div className="px-4 sm:px-6 py-4 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
             <h2 className="text-base font-bold">
               {editingId ? 'Edit Jurnal & Presensi Pertemuan' : 'Form Jurnal & Presensi Pertemuan'}
             </h2>
@@ -573,7 +573,7 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
             <button
               type="button"
               onClick={handleResetForm}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white cursor-pointer whitespace-nowrap"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white cursor-pointer whitespace-nowrap min-h-[38px]"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Batal Edit</span>
@@ -581,7 +581,7 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
           )}
         </div>
 
-        <form onSubmit={handleSubmitForm} className="p-6 space-y-6">
+        <form onSubmit={handleSubmitForm} className="p-4 sm:p-6 space-y-5 sm:space-y-6">
           {formError && (
             <div className="p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-sm text-rose-700">
               {formError}
@@ -704,94 +704,173 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
                   Belum ada siswa terdaftar di kelas {className}. Tambahkan di menu Data Siswa.
                 </div>
               ) : (
-                <div className="max-h-[420px] overflow-auto eguru-scroll">
-                  <table className="w-full text-left border-collapse">
-                    <thead className="sticky top-0 z-10 bg-slate-900 text-white text-xs">
-                      <tr>
-                        <th className="py-2.5 px-3 font-semibold w-12 text-center">No</th>
-                        <th className="py-2.5 px-3 font-semibold w-28">NIS</th>
-                        <th className="py-2.5 px-3 font-semibold min-w-[180px]">Nama Siswa</th>
-                        <th className="py-2.5 px-3 font-semibold text-center min-w-[260px]">
-                          Status Kehadiran (H / S / I / A / D)
-                        </th>
-                        <th className="py-2.5 px-3 font-semibold min-w-[180px]">Keterangan</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 text-sm">
-                      {classStudents.map((st, idx) => {
-                        const current = attendanceMap[st.id] ?? { status: 'H', note: '' };
-                        return (
-                          <tr key={st.id} className="hover:bg-slate-50">
-                            <td className="py-2 px-3 text-center text-xs text-slate-500 tabular-nums">
-                              {idx + 1}
-                            </td>
-                            <td className="py-2 px-3 text-xs font-mono text-slate-600 tabular-nums">
-                              {st.nis}
-                            </td>
-                            <td className="py-2 px-3 font-medium text-slate-900 text-xs sm:text-sm">
+                <>
+                  {/* Mobile Attendance Card List */}
+                  <div className="md:hidden divide-y divide-slate-200 max-h-[480px] overflow-y-auto eguru-scroll">
+                    {classStudents.map((st, idx) => {
+                      const current = attendanceMap[st.id] ?? { status: 'H', note: '' };
+                      return (
+                        <div key={st.id} className="p-3.5 space-y-2.5 bg-white">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
                               <button
                                 type="button"
                                 onClick={() => onViewStudent(st)}
-                                className="text-left font-semibold text-slate-900 hover:text-indigo-600 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer"
-                                title="Klik untuk lihat info siswa & aktivitas kelas"
+                                className="text-left text-sm font-bold text-slate-900 hover:text-indigo-600 hover:underline cursor-pointer"
                               >
-                                {st.name}
+                                {idx + 1}. {st.name}
                               </button>
-                            </td>
-                            <td className="py-2 px-3">
-                              <div className="flex items-center justify-center gap-1.5">
-                                {STATUS_OPTIONS.map((code) => {
-                                  const meta = ATTENDANCE_META[code];
-                                  const checked = current.status === code;
-                                  return (
-                                    <label
-                                      key={code}
-                                      className={`cursor-pointer select-none inline-flex items-center justify-center w-9 h-8 rounded-md border text-xs font-bold transition-colors ${
-                                        checked
-                                          ? `${meta.bgClass} ${meta.textClass} ${meta.borderClass} ring-1 ring-inset ring-current`
-                                          : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100'
-                                      }`}
-                                      title={meta.label}
-                                    >
-                                      <input
-                                        type="radio"
-                                        name={`att-${st.id}`}
-                                        value={code}
-                                        checked={checked}
-                                        onChange={() =>
-                                          setAttendanceMap((prev) => ({
-                                            ...prev,
-                                            [st.id]: { ...current, status: code },
-                                          }))
-                                        }
-                                        className="sr-only"
-                                      />
-                                      {code}
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                            </td>
-                            <td className="py-2 px-3">
-                              <input
-                                type="text"
-                                value={current.note}
-                                onChange={(e) =>
-                                  setAttendanceMap((prev) => ({
-                                    ...prev,
-                                    [st.id]: { ...current, note: e.target.value },
-                                  }))
-                                }
-                                placeholder="Catatan opsional..."
-                                className="w-full px-2.5 py-1.5 text-xs rounded-md border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600"
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                              <p className="text-[11px] font-mono text-slate-500 tabular-nums">
+                                NIS {st.nis}
+                              </p>
+                            </div>
+                            <span
+                              className={`px-2 py-0.5 rounded border text-[11px] font-bold shrink-0 ${ATTENDANCE_META[current.status].bgClass} ${ATTENDANCE_META[current.status].textClass} ${ATTENDANCE_META[current.status].borderClass}`}
+                            >
+                              {ATTENDANCE_META[current.status].label}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-5 gap-1.5">
+                            {STATUS_OPTIONS.map((code) => {
+                              const meta = ATTENDANCE_META[code];
+                              const checked = current.status === code;
+                              return (
+                                <label
+                                  key={code}
+                                  className={`cursor-pointer select-none inline-flex items-center justify-center min-h-[42px] rounded-lg border text-xs font-bold transition-colors ${
+                                    checked
+                                      ? `${meta.bgClass} ${meta.textClass} ${meta.borderClass} ring-1 ring-inset ring-current`
+                                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                  }`}
+                                  title={meta.label}
+                                >
+                                  <input
+                                    type="radio"
+                                    name={`att-mobile-${st.id}`}
+                                    value={code}
+                                    checked={checked}
+                                    onChange={() =>
+                                      setAttendanceMap((prev) => ({
+                                        ...prev,
+                                        [st.id]: { ...current, status: code },
+                                      }))
+                                    }
+                                    className="sr-only"
+                                  />
+                                  {code}
+                                </label>
+                              );
+                            })}
+                          </div>
+
+                          <input
+                            type="text"
+                            value={current.note}
+                            onChange={(e) =>
+                              setAttendanceMap((prev) => ({
+                                ...prev,
+                                [st.id]: { ...current, note: e.target.value },
+                              }))
+                            }
+                            placeholder="Catatan keterangan siswa (opsional)..."
+                            className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Desktop Attendance Table */}
+                  <div className="hidden md:block max-h-[420px] overflow-auto eguru-scroll">
+                    <table className="w-full text-left border-collapse">
+                      <thead className="sticky top-0 z-10 bg-slate-900 text-white text-xs">
+                        <tr>
+                          <th className="py-2.5 px-3 font-semibold w-12 text-center">No</th>
+                          <th className="py-2.5 px-3 font-semibold w-28">NIS</th>
+                          <th className="py-2.5 px-3 font-semibold min-w-[180px]">Nama Siswa</th>
+                          <th className="py-2.5 px-3 font-semibold text-center min-w-[260px]">
+                            Status Kehadiran (H / S / I / A / D)
+                          </th>
+                          <th className="py-2.5 px-3 font-semibold min-w-[180px]">Keterangan</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 text-sm">
+                        {classStudents.map((st, idx) => {
+                          const current = attendanceMap[st.id] ?? { status: 'H', note: '' };
+                          return (
+                            <tr key={st.id} className="hover:bg-slate-50">
+                              <td className="py-2 px-3 text-center text-xs text-slate-500 tabular-nums">
+                                {idx + 1}
+                              </td>
+                              <td className="py-2 px-3 text-xs font-mono text-slate-600 tabular-nums">
+                                {st.nis}
+                              </td>
+                              <td className="py-2 px-3 font-medium text-slate-900 text-xs sm:text-sm">
+                                <button
+                                  type="button"
+                                  onClick={() => onViewStudent(st)}
+                                  className="text-left font-semibold text-slate-900 hover:text-indigo-600 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer"
+                                  title="Klik untuk lihat info siswa & aktivitas kelas"
+                                >
+                                  {st.name}
+                                </button>
+                              </td>
+                              <td className="py-2 px-3">
+                                <div className="flex items-center justify-center gap-1.5">
+                                  {STATUS_OPTIONS.map((code) => {
+                                    const meta = ATTENDANCE_META[code];
+                                    const checked = current.status === code;
+                                    return (
+                                      <label
+                                        key={code}
+                                        className={`cursor-pointer select-none inline-flex items-center justify-center w-9 h-8 rounded-md border text-xs font-bold transition-colors ${
+                                          checked
+                                            ? `${meta.bgClass} ${meta.textClass} ${meta.borderClass} ring-1 ring-inset ring-current`
+                                            : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100'
+                                        }`}
+                                        title={meta.label}
+                                      >
+                                        <input
+                                          type="radio"
+                                          name={`att-${st.id}`}
+                                          value={code}
+                                          checked={checked}
+                                          onChange={() =>
+                                            setAttendanceMap((prev) => ({
+                                              ...prev,
+                                              [st.id]: { ...current, status: code },
+                                            }))
+                                          }
+                                          className="sr-only"
+                                        />
+                                        {code}
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </td>
+                              <td className="py-2 px-3">
+                                <input
+                                  type="text"
+                                  value={current.note}
+                                  onChange={(e) =>
+                                    setAttendanceMap((prev) => ({
+                                      ...prev,
+                                      [st.id]: { ...current, note: e.target.value },
+                                    }))
+                                  }
+                                  placeholder="Catatan opsional..."
+                                  className="w-full px-2.5 py-1.5 text-xs rounded-md border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
             </div>
           ) : (
@@ -801,17 +880,17 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
             </div>
           )}
 
-          <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
+          <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-end gap-2.5 sm:gap-3 pt-2">
             <button
               type="button"
               onClick={handleResetForm}
-              className="px-4 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer whitespace-nowrap"
+              className="w-full sm:w-auto px-4 py-2.5 sm:py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer whitespace-nowrap min-h-[42px]"
             >
               Reset Form
             </button>
             <button
               type="submit"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap min-h-[42px]"
             >
               {editingId ? <Save className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
               <span>{editingId ? 'Perbarui Jurnal & Presensi' : 'Simpan Jurnal & Presensi'}</span>
@@ -825,7 +904,7 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
       {/* BAGIAN 2: RIWAYAT JURNAL TERSIMPAN */}
       {/* ===================================================================== */}
       <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="px-4 sm:px-6 py-4 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3.5 sm:gap-4">
           <div>
             <h3 className="text-base font-bold text-slate-900">Riwayat Jurnal Tersimpan</h3>
             <p className="text-xs text-slate-500">
@@ -833,7 +912,7 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 sm:gap-2.5">
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -841,66 +920,68 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Cari materi / mapel..."
-                className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600 w-48 sm:w-56"
+                className="pl-8 pr-3 py-2 sm:py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600 w-full sm:w-56 min-h-[40px] sm:min-h-0"
               />
             </div>
 
-            <select
-              value={filterClass}
-              onChange={(e) => setFilterClass(e.target.value)}
-              className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
-            >
-              <option value="ALL">Semua Kelas</option>
-              {settings.classes.map((cls) => (
-                <option key={cls} value={cls}>
-                  {cls}
-                </option>
-              ))}
-            </select>
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
+              <select
+                value={filterClass}
+                onChange={(e) => setFilterClass(e.target.value)}
+                className="col-span-2 sm:col-span-1 px-3 py-2 sm:py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600 min-h-[40px] sm:min-h-0"
+              >
+                <option value="ALL">Semua Kelas</option>
+                {settings.classes.map((cls) => (
+                  <option key={cls} value={cls}>
+                    {cls}
+                  </option>
+                ))}
+              </select>
 
-            {!readOnly && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleDownloadJournalTemplate}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
-                >
-                  <Download className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Template</span>
-                </button>
+              {!readOnly && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleDownloadJournalTemplate}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px] sm:min-h-0"
+                  >
+                    <Download className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Template</span>
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={() => setShowImportPanel((v) => !v)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
-                >
-                  <Upload className="w-3.5 h-3.5 text-indigo-300" />
-                  <span>{showImportPanel ? 'Tutup Impor' : 'Impor'}</span>
-                </button>
-              </>
-            )}
+                  <button
+                    type="button"
+                    onClick={() => setShowImportPanel((v) => !v)}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px] sm:min-h-0"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-indigo-300" />
+                    <span>{showImportPanel ? 'Tutup Impor' : 'Impor'}</span>
+                  </button>
+                </>
+              )}
 
-            <button
-              type="button"
-              onClick={handleExportJournals}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>
-                {selectedIds.length > 0 ? `Ekspor (${selectedIds.length})` : 'Ekspor Excel'}
-              </span>
-            </button>
-
-            {!readOnly && selectedIds.length > 0 && (
               <button
                 type="button"
-                onClick={handleBulkDelete}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0"
+                onClick={handleExportJournals}
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px] sm:min-h-0"
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Hapus Terpilih ({selectedIds.length})</span>
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>
+                  {selectedIds.length > 0 ? `Ekspor (${selectedIds.length})` : 'Ekspor Excel'}
+                </span>
               </button>
-            )}
+
+              {!readOnly && selectedIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleBulkDelete}
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px] sm:min-h-0"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Hapus ({selectedIds.length})</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -963,7 +1044,143 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
           </div>
         )}
 
-        <div className="max-h-[420px] overflow-auto eguru-scroll">
+        {/* Mobile & Tablet Journal Card View */}
+        <div className="lg:hidden">
+          {filteredJournals.length === 0 ? (
+            <div className="p-8 text-center text-slate-500 text-sm">
+              Tidak ada jurnal yang cocok dengan filter pencarian.
+            </div>
+          ) : (
+            <>
+              <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs">
+                <label className="inline-flex items-center gap-2 font-semibold text-slate-700 cursor-pointer min-h-[34px]">
+                  <input
+                    type="checkbox"
+                    checked={
+                      filteredJournals.length > 0 &&
+                      filteredJournals.every((j) => selectedIds.includes(j.id))
+                    }
+                    onChange={toggleSelectAllFiltered}
+                    aria-label="Pilih semua jurnal"
+                    className="w-4 h-4 rounded border-slate-400 cursor-pointer"
+                  />
+                  <span>Pilih Semua ({filteredJournals.length})</span>
+                </label>
+                {selectedIds.length > 0 && (
+                  <span className="font-semibold text-indigo-700 tabular-nums">
+                    {selectedIds.length} terpilih
+                  </span>
+                )}
+              </div>
+
+              <div className="divide-y divide-slate-200 max-h-[520px] overflow-y-auto eguru-scroll">
+                {filteredJournals.map((j) => {
+                  const cnt = { H: 0, S: 0, I: 0, A: 0, D: 0 };
+                  Object.values(j.attendance).forEach((item) => {
+                    cnt[item.status] = (cnt[item.status] || 0) + 1;
+                  });
+                  return (
+                    <div key={j.id} className="p-4 space-y-2.5 hover:bg-slate-50/70">
+                      <div className="flex items-start justify-between gap-2.5">
+                        <div className="flex items-start gap-2.5 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(j.id)}
+                            onChange={() => toggleSelectRow(j.id)}
+                            aria-label={`Pilih jurnal ${j.topic}`}
+                            className="w-4 h-4 mt-0.5 rounded border-slate-300 cursor-pointer shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                              <span className="font-bold text-slate-900 tabular-nums">
+                                {formatTanggalID(j.date)}
+                              </span>
+                              <span className="text-slate-400">·</span>
+                              <span className="text-slate-600 tabular-nums">Jam {j.period}</span>
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+                              {onViewClass ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onViewClass(j.className)}
+                                  className="px-2 py-0.5 rounded bg-slate-100 hover:bg-indigo-50 font-semibold text-slate-900 hover:text-indigo-700 cursor-pointer"
+                                >
+                                  {j.className}
+                                </button>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded bg-slate-100 font-semibold text-slate-900">
+                                  {j.className}
+                                </span>
+                              )}
+                              {onViewSubject ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onViewSubject(j.subject)}
+                                  className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 font-semibold hover:underline cursor-pointer text-left"
+                                >
+                                  {j.subject}
+                                </button>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 font-semibold">
+                                  {j.subject}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <span className="text-[11px] font-mono tabular-nums px-2 py-1 rounded bg-slate-100 text-slate-700 shrink-0">
+                          H:{cnt.H} S:{cnt.S} I:{cnt.I} A:{cnt.A}
+                        </span>
+                      </div>
+
+                      <div className="pl-6.5 space-y-1">
+                        <p className="text-xs sm:text-sm font-bold text-slate-900">{j.topic}</p>
+                        <p className="text-xs text-slate-600 line-clamp-2">{j.activities}</p>
+                        <p className="text-[11px] text-slate-400">
+                          Oleh: {j.teacherName || settings.teacherProfile.name} ·{' '}
+                          {j.academicYear || settings.academicYear} ({j.semester || settings.semester})
+                        </p>
+                      </div>
+
+                      {!readOnly && (
+                        <div className="pl-6.5 flex flex-wrap items-center gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => loadEntryToForm(j, 'edit')}
+                            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 cursor-pointer min-h-[38px]"
+                          >
+                            <FileEdit className="w-3.5 h-3.5" />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => loadEntryToForm(j, 'duplicate')}
+                            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 cursor-pointer min-h-[38px]"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Duplikat</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onDeleteJournals([j.id])}
+                            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-200 text-xs font-semibold text-rose-700 hover:bg-rose-50 cursor-pointer min-h-[38px]"
+                            aria-label="Hapus jurnal"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Hapus</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden lg:block max-h-[420px] overflow-auto eguru-scroll">
           <table className="w-full text-left border-collapse">
             <thead className="sticky top-0 z-10 bg-slate-900 text-white text-xs">
               <tr>
@@ -1097,7 +1314,7 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
       {/* BAGIAN 3: LEGER KEHADIRAN PER KELAS (MENDATAR) */}
       {/* ===================================================================== */}
       <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="px-4 sm:px-6 py-4 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3.5 sm:gap-4">
           <div>
             <h3 className="text-base font-bold text-slate-900">Leger Kehadiran per Kelas (Mendatar)</h3>
             <p className="text-xs text-slate-500">
@@ -1106,14 +1323,14 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 sm:gap-2.5">
             <select
               value={ledgerClass}
               onChange={(e) => {
                 setLedgerClass(e.target.value);
                 setLedgerEdits({});
               }}
-              className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              className="px-3 py-2 sm:py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600 min-h-[40px] sm:min-h-0"
             >
               {settings.classes.map((cls) => (
                 <option key={cls} value={cls}>
@@ -1128,7 +1345,7 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
                 setLedgerSubject(e.target.value);
                 setLedgerEdits({});
               }}
-              className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              className="px-3 py-2 sm:py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600 min-h-[40px] sm:min-h-0"
             >
               <option value="ALL">Semua Mapel</option>
               {settings.subjects.map((s) => (
@@ -1143,7 +1360,7 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
                 type="button"
                 onClick={handleSaveLedgerChanges}
                 disabled={pendingEditsCount === 0}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                className={`col-span-2 sm:col-span-1 inline-flex items-center justify-center gap-1.5 px-3.5 py-2 sm:py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer min-h-[40px] sm:min-h-0 ${
                   pendingEditsCount > 0
                     ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
                     : 'bg-slate-100 text-slate-400 cursor-not-allowed'
@@ -1171,10 +1388,10 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
             <table className="w-full text-left border-collapse">
               <thead className="sticky top-0 z-20 bg-slate-900 text-white text-xs">
                 <tr>
-                  <th className="sticky left-0 z-30 bg-slate-900 py-2.5 px-3 font-semibold w-10 text-center border-r border-slate-800">
+                  <th className="sticky left-0 z-30 bg-slate-900 py-2.5 px-2 sm:px-3 font-semibold w-9 sm:w-10 text-center border-r border-slate-800">
                     No
                   </th>
-                  <th className="sticky left-10 z-30 bg-slate-900 py-2.5 px-3 font-semibold min-w-[180px] border-r border-slate-800">
+                  <th className="sticky left-9 sm:left-10 z-30 bg-slate-900 py-2.5 px-2.5 sm:px-3 font-semibold min-w-[130px] max-w-[145px] sm:min-w-[180px] sm:max-w-none border-r border-slate-800">
                     Nama Siswa
                   </th>
                   {ledgerJournals.map((j, idx) => (
@@ -1211,15 +1428,15 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
 
                   return (
                     <tr key={st.id} className="hover:bg-slate-50">
-                      <td className="sticky left-0 z-10 bg-white py-2 px-3 text-center text-slate-500 tabular-nums border-r border-slate-200">
+                      <td className="sticky left-0 z-10 bg-white py-2 px-2 sm:px-3 text-center text-slate-500 tabular-nums border-r border-slate-200">
                         {idx + 1}
                       </td>
-                      <td className="sticky left-10 z-10 bg-white py-2 px-3 font-medium text-slate-900 border-r border-slate-200 whitespace-nowrap">
+                      <td className="sticky left-9 sm:left-10 z-10 bg-white py-2 px-2.5 sm:px-3 font-medium text-slate-900 border-r border-slate-200 whitespace-nowrap min-w-[130px] max-w-[145px] sm:min-w-[180px] sm:max-w-none">
                         <button
                           type="button"
                           onClick={() => onViewStudent(st)}
-                          className="text-left font-semibold text-slate-900 hover:text-indigo-600 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer"
-                          title="Klik untuk lihat info siswa & aktivitas kelas"
+                          className="text-left font-semibold text-slate-900 hover:text-indigo-600 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer truncate block max-w-[125px] sm:max-w-none"
+                          title={`Klik untuk lihat info siswa ${st.name}`}
                         >
                           {st.name}
                         </button>
@@ -1238,7 +1455,7 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
                               disabled={readOnly}
                               onChange={(e) => handleLedgerCellChange(j.id, st.id, e.target.value)}
                               aria-label={`Kehadiran ${st.name} tanggal ${j.date}`}
-                              className={`w-10 h-7 text-center font-bold rounded border focus:outline-none focus:ring-2 focus:ring-indigo-600 uppercase disabled:cursor-default ${
+                              className={`w-10 h-8 sm:h-7 text-center font-bold rounded border focus:outline-none focus:ring-2 focus:ring-indigo-600 uppercase disabled:cursor-default ${
                                 meta.bgClass
                               } ${meta.textClass} ${
                                 isDirty ? 'border-indigo-600 ring-1 ring-indigo-600' : meta.borderClass
