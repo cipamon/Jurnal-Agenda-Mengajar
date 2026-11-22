@@ -7,6 +7,8 @@ import {
   KopSuratLineSizes,
   KopSuratLineStyles,
   MenuId,
+  PaperOrientation,
+  PaperSize,
   PortalDatabase,
   PrintFontFamily,
   RowMarkerColor,
@@ -14,11 +16,82 @@ import {
   Student,
   StudentStatus,
   SystemSettings,
+  ThemeId,
   UserRole,
   WebBrandConfig,
 } from '../types';
 import { DEFAULT_WEB_LOGO } from './defaultAvatars';
 import { DEFAULT_SCHOOL_STAMP } from './defaultLogos';
+
+export interface ThemePresetMeta {
+  id: ThemeId;
+  name: string;
+  description: string;
+  primaryHex: string;
+  secondaryHex: string;
+  sidebarHex: string;
+  isDark?: boolean;
+}
+
+export const THEME_PRESETS: ThemePresetMeta[] = [
+  {
+    id: 'indigo',
+    name: 'Royal Indigo',
+    description: 'Tema akademik standar bernuansa biru nila profesional',
+    primaryHex: '#4f46e5',
+    secondaryHex: '#6d28d9',
+    sidebarHex: '#0f172a',
+  },
+  {
+    id: 'emerald',
+    name: 'Zamrud Nusantara',
+    description: 'Hijau zamrud segar khas pendidikan dan kedinasan',
+    primaryHex: '#059669',
+    secondaryHex: '#047857',
+    sidebarHex: '#064e3b',
+  },
+  {
+    id: 'teal',
+    name: 'Samudra Teal',
+    description: 'Nuansa biru kehijauan tenang dan modern',
+    primaryHex: '#0d9488',
+    secondaryHex: '#0284c7',
+    sidebarHex: '#0f293a',
+  },
+  {
+    id: 'amber',
+    name: 'Amber Klasik',
+    description: 'Hangat berwibawa dengan aksen emas dan cokelat tua',
+    primaryHex: '#d97706',
+    secondaryHex: '#b45309',
+    sidebarHex: '#271a0c',
+  },
+  {
+    id: 'rose',
+    name: 'Crimson Akademik',
+    description: 'Tegas dan elegan dengan aksen merah marun',
+    primaryHex: '#e11d48',
+    secondaryHex: '#be123c',
+    sidebarHex: '#2d0c18',
+  },
+  {
+    id: 'slate',
+    name: 'Grafit Monokrom',
+    description: 'Minimalis abu-hitam netral bergaya dokumen resmi',
+    primaryHex: '#334155',
+    secondaryHex: '#0f172a',
+    sidebarHex: '#0f172a',
+  },
+  {
+    id: 'midnight',
+    name: 'Mode Gelap (Midnight)',
+    description: 'Tampilan malam gelap yang nyaman untuk kerja lama',
+    primaryHex: '#6366f1',
+    secondaryHex: '#4338ca',
+    sidebarHex: '#020617',
+    isDark: true,
+  },
+];
 
 export const PRINT_FONT_OPTIONS: PrintFontFamily[] = [
   'Times New Roman',
@@ -28,6 +101,55 @@ export const PRINT_FONT_OPTIONS: PrintFontFamily[] = [
   'Calibri',
   'Georgia',
 ];
+
+export interface PaperSizeMeta {
+  id: PaperSize;
+  label: string;
+  shortLabel: string;
+  dimensionsLabel: string;
+  cssPageSize: string;
+  jsPdfFormat: 'a4' | 'letter' | 'legal' | [number, number];
+  defaultOrientation?: PaperOrientation;
+}
+
+export const PAPER_SIZE_OPTIONS: PaperSizeMeta[] = [
+  {
+    id: 'A4',
+    label: 'A4 Standar Internasional (210 × 297 mm)',
+    shortLabel: 'A4 (210 × 297 mm)',
+    dimensionsLabel: '210 × 297 mm',
+    cssPageSize: 'A4',
+    jsPdfFormat: 'a4',
+  },
+  {
+    id: 'F4',
+    label: 'F4 / Folio Dinas (215 × 330 mm)',
+    shortLabel: 'F4 / Folio (215 × 330 mm)',
+    dimensionsLabel: '215 × 330 mm',
+    cssPageSize: '215mm 330mm',
+    jsPdfFormat: [215, 330],
+  },
+  {
+    id: 'Letter',
+    label: 'Letter / Kuarto (215.9 × 279.4 mm)',
+    shortLabel: 'Letter (216 × 279 mm)',
+    dimensionsLabel: '215.9 × 279.4 mm',
+    cssPageSize: 'letter',
+    jsPdfFormat: 'letter',
+  },
+  {
+    id: 'Legal',
+    label: 'Legal (215.9 × 355.6 mm)',
+    shortLabel: 'Legal (216 × 356 mm)',
+    dimensionsLabel: '215.9 × 355.6 mm',
+    cssPageSize: 'legal',
+    jsPdfFormat: 'legal',
+  },
+];
+
+export function getPaperSizeMeta(size?: PaperSize): PaperSizeMeta {
+  return PAPER_SIZE_OPTIONS.find((p) => p.id === size) || PAPER_SIZE_OPTIONS[0];
+}
 
 export const USER_ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Admin Sistem',
@@ -60,8 +182,18 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissionConfig> = {
   admin: {
     label: 'Admin Sistem',
     description:
-      'Akses penuh ke seluruh modul, Master Data, Identitas Web, Manajemen Akun Multi-Role, Stempel & Pengaturan Sistem.',
-    allowedMenus: ['dashboard', 'jurnal', 'nilai', 'siswa', 'laporan', 'pengaturan'],
+      'Akses penuh ke seluruh modul, Data Guru & Karyawan, Master Data, Identitas Web, Manajemen Akun Multi-Role, Stempel & Pengaturan Sistem.',
+    allowedMenus: [
+      'dashboard',
+      'pegawai',
+      'jurnal',
+      'nilai',
+      'siswa',
+      'laporan',
+      'profil',
+      'pengguna',
+      'pengaturan',
+    ],
     canAccessSettings: true,
     canManageStudents: true,
     canPromoteStudents: true,
@@ -73,7 +205,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissionConfig> = {
     label: 'Guru Mapel',
     description:
       'Kelola Jurnal Mengajar, Presensi, Input & Leger Nilai, serta cetak laporan pada kelas dan mata pelajaran ampuannya.',
-    allowedMenus: ['dashboard', 'jurnal', 'nilai', 'siswa', 'laporan'],
+    allowedMenus: ['dashboard', 'jurnal', 'nilai', 'siswa', 'laporan', 'profil'],
     canAccessSettings: false,
     canManageStudents: true,
     canPromoteStudents: false,
@@ -85,7 +217,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissionConfig> = {
     label: 'Wali Kelas',
     description:
       'Kelola peserta didik dan kenaikan kelas pada rombongan belajar binaan, serta pantau kehadiran dan nilai kelas.',
-    allowedMenus: ['dashboard', 'siswa', 'jurnal', 'nilai', 'laporan'],
+    allowedMenus: ['dashboard', 'siswa', 'jurnal', 'nilai', 'laporan', 'profil'],
     canAccessSettings: false,
     canManageStudents: true,
     canPromoteStudents: true,
@@ -97,7 +229,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissionConfig> = {
     label: 'Kepala Sekolah',
     description:
       'Mode Pemantauan Eksekutif: memantau grafik, jurnal guru, rekap nilai seluruh kelas, dan mencetak laporan resmi.',
-    allowedMenus: ['dashboard', 'laporan', 'jurnal', 'nilai', 'siswa'],
+    allowedMenus: ['dashboard', 'laporan', 'jurnal', 'nilai', 'siswa', 'profil'],
     canAccessSettings: false,
     canManageStudents: false,
     canPromoteStudents: false,
@@ -109,7 +241,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissionConfig> = {
     label: 'Karyawan / Staff',
     description:
       'Staf Tata Usaha: fokus pengelolaan Data Siswa, Impor/Ekspor Excel, Mutasi/Kenaikan Kelas, serta cetak laporan resmi.',
-    allowedMenus: ['dashboard', 'siswa', 'laporan'],
+    allowedMenus: ['dashboard', 'siswa', 'laporan', 'profil'],
     canAccessSettings: false,
     canManageStudents: true,
     canPromoteStudents: true,
@@ -162,13 +294,14 @@ export function normalizeKopSurat(kop: KopSuratConfig): Required<KopSuratConfig>
   };
 }
 
-export function normalizeWebBrand(settings: SystemSettings): WebBrandConfig {
+export function normalizeWebBrand(settings: SystemSettings): Required<WebBrandConfig> {
   return {
     appName: settings.webBrand?.appName || 'Portal E-Guru v10.2',
     tabTitle:
       settings.webBrand?.tabTitle ||
       'Portal E-Guru v10.2 — Sistem Jurnal Mengajar, Presensi & Penilaian Guru Terpadu',
     webLogoDataUrl: settings.webBrand?.webLogoDataUrl || DEFAULT_WEB_LOGO,
+    webLogoSize: settings.webBrand?.webLogoSize ?? 36,
   };
 }
 
@@ -183,6 +316,17 @@ export function normalizeSignatureStamp(
     signatureSize: cfg?.signatureSize ?? 54,
     stampSize: cfg?.stampSize ?? 74,
     showStampDefault: cfg?.showStampDefault ?? true,
+    principalSigOffsetX: Number(cfg?.principalSigOffsetX ?? 0),
+    principalSigOffsetY: Number(cfg?.principalSigOffsetY ?? 0),
+    teacherSigOffsetX: Number(cfg?.teacherSigOffsetX ?? 0),
+    teacherSigOffsetY: Number(cfg?.teacherSigOffsetY ?? 0),
+    stampOffsetX: Number(cfg?.stampOffsetX ?? 0),
+    stampOffsetY: Number(cfg?.stampOffsetY ?? 0),
+    principalBlockOffsetX: Number(cfg?.principalBlockOffsetX ?? 0),
+    principalBlockOffsetY: Number(cfg?.principalBlockOffsetY ?? 0),
+    teacherBlockOffsetX: Number(cfg?.teacherBlockOffsetX ?? 0),
+    teacherBlockOffsetY: Number(cfg?.teacherBlockOffsetY ?? 0),
+    stampTarget: cfg?.stampTarget === 'teacher' ? 'teacher' : 'principal',
   };
 }
 
@@ -490,5 +634,29 @@ export function getScopedPortalData(
     scopedGrades,
     scopeSummaryText,
   };
+}
+
+export function parseTtlFields(ttl?: string): { birthPlace: string; birthDate: string } {
+  const clean = (ttl || '').trim();
+  if (!clean) return { birthPlace: '', birthDate: '' };
+  const commaIdx = clean.indexOf(',');
+  if (commaIdx >= 0) {
+    return {
+      birthPlace: clean.slice(0, commaIdx).trim(),
+      birthDate: clean.slice(commaIdx + 1).trim(),
+    };
+  }
+  return { birthPlace: clean, birthDate: '' };
+}
+
+export function formatStudentTtl(
+  st: Pick<Student, 'birthPlace' | 'birthDate' | 'ttl'>
+): string {
+  const bp = (st.birthPlace || '').trim();
+  const bd = (st.birthDate || '').trim();
+  if (bp || bd) {
+    return [bp, bd].filter(Boolean).join(', ');
+  }
+  return (st.ttl || '').trim();
 }
 

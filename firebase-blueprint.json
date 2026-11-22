@@ -1,0 +1,599 @@
+{
+  "entities": {
+    "SchoolSettings": {
+      "title": "SchoolSettings",
+      "description": "Global school configuration, academic period, Kop Surat layout, signature positions, grading weights, and master lists.",
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "maxLength": 32,
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "academicYear": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 20
+        },
+        "semester": {
+          "type": "string",
+          "enum": ["Ganjil", "Genap"]
+        },
+        "kkm": {
+          "type": "number"
+        },
+        "signatureCity": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "principalTitle": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "principalName": {
+          "type": "string",
+          "maxLength": 150
+        },
+        "principalNip": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "themeId": {
+          "type": "string",
+          "enum": ["indigo", "emerald", "teal", "amber", "rose", "slate", "midnight"]
+        },
+        "reportFontFamily": {
+          "type": "string",
+          "enum": ["Times New Roman", "Tahoma", "Arial", "Verdana", "Calibri", "Georgia"]
+        },
+        "reportPaperSize": {
+          "type": "string",
+          "enum": ["A4", "F4", "Letter", "Legal"]
+        },
+        "reportOrientation": {
+          "type": "string",
+          "enum": ["portrait", "landscape"]
+        },
+        "lockReportFormat": {
+          "type": "boolean"
+        },
+        "signatureStamp": {
+          "type": "object"
+        },
+        "webBrand": {
+          "type": "object"
+        },
+        "kopSurat": {
+          "type": "object"
+        },
+        "teacherProfile": {
+          "type": "object"
+        },
+        "classes": {
+          "type": "array"
+        },
+        "subjects": {
+          "type": "array"
+        },
+        "examTypes": {
+          "type": "array"
+        },
+        "examWeights": {
+          "type": "object"
+        },
+        "useWeightedAverage": {
+          "type": "boolean"
+        },
+        "academicYears": {
+          "type": "array"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        }
+      },
+      "required": [
+        "academicYear",
+        "semester",
+        "kkm",
+        "signatureCity",
+        "principalTitle",
+        "principalName",
+        "principalNip",
+        "kopSurat",
+        "teacherProfile",
+        "classes",
+        "subjects",
+        "examTypes",
+        "academicYears",
+        "updatedAt",
+        "updatedByUid"
+      ]
+    },
+    "SchoolAsset": {
+      "title": "SchoolAsset",
+      "description": "Uploaded school branding logo, Kop Surat logos, digital signatures, or official stamp data URL stored individually within 1 MiB limits.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "dataUrl": {
+          "type": "string",
+          "maxLength": 900000
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        }
+      },
+      "required": ["id", "dataUrl", "updatedAt", "updatedByUid"]
+    },
+    "MemberAccess": {
+      "title": "MemberAccess",
+      "description": "Role-based access registry keyed by normalized email token for fast security rules evaluation.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "emailLower": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 200
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "guru", "wali_kelas", "kepala_sekolah", "karyawan"]
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["userId", "emailLower", "role", "active", "updatedAt"]
+    },
+    "AppUserPublic": {
+      "title": "AppUserPublic",
+      "description": "Non-PII staff and teacher directory entry including teaching assignments and role.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 150
+        },
+        "nip": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "guru", "wali_kelas", "kepala_sekolah", "karyawan"]
+        },
+        "school": {
+          "type": "string",
+          "maxLength": 180
+        },
+        "gender": {
+          "type": "string",
+          "enum": ["L", "P"]
+        },
+        "photoDataUrl": {
+          "type": "string",
+          "maxLength": 350000
+        },
+        "assignedClasses": {
+          "type": "array"
+        },
+        "assignedSubjects": {
+          "type": "array"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "nip",
+        "role",
+        "school",
+        "gender",
+        "assignedClasses",
+        "assignedSubjects",
+        "active",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AppUserPrivate": {
+      "title": "AppUserPrivate",
+      "description": "Isolated PII email record for a portal user, accessible only to admins and the matching user.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 200
+        },
+        "emailLower": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 200
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["userId", "email", "emailLower", "updatedAt"]
+    },
+    "StudentPublic": {
+      "title": "StudentPublic",
+      "description": "Core academic student record without personal contact PII.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "nis": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "nisn": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "absenNo": {
+          "type": "string",
+          "maxLength": 16
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 150
+        },
+        "gender": {
+          "type": "string",
+          "enum": ["L", "P"]
+        },
+        "className": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "status": {
+          "type": "string",
+          "enum": ["aktif", "lulus", "pindah", "keluar"]
+        },
+        "enrollmentYear": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "photoDataUrl": {
+          "type": "string",
+          "maxLength": 350000
+        },
+        "birthPlace": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "birthDate": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "ttl": {
+          "type": "string",
+          "maxLength": 140
+        },
+        "homeroomTeacher": {
+          "type": "string",
+          "maxLength": 150
+        },
+        "counselor": {
+          "type": "string",
+          "maxLength": 150
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "nis",
+        "name",
+        "gender",
+        "className",
+        "status",
+        "updatedAt"
+      ]
+    },
+    "StudentContactPrivate": {
+      "title": "StudentContactPrivate",
+      "description": "Isolated student personal contact PII (email, home address, phone number).",
+      "type": "object",
+      "properties": {
+        "studentId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "address": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["studentId", "email", "address", "phone", "updatedAt"]
+    },
+    "JournalEntry": {
+      "title": "JournalEntry",
+      "description": "Daily teaching journal entry and class attendance map.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "date": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "period": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "className": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "topic": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "activities": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "attendance": {
+          "type": "object"
+        },
+        "teacherId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "teacherName": {
+          "type": "string",
+          "maxLength": 150
+        },
+        "academicYear": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "semester": {
+          "type": "string",
+          "enum": ["Ganjil", "Genap"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        }
+      },
+      "required": [
+        "id",
+        "date",
+        "period",
+        "className",
+        "subject",
+        "topic",
+        "activities",
+        "attendance",
+        "createdAt",
+        "updatedAt",
+        "updatedByUid"
+      ]
+    },
+    "GradeRecord": {
+      "title": "GradeRecord",
+      "description": "Student assessment grade record per subject, exam type, and academic period.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "studentId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "className": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "examType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "score": {
+          "type": "number"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "marker": {
+          "type": "string",
+          "enum": ["neutral", "green", "yellow", "red", "blue"]
+        },
+        "teacherId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "teacherName": {
+          "type": "string",
+          "maxLength": 150
+        },
+        "academicYear": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "semester": {
+          "type": "string",
+          "enum": ["Ganjil", "Genap"]
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        }
+      },
+      "required": [
+        "id",
+        "studentId",
+        "className",
+        "subject",
+        "examType",
+        "note",
+        "marker",
+        "updatedAt",
+        "updatedByUid"
+      ]
+    }
+  },
+  "firestore": {
+    "/settings/{settingId}": {
+      "schema": {
+        "$ref": "#/entities/SchoolSettings"
+      },
+      "description": "Global school configuration document (primary ID: 'school')."
+    },
+    "/schoolAssets/{assetId}": {
+      "schema": {
+        "$ref": "#/entities/SchoolAsset"
+      },
+      "description": "Uploaded school images (Kop logos, web logo, digital signatures, and stamp)."
+    },
+    "/memberAccess/{emailKey}": {
+      "schema": {
+        "$ref": "#/entities/MemberAccess"
+      },
+      "description": "Authorized member access mapping keyed by sanitized lowercase email."
+    },
+    "/appUsers/{userId}": {
+      "schema": {
+        "$ref": "#/entities/AppUserPublic"
+      },
+      "description": "Public/internal school staff directory and role assignments."
+    },
+    "/appUserPrivates/{userId}": {
+      "schema": {
+        "$ref": "#/entities/AppUserPrivate"
+      },
+      "description": "Isolated PII email records for registered portal accounts."
+    },
+    "/students/{studentId}": {
+      "schema": {
+        "$ref": "#/entities/StudentPublic"
+      },
+      "description": "Student roster and academic profile records."
+    },
+    "/studentContacts/{studentId}": {
+      "schema": {
+        "$ref": "#/entities/StudentContactPrivate"
+      },
+      "description": "Isolated student personal contact PII (email, address, phone)."
+    },
+    "/journals/{journalId}": {
+      "schema": {
+        "$ref": "#/entities/JournalEntry"
+      },
+      "description": "Teaching journals and per-meeting student attendance logs."
+    },
+    "/grades/{gradeId}": {
+      "schema": {
+        "$ref": "#/entities/GradeRecord"
+      },
+      "description": "Student assessment grades synced across teachers and admins."
+    }
+  }
+}

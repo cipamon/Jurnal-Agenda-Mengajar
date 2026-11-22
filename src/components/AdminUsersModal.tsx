@@ -24,6 +24,9 @@ import { generateId, USER_ROLE_LABELS } from '../utils/helpers';
 
 interface AdminUsersModalProps {
   isOpen: boolean;
+  variant?: 'modal' | 'page';
+  isCloudMode?: boolean;
+  isServerMode?: boolean;
   users: AppUser[];
   allClasses: string[];
   allSubjects: string[];
@@ -32,12 +35,16 @@ interface AdminUsersModalProps {
   currentUserEmail: string;
   onUpdateUsers: (nextUsers: AppUser[]) => void;
   onSwitchUserSession?: (user: AppUser) => void;
+  onServerUnlockAdmin?: (identifier: string, password: string) => Promise<string | null>;
   onNotify: (msg: string) => void;
-  onClose: () => void;
+  onClose?: () => void;
 }
 
 export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
   isOpen,
+  variant = 'modal',
+  isCloudMode = false,
+  isServerMode = false,
   users,
   allClasses,
   allSubjects,
@@ -46,10 +53,12 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
   currentUserEmail,
   onUpdateUsers,
   onSwitchUserSession,
+  onServerUnlockAdmin,
   onNotify,
   onClose,
 }) => {
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [userUsername, setUserUsername] = useState('');
   const [userName, setUserName] = useState('');
   const [userNip, setUserNip] = useState('');
   const [userEmail, setUserEmail] = useState('');
@@ -66,18 +75,20 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
   const [userPasteText, setUserPasteText] = useState('');
   const userFileRef = useRef<HTMLInputElement | null>(null);
 
-  const [adminUnlockEmail, setAdminUnlockEmail] = useState('admin@sman1nusantara.sch.id');
+  const [adminUnlockEmail, setAdminUnlockEmail] = useState('admin');
   const [adminUnlockPass, setAdminUnlockPass] = useState('');
+  const [unlockLoading, setUnlockLoading] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
     setUserSchool(defaultSchool);
+    if (variant !== 'modal' || !onClose) return;
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [isOpen, defaultSchool, onClose]);
+  }, [isOpen, variant, defaultSchool, onClose]);
 
   if (!isOpen) return null;
 
@@ -93,6 +104,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
 
   const resetUserForm = () => {
     setEditingUserId(null);
+    setUserUsername('');
     setUserName('');
     setUserNip('');
     setUserEmail('');
@@ -120,13 +132,35 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
 
   const handleSaveUser = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userName.trim() || !userEmail.trim() || !userPassword.trim()) {
-      onNotify('Nama lengkap, email, dan password pengguna wajib diisi.');
+    const trimmedName = userName.trim();
+    const trimmedEmail = userEmail.trim();
+    const trimmedPass = userPassword.trim();
+    const derivedUsername =
+      userUsername.trim().toLowerCase().replace(/[^a-z0-9._@-]/g, '') ||
+      trimmedEmail.split('@')[0]?.toLowerCase().replace(/[^a-z0-9._-]/g, '') ||
+      '';
+
+    if (!trimmedName || !trimmedEmail) {
+      onNotify(
+        isCloudMode
+          ? 'Nama lengkap dan email Google pengguna wajib diisi.'
+          : 'Nama lengkap dan email pengguna wajib diisi.'
+      );
+      return;
+    }
+
+    if (!editingUserId && isServerMode && trimmedPass.length < 6) {
+      onNotify('Password akun baru di server minimal 6 karakter.');
+      return;
+    }
+
+    if (trimmedPass.length > 0 && trimmedPass.length < 6) {
+      onNotify('Password minimal 6 karakter (atau kosongkan jika tidak ingin mengubah password).');
       return;
     }
 
     const duplicate = users.find(
-      (u) => u.email.toLowerCase() === userEmail.trim().toLowerCase() && u.id !== editingUserId
+      (u) => u.email.toLowerCase() === trimmedEmail.toLowerCase() && u.id !== editingUserId
     );
     if (duplicate) {
       onNotify('Email tersebut sudah digunakan oleh akun lain.');
@@ -146,10 +180,11 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
         u.id === editingUserId
           ? {
               ...u,
-              name: userName.trim(),
+              username: derivedUsername || u.username,
+              name: trimmedName,
               nip: userNip.trim() || '-',
-              email: userEmail.trim(),
-              password: userPassword,
+              email: trimmedEmail,
+              password: trimmedPass,
               role: userRole,
               gender: userGender,
               school: userSchool.trim() || defaultSchool,
@@ -161,14 +196,15 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
           : u
       );
       onUpdateUsers(next);
-      onNotify(`Pengguna ${userName.trim()} (${USER_ROLE_LABELS[userRole]}) berhasil diperbarui.`);
+      onNotify(`Pengguna ${trimmedName} (${USER_ROLE_LABELS[userRole]}) berhasil diperbarui.`);
     } else {
       const created: AppUser = {
         id: generateId('usr'),
-        name: userName.trim(),
+        username: derivedUsername,
+        name: trimmedName,
         nip: userNip.trim() || '-',
-        email: userEmail.trim(),
-        password: userPassword,
+        email: trimmedEmail,
+        password: trimmedPass,
         role: userRole,
         gender: userGender,
         school: userSchool.trim() || defaultSchool,
@@ -186,10 +222,11 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
 
   const handleEditUserClick = (u: AppUser) => {
     setEditingUserId(u.id);
+    setUserUsername(u.username || '');
     setUserName(u.name);
     setUserNip(u.nip);
     setUserEmail(u.email);
-    setUserPassword(u.password);
+    setUserPassword('');
     setUserRole(u.role);
     setUserGender(u.gender);
     setUserSchool(u.school);
@@ -268,7 +305,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
         'Nama Lengkap': 'Contoh Guru Mapel',
         NIP: '19880412 201501 1 002',
         'Email Login': 'guru3@sman1nusantara.sch.id',
-        Password: 'password123',
+        Password: '',
         Role: 'guru',
         'L/P': 'L',
         'Unit Sekolah': defaultSchool,
@@ -280,7 +317,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
         'Nama Lengkap': 'Contoh Staff Tata Usaha',
         NIP: '19930510 201902 2 004',
         'Email Login': 'staff2@sman1nusantara.sch.id',
-        Password: 'password123',
+        Password: '',
         Role: 'karyawan',
         'L/P': 'P',
         'Unit Sekolah': defaultSchool,
@@ -301,10 +338,10 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
       selectedUserIds.length > 0 ? users.filter((u) => selectedUserIds.includes(u.id)) : users;
     const rows = targetList.map((u, idx) => ({
       No: idx + 1,
+      Username: u.username || u.email.split('@')[0] || '-',
       'Nama Lengkap': u.name,
       NIP: u.nip,
       'Email Login': u.email,
-      Password: u.password,
       Role: u.role,
       'Label Role': USER_ROLE_LABELS[u.role],
       'L/P': u.gender,
@@ -365,10 +402,11 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
       const parsedRole = normalizeImportedRole(r.role || 'guru');
       added.push({
         id: generateId('usr'),
+        username: cleanEmail.split('@')[0]?.toLowerCase().replace(/[^a-z0-9._-]/g, ''),
         name: cleanName,
         nip: String(r.nip || '-').trim() || '-',
         email: cleanEmail,
-        password: String(r.password || 'guru123').trim() || 'guru123',
+        password: String(r.password || '').trim(),
         role: parsedRole,
         gender: String(r.gender || 'L').trim().toUpperCase().startsWith('P') ? 'P' : 'L',
         school: String(r.school || defaultSchool).trim() || defaultSchool,
@@ -403,7 +441,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
         name: cols[0] || '',
         nip: cols[1] || '-',
         email: cols[2] || '',
-        password: cols[3] || 'guru123',
+        password: cols[3] || '',
         role: cols[4] || 'guru',
         gender: cols[5] || 'L',
         school: cols[6] || defaultSchool,
@@ -427,7 +465,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
         name: String(row['Nama Lengkap'] ?? row['Nama'] ?? ''),
         nip: String(row['NIP'] ?? row['ID Pegawai'] ?? '-'),
         email: String(row['Email Login'] ?? row['Email'] ?? ''),
-        password: String(row['Password'] ?? row['Kata Sandi'] ?? 'guru123'),
+        password: String(row['Password'] ?? row['Kata Sandi'] ?? ''),
         role: String(row['Role'] ?? row['Hak Akses'] ?? 'guru'),
         gender: String(row['L/P'] ?? row['Jenis Kelamin'] ?? 'L'),
         school: String(row['Unit Sekolah'] ?? row['Sekolah'] ?? defaultSchool),
@@ -443,51 +481,56 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
     }
   };
 
-  const handleVerifyAdminUnlock = () => {
-    const matched = users.find(
-      (u) =>
-        u.role === 'admin' &&
-        u.active &&
-        u.email.toLowerCase() === adminUnlockEmail.trim().toLowerCase() &&
-        u.password === adminUnlockPass
-    );
-    if (!matched) {
-      onNotify('Email atau password Admin Sistem tidak valid.');
+  const handleVerifyAdminUnlock = async () => {
+    if (!onServerUnlockAdmin) {
+      onNotify('Untuk akses Admin di mode Firebase Cloud, masuk menggunakan akun Google Admin.');
       return;
     }
-    onSwitchUserSession?.(matched);
-    setAdminUnlockPass('');
-    onNotify(`Beralih ke sesi ${matched.name} (${USER_ROLE_LABELS[matched.role]}).`);
+    if (!adminUnlockEmail.trim() || !adminUnlockPass) {
+      onNotify('Username/Email dan Password Admin wajib diisi.');
+      return;
+    }
+    setUnlockLoading(true);
+    try {
+      const err = await onServerUnlockAdmin(adminUnlockEmail.trim(), adminUnlockPass);
+      if (err) {
+        onNotify(err);
+        return;
+      }
+      setAdminUnlockPass('');
+    } finally {
+      setUnlockLoading(false);
+    }
   };
 
-  return (
+  const isPage = variant === 'page';
+
+  const contentCard = (
     <div
-      className="no-print fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-[1px]"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="admin-users-modal-title"
+      className={
+        isPage
+          ? 'w-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col'
+          : 'w-full max-w-5xl bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]'
+      }
+      onClick={isPage ? undefined : (e) => e.stopPropagation()}
     >
-      <div
-        className="w-full max-w-5xl bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-lg bg-indigo-600/30 border border-indigo-400/40 flex items-center justify-center shrink-0">
-              <ShieldCheck className="w-5 h-5 text-indigo-300" />
-            </div>
-            <div className="min-w-0">
-              <h2 id="admin-users-modal-title" className="text-base font-bold text-white truncate">
-                Pengaturan Admin & Manajemen Pengguna (Multi-Role)
-              </h2>
-              <p className="text-xs text-slate-300 truncate">
-                Sesi Aktif: <strong className="text-white">{USER_ROLE_LABELS[currentUserRole]}</strong> ·{' '}
-                Kelola akun Admin, Guru Mapel, Wali Kelas, Kepala Sekolah & Karyawan/Staff
-              </p>
-            </div>
+      {/* Header */}
+      <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-lg bg-indigo-600/30 border border-indigo-400/40 flex items-center justify-center shrink-0">
+            <ShieldCheck className="w-5 h-5 text-indigo-300" />
           </div>
+          <div className="min-w-0">
+            <h2 id="admin-users-modal-title" className="text-base font-bold text-white truncate">
+              Pengaturan Admin & Manajemen Pengguna (Multi-Role)
+            </h2>
+            <p className="text-xs text-slate-300 truncate">
+              Sesi Aktif: <strong className="text-white">{USER_ROLE_LABELS[currentUserRole]}</strong> ·{' '}
+              Kelola akun Admin, Guru Mapel, Wali Kelas, Kepala Sekolah & Karyawan/Staff
+            </p>
+          </div>
+        </div>
+        {!isPage && onClose && (
           <button
             type="button"
             onClick={onClose}
@@ -496,10 +539,11 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
           >
             <X className="w-5 h-5" />
           </button>
-        </div>
+        )}
+      </div>
 
-        {/* Body */}
-        <div className="p-6 space-y-6 overflow-y-auto eguru-scroll">
+      {/* Body */}
+      <div className={isPage ? 'p-6 space-y-6' : 'p-6 space-y-6 overflow-y-auto eguru-scroll'}>
           {currentUserRole !== 'admin' ? (
             <div className="p-5 rounded-xl border border-amber-200 bg-amber-50 space-y-4">
               <div className="flex items-start gap-3">
@@ -509,48 +553,60 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                     Panel Pengaturan Admin Terkunci untuk Role {USER_ROLE_LABELS[currentUserRole]}
                   </p>
                   <p className="text-xs text-slate-700 leading-relaxed">
-                    Pembuatan dan pengelolaan akun pengguna baru hanya dapat dilakukan oleh{' '}
-                    <strong>Admin Sistem</strong>. Masukkan kredensial Admin untuk beralih ke mode Admin
-                    (demo default:{' '}
-                    <span className="font-mono font-semibold">admin@sman1nusantara.sch.id</span> /{' '}
-                    <span className="font-mono font-semibold">admin123</span>).
+                    {onServerUnlockAdmin ? (
+                      <>
+                        Pembuatan dan pengelolaan akun pengguna hanya dapat dilakukan oleh{' '}
+                        <strong>Admin Sistem</strong>. Masukkan kredensial Admin Server untuk beralih ke mode Admin.
+                      </>
+                    ) : (
+                      <>
+                        Pembuatan dan pengelolaan akun pengguna hanya dapat dilakukan oleh{' '}
+                        <strong>Admin Sistem</strong> yang masuk dengan akun Google Admin.
+                      </>
+                    )}
                   </p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Email Admin</label>
-                  <input
-                    type="email"
-                    value={adminUnlockEmail}
-                    onChange={(e) => setAdminUnlockEmail(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
-                  />
+              {onServerUnlockAdmin && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Username atau Email Admin
+                    </label>
+                    <input
+                      type="text"
+                      value={adminUnlockEmail}
+                      onChange={(e) => setAdminUnlockEmail(e.target.value)}
+                      placeholder="admin"
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Password Admin
+                    </label>
+                    <input
+                      type="password"
+                      value={adminUnlockPass}
+                      onChange={(e) => setAdminUnlockPass(e.target.value)}
+                      placeholder="Masukkan password admin"
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                    />
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      disabled={unlockLoading}
+                      onClick={handleVerifyAdminUnlock}
+                      className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+                    >
+                      <UserCheck className="w-4 h-4 text-indigo-300" />
+                      <span>{unlockLoading ? 'Memverifikasi...' : 'Aktifkan Mode Admin'}</span>
+                    </button>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Password Admin
-                  </label>
-                  <input
-                    type="password"
-                    value={adminUnlockPass}
-                    onChange={(e) => setAdminUnlockPass(e.target.value)}
-                    placeholder="Masukkan password admin"
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
-                  />
-                </div>
-                <div>
-                  <button
-                    type="button"
-                    onClick={handleVerifyAdminUnlock}
-                    className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
-                  >
-                    <UserCheck className="w-4 h-4 text-indigo-300" />
-                    <span>Aktifkan Mode Admin</span>
-                  </button>
-                </div>
-              </div>
+              )}
             </div>
           ) : (
             <>
@@ -578,7 +634,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Nama Lengkap
@@ -605,6 +661,18 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Username (Opsional)
+                    </label>
+                    <input
+                      type="text"
+                      value={userUsername}
+                      onChange={(e) => setUserUsername(e.target.value)}
+                      placeholder="Otomatis dari email"
+                      className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Email Login
                     </label>
                     <input
@@ -617,13 +685,23 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Password
+                      {editingUserId
+                        ? 'Password Baru (Opsional)'
+                        : isCloudMode
+                          ? 'Password Server (Opsional)'
+                          : 'Password Login (min. 6)'}
                     </label>
                     <input
-                      type="text"
+                      type="password"
                       value={userPassword}
                       onChange={(e) => setUserPassword(e.target.value)}
-                      placeholder="Kata sandi akun"
+                      placeholder={
+                        editingUserId
+                          ? 'Kosongkan jika tetap'
+                          : isCloudMode
+                            ? 'Opsional untuk Google'
+                            : 'Minimal 6 karakter'
+                      }
                       className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
                     />
                   </div>
@@ -684,6 +762,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                           role: userRole,
                           gender: userGender,
                         })}
+                        referrerPolicy="no-referrer"
                         onError={(e) => {
                           e.currentTarget.onerror = null;
                           e.currentTarget.src = getUserPhotoUrl({
@@ -947,7 +1026,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                     rows={3}
                     value={userPasteText}
                     onChange={(e) => setUserPasteText(e.target.value)}
-                    placeholder={`Dewi Anggraini\t19920101 201903 2 001\tdewi@sman1nusantara.sch.id\tguru123\tguru\tP\t${defaultSchool}`}
+                    placeholder={`Dewi Anggraini\t19920101 201903 2 001\tdewi@sman1nusantara.sch.id\tMinimal6Karakter\tguru\tP\t${defaultSchool}`}
                     className="w-full p-2.5 text-xs font-mono rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
                   />
                   <div className="flex justify-end gap-2">
@@ -1022,6 +1101,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                           <div className="flex items-center gap-3">
                             <img
                               src={getUserPhotoUrl(u)}
+                              referrerPolicy="no-referrer"
                               onError={(e) => {
                                 e.currentTarget.onerror = null;
                                 e.currentTarget.src = getUserPhotoUrl({
@@ -1046,7 +1126,12 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                             </div>
                           </div>
                         </td>
-                        <td className="py-2.5 px-3 font-mono text-slate-700">{u.email}</td>
+                        <td className="py-2.5 px-3 font-mono text-slate-700">
+                          <div>{u.email}</div>
+                          {u.username && (
+                            <div className="text-[11px] text-slate-400">@{u.username}</div>
+                          )}
+                        </td>
                         <td className="py-2.5 px-3 font-semibold text-indigo-700 whitespace-nowrap">
                           {USER_ROLE_LABELS[u.role]}
                         </td>
@@ -1118,18 +1203,35 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
 
         {/* Footer */}
         <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
-          <p className="text-xs text-slate-500 hidden sm:block">
+          <p className="text-xs text-slate-500">
             Perubahan daftar akun pengguna tersimpan otomatis secara persisten
           </p>
-          <button
-            type="button"
-            onClick={onClose}
-            className="ml-auto px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
-          >
-            Tutup
-          </button>
+          {!isPage && onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="ml-auto px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+            >
+              Tutup
+            </button>
+          )}
         </div>
       </div>
+  );
+
+  if (isPage) {
+    return contentCard;
+  }
+
+  return (
+    <div
+      className="no-print fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-[1px]"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="admin-users-modal-title"
+    >
+      {contentCard}
     </div>
   );
 };

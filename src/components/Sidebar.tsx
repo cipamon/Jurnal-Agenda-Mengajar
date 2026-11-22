@@ -1,11 +1,14 @@
 import React from 'react';
 import {
   BarChart3,
+  Briefcase,
   ClipboardCheck,
   FileSpreadsheet,
   LogOut,
   Printer,
   Settings,
+  ShieldCheck,
+  UserCheck,
   Users,
   X,
 } from 'lucide-react';
@@ -31,10 +34,13 @@ interface SidebarProps {
 
 const MENU_ITEMS: { id: MenuId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'dashboard', label: 'Dashboard Analitik', icon: BarChart3 },
+  { id: 'pegawai', label: 'Data Guru & Karyawan', icon: Briefcase },
   { id: 'jurnal', label: 'Jurnal & Absensi', icon: ClipboardCheck },
   { id: 'nilai', label: 'Input & Matriks Nilai', icon: FileSpreadsheet },
   { id: 'siswa', label: 'Data Siswa', icon: Users },
   { id: 'laporan', label: 'Cetak Laporan Resmi', icon: Printer },
+  { id: 'profil', label: 'Profil & Akun Login', icon: UserCheck },
+  { id: 'pengguna', label: 'Admin & Pengguna', icon: ShieldCheck },
   { id: 'pengaturan', label: 'Pengaturan Sistem', icon: Settings },
 ];
 
@@ -74,11 +80,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const sidebarContent = (
-    <div className="flex flex-col h-full bg-slate-900 text-slate-100 select-none">
+    <div className="eguru-sidebar-surface flex flex-col h-full bg-slate-900 text-slate-100 select-none">
       {/* Brand Header */}
-      <div className="px-5 py-5 border-b border-slate-800 flex items-center justify-between gap-2">
+      <div className="px-5 py-5 border-b border-white/10 flex items-center justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-lg bg-white p-1 flex items-center justify-center shrink-0 overflow-hidden">
+          <div
+            style={{
+              width: webBrand.webLogoSize ?? 36,
+              height: webBrand.webLogoSize ?? 36,
+            }}
+            className="rounded-lg bg-white p-1 flex items-center justify-center shrink-0 overflow-hidden"
+          >
             <img
               src={webBrand.webLogoDataUrl}
               alt={webBrand.appName}
@@ -139,6 +151,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           <img
             src={userAvatarSrc}
+            referrerPolicy="no-referrer"
             onError={(e) => {
               e.currentTarget.onerror = null;
               e.currentTarget.src = fallbackUserAvatarSrc;
@@ -169,7 +182,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <>
       {/* Desktop Fixed Sidebar */}
-      <aside className="no-print hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:w-64 lg:flex-col border-r border-slate-800">
+      <aside className="no-print hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:w-64 lg:flex-col border-r border-white/10">
         {sidebarContent}
       </aside>
 

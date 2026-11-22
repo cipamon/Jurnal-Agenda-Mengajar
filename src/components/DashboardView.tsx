@@ -172,16 +172,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Banner Gradient Indigo-Violet */}
-      <section className="rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-violet-700 text-white p-6 sm:p-8 shadow-sm">
+      {/* Banner Gradient Dinamis sesuai Tema */}
+      <section className="eguru-hero-gradient rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-violet-700 text-white p-6 sm:p-8 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
           <div className="flex items-center gap-4 min-w-0">
             <img
               src={getUserPhotoUrl({
-                photoDataUrl: currentUserPhoto || settings.teacherProfile.photoDataUrl,
+                photoDataUrl:
+                  currentUserPhoto ||
+                  (currentUserRole === 'guru' ? settings.teacherProfile.photoDataUrl : ''),
                 role: currentUserRole,
                 gender: currentUserGender || settings.teacherProfile.gender || 'P',
               })}
+              referrerPolicy="no-referrer"
               onError={(e) => {
                 e.currentTarget.onerror = null;
                 e.currentTarget.src = getUserPhotoUrl({

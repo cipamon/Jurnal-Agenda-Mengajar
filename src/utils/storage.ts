@@ -1,4 +1,11 @@
-import { PortalDatabase, SessionState } from '../types';
+import { PortalDatabase, SessionState, SystemSettings } from '../types';
+import {
+  DEFAULT_KOP_LINE_SIZES,
+  DEFAULT_KOP_LINE_STYLES,
+  formatStudentTtl,
+  parseTtlFields,
+} from './helpers';
+import { createDefaultSettings, createSeedDatabase } from './seedData';
 
 const IDB_NAME = 'portal_eguru_v10_idb';
 const IDB_STORE = 'workspace_store';
@@ -6,6 +13,147 @@ const IDB_KEY = 'primary_db';
 
 const LS_DB_KEY = 'portal_eguru_v10_data';
 const LS_SESSION_KEY = 'portal_eguru_v10_session';
+
+export const CURRENT_APP_SCHEMA_VERSION = '10.3.0';
+
+/**
+ * Safe schema migration for upgrades from v10.0 / v10.1 / v10.2 -> v10.3+.
+ * Preserves ALL existing user data, settings, Kop Surat, signatures, stamps, logos,
+ * students, journals, grades, and accounts while safely backfilling new fields.
+ */
+export function migrateSettings(rawSettings?: Partial<SystemSettings> & { sheetsWebAppUrl?: unknown }): SystemSettings {
+  const defaults = createDefaultSettings();
+  if (!rawSettings || typeof rawSettings !== 'object') {
+    return defaults;
+  }
+
+  // Explicitly discard legacy sheetsWebAppUrl while retaining every other setting field
+  const { sheetsWebAppUrl: _legacySheetsUrl, ...restRaw } = rawSettings;
+  void _legacySheetsUrl;
+
+  const rawKop = rawSettings.kopSurat || ({} as Partial<SystemSettings['kopSurat']>);
+  const rawSig = rawSettings.signatureStamp;
+  const rawBrand = rawSettings.webBrand;
+  const rawTeacher = rawSettings.teacherProfile || ({} as Partial<SystemSettings['teacherProfile']>);
+
+  return {
+    ...defaults,
+    ...restRaw,
+    themeId: rawSettings.themeId || defaults.themeId,
+    reportFontFamily: rawSettings.reportFontFamily || rawKop.fontFamily || defaults.reportFontFamily,
+    reportPaperSize: rawSettings.reportPaperSize || defaults.reportPaperSize || 'A4',
+    reportOrientation: rawSettings.reportOrientation || defaults.reportOrientation || 'landscape',
+    lockReportFormat:
+      rawSettings.lockReportFormat !== undefined
+        ? Boolean(rawSettings.lockReportFormat)
+        : defaults.lockReportFormat ?? true,
+    classes:
+      Array.isArray(rawSettings.classes) && rawSettings.classes.length > 0
+        ? rawSettings.classes
+        : defaults.classes,
+    subjects:
+      Array.isArray(rawSettings.subjects) && rawSettings.subjects.length > 0
+        ? rawSettings.subjects
+        : defaults.subjects,
+    examTypes:
+      Array.isArray(rawSettings.examTypes) && rawSettings.examTypes.length > 0
+        ? rawSettings.examTypes
+        : defaults.examTypes,
+    academicYears:
+      Array.isArray(rawSettings.academicYears) && rawSettings.academicYears.length > 0
+        ? rawSettings.academicYears
+        : defaults.academicYears,
+    examWeights: {
+      ...(defaults.examWeights || {}),
+      ...(rawSettings.examWeights || {}),
+    },
+    useWeightedAverage:
+      rawSettings.useWeightedAverage !== undefined
+        ? rawSettings.useWeightedAverage
+        : defaults.useWeightedAverage,
+    webBrand: {
+      appName: rawBrand?.appName || defaults.webBrand!.appName,
+      tabTitle: rawBrand?.tabTitle || defaults.webBrand!.tabTitle,
+      webLogoDataUrl: rawBrand?.webLogoDataUrl || defaults.webBrand!.webLogoDataUrl,
+      webLogoSize: rawBrand?.webLogoSize ?? defaults.webBrand!.webLogoSize ?? 36,
+    },
+    signatureStamp: {
+      ...defaults.signatureStamp!,
+      ...(rawSig || {}),
+      // Preserve explicit empty string '' if admin deliberately removed default stamp
+      stampDataUrl:
+        rawSig === undefined ? defaults.signatureStamp!.stampDataUrl : rawSig.stampDataUrl ?? '',
+    },
+    kopSurat: {
+      ...defaults.kopSurat,
+      ...rawKop,
+      lineSizes: {
+        ...DEFAULT_KOP_LINE_SIZES,
+        ...(rawKop.lineSizes || {}),
+      },
+      lineStyles: {
+        ...DEFAULT_KOP_LINE_STYLES,
+        ...(rawKop.lineStyles || {}),
+      },
+    },
+    teacherProfile: {
+      ...defaults.teacherProfile,
+      ...rawTeacher,
+    },
+  };
+}
+
+export function migrateDatabase(raw: unknown): PortalDatabase | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Partial<PortalDatabase>;
+  if (!obj.settings) return null;
+
+  const migratedSettings = migrateSettings(
+    obj.settings as Partial<SystemSettings> & { sheetsWebAppUrl?: unknown }
+  );
+
+  const seedFallback = createSeedDatabase();
+  const existingUsers =
+    Array.isArray(obj.users) && obj.users.length > 0 ? obj.users : seedFallback.users || [];
+
+  const students = Array.isArray(obj.students)
+    ? obj.students.map((st) => {
+        const parsedTtl = parseTtlFields(st.ttl);
+        const birthPlace = st.birthPlace !== undefined ? st.birthPlace : parsedTtl.birthPlace;
+        const birthDate = st.birthDate !== undefined ? st.birthDate : parsedTtl.birthDate;
+        return {
+          ...st,
+          status: st.status || 'aktif',
+          nisn: st.nisn ?? '',
+          birthPlace,
+          birthDate,
+          ttl: formatStudentTtl({ birthPlace, birthDate, ttl: st.ttl }),
+          phone: st.phone ?? '',
+          homeroomTeacher: st.homeroomTeacher ?? '',
+          counselor: st.counselor ?? '',
+        };
+      })
+    : [];
+
+  const journals = Array.isArray(obj.journals)
+    ? obj.journals.map((j) => ({
+        ...j,
+        attendance: j.attendance || {},
+      }))
+    : [];
+
+  const grades = Array.isArray(obj.grades) ? obj.grades : [];
+
+  return {
+    version: CURRENT_APP_SCHEMA_VERSION,
+    lastSyncedAt: obj.lastSyncedAt ?? null,
+    students,
+    journals,
+    grades,
+    users: existingUsers,
+    settings: migratedSettings,
+  };
+}
 
 function openIDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -36,7 +184,8 @@ export async function loadDatabase(): Promise<PortalDatabase | null> {
       req.onerror = () => resolve(null);
     });
     if (idbData && idbData.settings) {
-      return idbData;
+      const migrated = migrateDatabase(idbData);
+      if (migrated) return migrated;
     }
   } catch {
     // Fallback to LocalStorage below
@@ -46,15 +195,20 @@ export async function loadDatabase(): Promise<PortalDatabase | null> {
     const raw = localStorage.getItem(LS_DB_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PortalDatabase;
-    return parsed && parsed.settings ? parsed : null;
+    return migrateDatabase(parsed);
   } catch {
     return null;
   }
 }
 
 export async function saveDatabase(data: PortalDatabase): Promise<void> {
+  const safePayload: PortalDatabase = {
+    ...data,
+    version: CURRENT_APP_SCHEMA_VERSION,
+  };
+
   try {
-    localStorage.setItem(LS_DB_KEY, JSON.stringify(data));
+    localStorage.setItem(LS_DB_KEY, JSON.stringify(safePayload));
   } catch {
     // Ignore localStorage quota exceeded when large images are uploaded; IndexedDB handles larger payloads
   }
@@ -64,7 +218,7 @@ export async function saveDatabase(data: PortalDatabase): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(IDB_STORE, 'readwrite');
       const store = tx.objectStore(IDB_STORE);
-      const req = store.put(data, IDB_KEY);
+      const req = store.put(safePayload, IDB_KEY);
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
     });
@@ -75,21 +229,15 @@ export async function saveDatabase(data: PortalDatabase): Promise<void> {
 
 export function loadSession(): SessionState | null {
   try {
-    const raw = localStorage.getItem(LS_SESSION_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as SessionState;
-    return parsed && parsed.isAuthenticated ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-export function saveSession(session: SessionState): void {
-  try {
-    localStorage.setItem(LS_SESSION_KEY, JSON.stringify(session));
+    localStorage.removeItem(LS_SESSION_KEY);
   } catch {
     // ignore
   }
+  return null;
+}
+
+export function saveSession(_session: SessionState): void {
+  // Custom server session tokens are held strictly in memory (never persisted in localStorage)
 }
 
 export function clearSession(): void {
@@ -97,54 +245,5 @@ export function clearSession(): void {
     localStorage.removeItem(LS_SESSION_KEY);
   } catch {
     // ignore
-  }
-}
-
-export async function syncToServer(db: PortalDatabase): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const res = await fetch('/api/sync/save', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: db.settings.teacherProfile.email,
-        data: db,
-      }),
-    });
-    const json = (await res.json()) as { ok: boolean; error?: string };
-    return json;
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : 'Koneksi server gagal' };
-  }
-}
-
-export async function syncToGoogleSheets(
-  webAppUrl: string,
-  db: PortalDatabase
-): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const res = await fetch('/api/sync/sheets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        webAppUrl,
-        payload: {
-          source: 'Portal E-Guru v10.2',
-          syncedAt: new Date().toISOString(),
-          academicYear: db.settings.academicYear,
-          semester: db.settings.semester,
-          teacher: db.settings.teacherProfile.name,
-          studentsCount: db.students.length,
-          journalsCount: db.journals.length,
-          gradesCount: db.grades.length,
-          students: db.students,
-          journals: db.journals,
-          grades: db.grades,
-        },
-      }),
-    });
-    const json = (await res.json()) as { ok: boolean; error?: string };
-    return json;
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : 'Gagal sinkronisasi ke Google Sheets' };
   }
 }

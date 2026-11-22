@@ -1,9 +1,12 @@
 export type MenuId =
   | 'dashboard'
+  | 'pegawai'
   | 'jurnal'
   | 'nilai'
   | 'siswa'
   | 'laporan'
+  | 'profil'
+  | 'pengguna'
   | 'pengaturan';
 
 export type AttendanceStatus = 'H' | 'S' | 'I' | 'A' | 'D';
@@ -18,7 +21,28 @@ export type PrintFontFamily =
   | 'Calibri'
   | 'Georgia';
 
-export type ReportType = 'jurnal' | 'kehadiran' | 'nilai' | 'semua';
+export type ThemeId =
+  | 'indigo'
+  | 'emerald'
+  | 'teal'
+  | 'amber'
+  | 'rose'
+  | 'slate'
+  | 'midnight';
+
+export type ReportType =
+  | 'jurnal'
+  | 'kehadiran'
+  | 'rekap_presensi'
+  | 'ketidakhadiran'
+  | 'nilai'
+  | 'remedial'
+  | 'leger_kelas'
+  | 'daftar_siswa'
+  | 'aktivitas_guru'
+  | 'semua';
+
+export type PaperSize = 'A4' | 'F4' | 'Letter' | 'Legal';
 
 export type PaperOrientation = 'portrait' | 'landscape';
 
@@ -26,6 +50,7 @@ export type UserRole = 'admin' | 'guru' | 'wali_kelas' | 'kepala_sekolah' | 'kar
 
 export interface AppUser {
   id: string;
+  username?: string;
   name: string;
   nip: string;
   email: string;
@@ -45,6 +70,7 @@ export type StudentStatus = 'aktif' | 'lulus' | 'pindah' | 'keluar';
 export interface Student {
   id: string;
   nis: string;
+  nisn?: string;
   absenNo?: string;
   name: string;
   gender: 'L' | 'P';
@@ -53,8 +79,13 @@ export interface Student {
   enrollmentYear?: string;
   photoDataUrl?: string;
   email?: string;
+  birthPlace?: string;
+  birthDate?: string;
   ttl?: string;
   address?: string;
+  phone?: string;
+  homeroomTeacher?: string;
+  counselor?: string;
 }
 
 export interface StudentAttendanceItem {
@@ -128,8 +159,8 @@ export interface KopSuratConfig {
   line6: string;
   leftLogoDataUrl: string;
   rightLogoDataUrl: string;
-  leftLogoSize?: number; // px (36 - 120)
-  rightLogoSize?: number; // px (36 - 120)
+  leftLogoSize?: number; // px (24 - 160)
+  rightLogoSize?: number; // px (24 - 160)
   fontFamily?: PrintFontFamily;
   lineSizes?: KopSuratLineSizes;
   lineStyles?: KopSuratLineStyles;
@@ -139,6 +170,7 @@ export interface WebBrandConfig {
   appName: string;
   tabTitle: string;
   webLogoDataUrl: string;
+  webLogoSize?: number; // px (24 - 80)
 }
 
 export interface TeacherProfile {
@@ -157,9 +189,20 @@ export interface SignatureStampConfig {
   principalSignatureDataUrl?: string;
   teacherSignatureDataUrl?: string;
   stampDataUrl?: string;
-  signatureSize?: number; // px height (36 - 96)
-  stampSize?: number; // px square (48 - 110)
+  signatureSize?: number; // px height (28 - 200)
+  stampSize?: number; // px square (32 - 220)
   showStampDefault?: boolean;
+  principalSigOffsetX?: number; // px (-100 to 100)
+  principalSigOffsetY?: number; // px (-50 to 50)
+  teacherSigOffsetX?: number; // px (-100 to 100)
+  teacherSigOffsetY?: number; // px (-50 to 50)
+  stampOffsetX?: number; // px (-150 to 150)
+  stampOffsetY?: number; // px (-60 to 60)
+  principalBlockOffsetX?: number; // px (-320 to 320)
+  principalBlockOffsetY?: number; // px (-80 to 120)
+  teacherBlockOffsetX?: number; // px (-320 to 320)
+  teacherBlockOffsetY?: number; // px (-80 to 120)
+  stampTarget?: 'principal' | 'teacher';
 }
 
 export interface SystemSettings {
@@ -170,8 +213,11 @@ export interface SystemSettings {
   principalTitle: string;
   principalName: string;
   principalNip: string;
-  sheetsWebAppUrl: string;
+  themeId?: ThemeId;
   reportFontFamily?: PrintFontFamily;
+  reportPaperSize?: PaperSize;
+  reportOrientation?: PaperOrientation;
+  lockReportFormat?: boolean;
   signatureStamp?: SignatureStampConfig;
   webBrand?: WebBrandConfig;
   kopSurat: KopSuratConfig;
@@ -197,7 +243,9 @@ export interface PortalDatabase {
 export interface SessionState {
   isAuthenticated: boolean;
   email: string;
+  username?: string;
   userId?: string;
   role?: UserRole;
+  authProvider?: 'google' | 'server' | 'local';
   loggedInAt: string;
 }

@@ -264,6 +264,7 @@ export const ClassDetailModal: React.FC<ClassDetailModalProps> = ({
                           <div className="flex items-center gap-2.5">
                             <img
                               src={getStudentPhotoUrl(st)}
+                              referrerPolicy="no-referrer"
                               onError={(e) => {
                                 e.currentTarget.onerror = null;
                                 e.currentTarget.src = getStudentPhotoUrl({

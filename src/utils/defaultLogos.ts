@@ -71,34 +71,67 @@ export const DEFAULT_TEACHER_TTD =
   <path d="M44 68 C94 62, 146 60, 188 64" fill="none" stroke="#1e293b" stroke-width="1.8" stroke-linecap="round"/>
 </svg>`);
 
+import { normalizePhotoUrl } from './defaultAvatars';
+
 export async function dataUrlToPngBase64(dataUrl: string, targetSize = 180): Promise<string | null> {
-  if (!dataUrl) return null;
-  return new Promise((resolve) => {
-    try {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        try {
-          const canvas = document.createElement('canvas');
-          const ratio = img.width && img.height ? img.width / img.height : 1;
-          canvas.width = targetSize;
-          canvas.height = Math.round(targetSize / ratio) || targetSize;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) {
-            resolve(null);
-            return;
-          }
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          resolve(canvas.toDataURL('image/png'));
-        } catch {
-          resolve(null);
+  const srcUrl = normalizePhotoUrl(dataUrl) || dataUrl;
+  if (!srcUrl) return null;
+
+  const renderImgToPng = (src: string, withCors: boolean) =>
+    new Promise<string | null>((resolve) => {
+      try {
+        const img = new Image();
+        if (withCors && !src.startsWith('data:') && !src.startsWith('/')) {
+          img.crossOrigin = 'anonymous';
         }
-      };
-      img.onerror = () => resolve(null);
-      img.src = dataUrl;
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            const ratio = img.width && img.height ? img.width / img.height : 1;
+            canvas.width = targetSize;
+            canvas.height = Math.round(targetSize / ratio) || targetSize;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              resolve(null);
+              return;
+            }
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/png'));
+          } catch {
+            resolve(null);
+          }
+        };
+        img.onerror = () => resolve(null);
+        img.src = src;
+      } catch {
+        resolve(null);
+      }
+    });
+
+  const direct = await renderImgToPng(srcUrl, true);
+  if (direct) return direct;
+
+  if (!srcUrl.startsWith('data:')) {
+    try {
+      const resp = await fetch(srcUrl, { mode: 'cors' });
+      if (resp.ok) {
+        const blob = await resp.blob();
+        const localDataUrl = await new Promise<string | null>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () =>
+            resolve(typeof reader.result === 'string' ? reader.result : null);
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(blob);
+        });
+        if (localDataUrl) {
+          return await renderImgToPng(localDataUrl, false);
+        }
+      }
     } catch {
-      resolve(null);
+      // External host disallows CORS canvas extraction
     }
-  });
+  }
+
+  return null;
 }

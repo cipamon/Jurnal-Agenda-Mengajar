@@ -2,31 +2,37 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Bold,
   Check,
+  DatabaseBackup,
   Download,
-  ExternalLink,
   FileEdit,
   FileSpreadsheet,
   Globe,
+  HardDriveDownload,
   ImagePlus,
   Italic,
+  Lock,
+  Move,
+  Palette,
   Plus,
+  RotateCcw,
   Save,
-  ShieldCheck,
   Trash2,
   Underline,
+  Unlock,
   Upload,
-  UserCheck,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
-  AppUser,
   KopSuratLineSizes,
   KopSuratTextStyle,
+  PaperOrientation,
+  PaperSize,
+  PortalDatabase,
   PrintFontFamily,
   SystemSettings,
-  UserRole,
+  ThemeId,
 } from '../types';
-import { DEFAULT_WEB_LOGO, getUserPhotoUrl } from '../utils/defaultAvatars';
+import { DEFAULT_WEB_LOGO } from '../utils/defaultAvatars';
 import {
   DEFAULT_LEFT_LOGO,
   DEFAULT_PRINCIPAL_TTD,
@@ -35,26 +41,22 @@ import {
   DEFAULT_TEACHER_TTD,
 } from '../utils/defaultLogos';
 import {
-  formatAssignmentSummary,
+  getPaperSizeMeta,
   getPrintFontCss,
   normalizeKopSurat,
   normalizeSignatureStamp,
   normalizeWebBrand,
+  PAPER_SIZE_OPTIONS,
   PRINT_FONT_OPTIONS,
-  USER_ROLE_LABELS,
+  THEME_PRESETS,
 } from '../utils/helpers';
-import { AdminUsersModal } from './AdminUsersModal';
+import { migrateDatabase } from '../utils/storage';
 
 interface SettingsViewProps {
+  database?: PortalDatabase;
   settings: SystemSettings;
-  users: AppUser[];
-  activeUser?: AppUser;
-  currentUserRole: UserRole;
-  currentUserEmail: string;
-  onUpdateSettings: (next: SystemSettings) => void;
-  onUpdateUsers: (nextUsers: AppUser[]) => void;
-  onSwitchUserSession?: (user: AppUser) => void;
-  onOpenTeacherProfileModal: () => void;
+  onUpdateSettings: (next: SystemSettings) => Promise<boolean> | boolean | void;
+  onRestoreDatabase?: (restored: PortalDatabase) => void;
   onViewClass?: (className: string) => void;
   onViewSubject?: (subject: string) => void;
   onNotify: (msg: string) => void;
@@ -385,32 +387,147 @@ const MasterListCard: React.FC<MasterListCardProps> = ({
 };
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
+  database,
   settings,
-  users,
-  activeUser,
-  currentUserRole,
-  currentUserEmail,
   onUpdateSettings,
-  onUpdateUsers,
-  onSwitchUserSession,
-  onOpenTeacherProfileModal,
+  onRestoreDatabase,
   onViewClass,
   onViewSubject,
   onNotify,
 }) => {
   const [draft, setDraft] = useState<SystemSettings>(settings);
-  const [showAdminModal, setShowAdminModal] = useState(false);
+  const backupFileRef = useRef<HTMLInputElement | null>(null);
+  const [dragTarget, setDragTarget] = useState<
+    'principalSig' | 'teacherSig' | 'stamp' | 'principalBlock' | 'teacherBlock' | null
+  >(null);
+  const dragOriginRef = useRef<{
+    target: 'principalSig' | 'teacherSig' | 'stamp' | 'principalBlock' | 'teacherBlock';
+    startX: number;
+    startY: number;
+    initOffX: number;
+    initOffY: number;
+  } | null>(null);
+
+  const [isFormatLockedUi, setIsFormatLockedUi] = useState(true);
+  const [isKopLockedUi, setIsKopLockedUi] = useState(true);
+  const [syncKopFontWithStandard, setSyncKopFontWithStandard] = useState(true);
+  const [isSavingFormat, setIsSavingFormat] = useState(false);
+  const [isSavingKop, setIsSavingKop] = useState(false);
+
+  const prevSavedKopJsonRef = useRef<string>(JSON.stringify(settings.kopSurat));
+  const getFormatSignature = (s: SystemSettings) =>
+    JSON.stringify({
+      reportFontFamily: s.reportFontFamily || 'Times New Roman',
+      reportPaperSize: s.reportPaperSize || 'A4',
+      reportOrientation: s.reportOrientation || 'landscape',
+      lockReportFormat: s.lockReportFormat ?? true,
+    });
+  const prevSavedFormatRef = useRef<string>(getFormatSignature(settings));
 
   useEffect(() => {
-    setDraft(settings);
-  }, [settings]);
+    const nextSavedKopJson = JSON.stringify(settings.kopSurat);
+    const nextSavedFormatJson = getFormatSignature(settings);
+    setDraft((prev) => {
+      const hasUnsavedKop =
+        !isKopLockedUi && JSON.stringify(prev.kopSurat) !== prevSavedKopJsonRef.current;
+      const hasUnsavedFormat =
+        !isFormatLockedUi && getFormatSignature(prev) !== prevSavedFormatRef.current;
+      return {
+        ...settings,
+        kopSurat: hasUnsavedKop ? prev.kopSurat : settings.kopSurat,
+        reportFontFamily: hasUnsavedFormat ? prev.reportFontFamily : settings.reportFontFamily,
+        reportPaperSize: hasUnsavedFormat ? prev.reportPaperSize : settings.reportPaperSize,
+        reportOrientation: hasUnsavedFormat ? prev.reportOrientation : settings.reportOrientation,
+        lockReportFormat: hasUnsavedFormat ? prev.lockReportFormat : settings.lockReportFormat,
+      };
+    });
+    prevSavedKopJsonRef.current = nextSavedKopJson;
+    prevSavedFormatRef.current = nextSavedFormatJson;
+  }, [settings, isFormatLockedUi, isKopLockedUi]);
 
   const normBrand = normalizeWebBrand(draft);
+  const activeThemeId: ThemeId = draft.themeId || 'indigo';
+  const isKopDirty = JSON.stringify(draft.kopSurat) !== JSON.stringify(settings.kopSurat);
+  const isFormatDirty = getFormatSignature(draft) !== getFormatSignature(settings);
 
-  const handleSaveAll = (e: React.FormEvent) => {
+  const handleSaveAll = async (e: React.FormEvent) => {
     e.preventDefault();
-    onUpdateSettings(draft);
-    onNotify('Pengaturan sistem, identitas web, dan Kop Surat berhasil disimpan.');
+    const ok = await onUpdateSettings(draft);
+    if (ok === false) return;
+    prevSavedKopJsonRef.current = JSON.stringify(draft.kopSurat);
+    prevSavedFormatRef.current = getFormatSignature(draft);
+    setIsFormatLockedUi(true);
+    setIsKopLockedUi(true);
+    onNotify(
+      'Pengaturan sistem, format kertas/huruf, identitas web, dan Kop Surat berhasil disimpan & dikunci.'
+    );
+  };
+
+  const handleSaveFormatDokumen = async () => {
+    setIsSavingFormat(true);
+    try {
+      const targetFont = draft.reportFontFamily || 'Times New Roman';
+      const nextKop = syncKopFontWithStandard
+        ? { ...settings.kopSurat, fontFamily: targetFont }
+        : settings.kopSurat;
+      const next: SystemSettings = {
+        ...settings,
+        reportFontFamily: targetFont,
+        reportPaperSize: draft.reportPaperSize || 'A4',
+        reportOrientation: draft.reportOrientation || 'landscape',
+        lockReportFormat: draft.lockReportFormat ?? true,
+        kopSurat: nextKop,
+      };
+      const ok = await onUpdateSettings(next);
+      if (ok === false) return;
+      prevSavedFormatRef.current = getFormatSignature(next);
+      if (syncKopFontWithStandard) {
+        prevSavedKopJsonRef.current = JSON.stringify(nextKop);
+        setDraft((prev) => ({ ...prev, kopSurat: { ...prev.kopSurat, fontFamily: targetFont } }));
+      }
+      setIsFormatLockedUi(true);
+      onNotify('Standar jenis huruf & kertas berhasil disimpan dan langsung dikunci untuk semua akun.');
+    } finally {
+      setIsSavingFormat(false);
+    }
+  };
+
+  const handleResetFormatDraft = () => {
+    setDraft((prev) => ({
+      ...prev,
+      reportFontFamily: settings.reportFontFamily || 'Times New Roman',
+      reportPaperSize: settings.reportPaperSize || 'A4',
+      reportOrientation: settings.reportOrientation || 'landscape',
+      lockReportFormat: settings.lockReportFormat ?? true,
+    }));
+    setIsFormatLockedUi(true);
+    onNotify('Perubahan format dokumen dibatalkan dan panel dikunci kembali.');
+  };
+
+  const handleSaveKopSurat = async () => {
+    setIsSavingKop(true);
+    try {
+      const next: SystemSettings = {
+        ...settings,
+        kopSurat: draft.kopSurat,
+      };
+      const ok = await onUpdateSettings(next);
+      if (ok === false) return;
+      prevSavedKopJsonRef.current = JSON.stringify(draft.kopSurat);
+      setIsKopLockedUi(true);
+      onNotify('Pengaturan Kop Surat berhasil disimpan dan langsung dikunci.');
+    } finally {
+      setIsSavingKop(false);
+    }
+  };
+
+  const handleResetKopDraft = () => {
+    setDraft((prev) => ({
+      ...prev,
+      kopSurat: settings.kopSurat,
+    }));
+    setIsKopLockedUi(true);
+    onNotify('Perubahan Kop Surat dibatalkan dan panel dikunci kembali.');
   };
 
   const handleLogoUpload = (side: 'left' | 'right', file: File | undefined) => {
@@ -469,7 +586,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   return (
-    <>
     <form onSubmit={handleSaveAll} className="space-y-8">
       {/* ===================================================================== */}
       {/* 1. PENGATURAN PERIODE AKTIF & PEJABAT KEPALA SEKOLAH */}
@@ -601,7 +717,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
 
         <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
-          <div className="lg:col-span-4">
+          <div className="lg:col-span-3">
             <label className="block text-xs font-semibold text-slate-700 mb-1.5">
               Nama Web / Aplikasi (Sidebar & Login)
             </label>
@@ -619,7 +735,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             />
           </div>
 
-          <div className="lg:col-span-5">
+          <div className="lg:col-span-4">
             <label className="block text-xs font-semibold text-slate-700 mb-1.5">
               Nama Web di Tab Browser (Title Tab)
             </label>
@@ -637,16 +753,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             />
           </div>
 
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-5 space-y-3">
             <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-              Logo Web & Favicon Tab
+              Logo Web, Favicon &amp; Ukuran Logo ({normBrand.webLogoSize} px)
             </label>
             <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center p-1 shrink-0 overflow-hidden">
+              <div className="w-11 h-11 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center p-1 shrink-0 overflow-hidden">
                 <img
                   src={normBrand.webLogoDataUrl}
                   alt="Logo Web"
-                  className="w-full h-full object-contain"
+                  style={{ width: Math.min(36, normBrand.webLogoSize), height: Math.min(36, normBrand.webLogoSize) }}
+                  className="object-contain"
                 />
               </div>
               <label className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap">
@@ -661,18 +778,316 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </label>
               <button
                 type="button"
-                onClick={() =>
-                  setDraft({
-                    ...draft,
-                    webBrand: { ...normBrand, webLogoDataUrl: DEFAULT_WEB_LOGO },
-                  })
-                }
+                onClick={() => {
+                  const nextBrand = {
+                    ...normBrand,
+                    webLogoDataUrl: DEFAULT_WEB_LOGO,
+                    webLogoSize: 36,
+                  };
+                  setDraft((prev) => ({ ...prev, webBrand: nextBrand }));
+                  onUpdateSettings({ ...settings, webBrand: nextBrand });
+                }}
                 className="px-2.5 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs text-slate-600 cursor-pointer"
-                title="Kembalikan logo web default"
+                title="Kembalikan logo & ukuran web default"
               >
                 Default
               </button>
             </div>
+            <div className="flex items-center gap-2.5 pt-1">
+              <span className="text-[11px] font-semibold text-slate-600 shrink-0">Ukuran:</span>
+              <input
+                type="range"
+                min={24}
+                max={80}
+                step={2}
+                value={normBrand.webLogoSize}
+                onChange={(e) => {
+                  const nextBrand = { ...normBrand, webLogoSize: Number(e.target.value) };
+                  setDraft((prev) => ({ ...prev, webBrand: nextBrand }));
+                  onUpdateSettings({ ...settings, webBrand: nextBrand });
+                }}
+                className="flex-1 accent-indigo-600 cursor-pointer"
+              />
+              <input
+                type="number"
+                min={24}
+                max={80}
+                value={normBrand.webLogoSize}
+                onChange={(e) => {
+                  const val = Math.max(24, Math.min(80, Number(e.target.value) || 36));
+                  const nextBrand = { ...normBrand, webLogoSize: val };
+                  setDraft((prev) => ({ ...prev, webBrand: nextBrand }));
+                  onUpdateSettings({ ...settings, webBrand: nextBrand });
+                }}
+                className="w-16 px-2 py-1 text-xs font-mono text-center rounded-md border border-slate-300 bg-white tabular-nums"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ===================================================================== */}
+      {/* 1C. PILIHAN TEMA TAMPILAN APLIKASI */}
+      {/* ===================================================================== */}
+      <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <Palette className="w-4 h-4 text-indigo-600" />
+              <span>Pilihan Tema Tampilan Portal</span>
+            </h3>
+            <p className="text-xs text-slate-500">
+              Pilih skema warna ruang kerja yang nyaman digunakan. Lembar cetak laporan tetap putih bersih sesuai standar dinas.
+            </p>
+          </div>
+          <span className="text-xs font-semibold text-indigo-700">
+            Tema Aktif: {THEME_PRESETS.find((t) => t.id === activeThemeId)?.name || 'Royal Indigo'}
+          </span>
+        </div>
+
+        <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          {THEME_PRESETS.map((preset) => {
+            const selected = preset.id === activeThemeId;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => {
+                  setDraft((prev) => ({ ...prev, themeId: preset.id }));
+                  onUpdateSettings({ ...settings, themeId: preset.id });
+                  onNotify(`Tema tampilan diubah ke "${preset.name}".`);
+                }}
+                className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2.5 ${
+                  selected
+                    ? 'border-indigo-600 bg-indigo-50/70 ring-2 ring-indigo-600/20'
+                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className="w-5 h-5 rounded-md border border-black/10"
+                      style={{ backgroundColor: preset.sidebarHex }}
+                    />
+                    <span
+                      className="w-5 h-5 rounded-md border border-black/10"
+                      style={{ backgroundColor: preset.primaryHex }}
+                    />
+                    <span
+                      className="w-5 h-5 rounded-md border border-black/10"
+                      style={{ backgroundColor: preset.secondaryHex }}
+                    />
+                  </div>
+                  {selected && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700">
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Aktif</span>
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-900">{preset.name}</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                    {preset.description}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ===================================================================== */}
+      {/* 1D. STANDAR FORMAT DOKUMEN, JENIS HURUF & KERTAS RESMI (GLOBAL ADMIN) */}
+      {/* ===================================================================== */}
+      <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-base font-bold text-slate-900">
+                Standar Format Dokumen, Jenis Huruf &amp; Jenis Kertas (Untuk Semua Akun)
+              </h3>
+              <span
+                className={`inline-flex items-center gap-1 text-xs font-bold ${
+                  isFormatLockedUi
+                    ? 'text-emerald-700'
+                    : isFormatDirty
+                      ? 'text-amber-700'
+                      : 'text-indigo-700'
+                }`}
+              >
+                {isFormatLockedUi ? (
+                  <>
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>Tersimpan &amp; Terkunci</span>
+                  </>
+                ) : isFormatDirty ? (
+                  <span>· Mode Edit (Belum Disimpan)</span>
+                ) : (
+                  <span>· Mode Edit Terbuka</span>
+                )}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Tetapkan jenis huruf, ukuran kertas (A4, F4/Folio, Letter, Legal), dan orientasi baku. Setelah disimpan, panel otomatis terkunci agar tidak berubah saat berganti akun.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {isFormatLockedUi ? (
+              <button
+                type="button"
+                onClick={() => setIsFormatLockedUi(false)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap"
+              >
+                <Unlock className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Buka Kunci / Edit</span>
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={handleResetFormatDraft}
+                  className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700 cursor-pointer whitespace-nowrap"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Batal</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingFormat}
+                  onClick={handleSaveFormatDokumen}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shadow-sm"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>{isSavingFormat ? 'Menyimpan...' : 'Simpan & Kunci Format'}</span>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="p-6 space-y-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Jenis Huruf Standar Laporan &amp; PDF
+              </label>
+              <select
+                disabled={isFormatLockedUi}
+                value={draft.reportFontFamily || 'Times New Roman'}
+                onChange={(e) =>
+                  setDraft({ ...draft, reportFontFamily: e.target.value as PrintFontFamily })
+                }
+                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              >
+                {PRINT_FONT_OPTIONS.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Jenis Kertas Cetak &amp; PDF
+              </label>
+              <select
+                disabled={isFormatLockedUi}
+                value={draft.reportPaperSize || 'A4'}
+                onChange={(e) =>
+                  setDraft({ ...draft, reportPaperSize: e.target.value as PaperSize })
+                }
+                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              >
+                {PAPER_SIZE_OPTIONS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Orientasi Kertas Standar
+              </label>
+              <select
+                disabled={isFormatLockedUi}
+                value={draft.reportOrientation || 'landscape'}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    reportOrientation: e.target.value as PaperOrientation,
+                  })
+                }
+                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              >
+                <option value="landscape">Landscape (Mendatar)</option>
+                <option value="portrait">Portrait (Tegak)</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col justify-end">
+              <label
+                className={`flex items-start gap-2.5 p-2.5 rounded-lg border border-slate-200 ${
+                  isFormatLockedUi ? 'bg-slate-100 cursor-not-allowed' : 'bg-slate-50 cursor-pointer'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  disabled={isFormatLockedUi}
+                  checked={draft.lockReportFormat ?? true}
+                  onChange={(e) =>
+                    setDraft({ ...draft, lockReportFormat: e.target.checked })
+                  }
+                  className="rounded border-slate-300 text-indigo-600 mt-0.5 disabled:cursor-not-allowed"
+                />
+                <span className="text-xs leading-snug text-slate-800">
+                  <strong className="block">Kunci Format Sekolah</strong>
+                  <span className="text-[11px] text-slate-500">
+                    Akun lain tidak bisa mengubah font, kertas &amp; kop surat
+                  </span>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100 text-xs text-slate-600">
+            <span>
+              Standar Aktif:{' '}
+              <strong className="text-slate-900">
+                {draft.reportFontFamily || 'Times New Roman'}
+              </strong>{' '}
+              · Kertas{' '}
+              <strong className="text-slate-900">
+                {getPaperSizeMeta(draft.reportPaperSize).shortLabel}
+              </strong>{' '}
+              ·{' '}
+              <strong className="text-slate-900">
+                {(draft.reportOrientation || 'landscape') === 'landscape'
+                  ? 'Landscape'
+                  : 'Portrait'}
+              </strong>
+              {' · '}
+              {draft.lockReportFormat ?? true
+                ? 'Terkunci untuk Semua Akun'
+                : 'Dapat Disesuaikan per Sesi Cetak'}
+            </span>
+            <label
+              className={`inline-flex items-center gap-2 text-xs font-semibold text-slate-700 ${
+                isFormatLockedUi ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
+              }`}
+            >
+              <input
+                type="checkbox"
+                disabled={isFormatLockedUi}
+                checked={syncKopFontWithStandard}
+                onChange={(e) => setSyncKopFontWithStandard(e.target.checked)}
+                className="rounded border-slate-300 text-indigo-600"
+              />
+              <span>Sekaligus samakan font Kop Surat ke {draft.reportFontFamily || 'Times New Roman'}</span>
+            </label>
           </div>
         </div>
       </section>
@@ -681,14 +1096,71 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {/* 2. PENGATURAN KOP SURAT STANDAR DINAS (6 BARIS + 2 LOGO + LIVE PREVIEW) */}
       {/* ===================================================================== */}
       <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200">
-          <h3 className="text-base font-bold text-slate-900">Pengaturan Kop Surat Standar Dinas</h3>
-          <p className="text-xs text-slate-500">
-            Ubah 6 baris teks kop surat dan unggah logo kiri/kanan dengan pratinjau langsung bergaris ganda
-          </p>
+        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-base font-bold text-slate-900">Pengaturan Kop Surat Standar Dinas</h3>
+              <span
+                className={`inline-flex items-center gap-1 text-xs font-bold ${
+                  isKopLockedUi
+                    ? 'text-emerald-700'
+                    : isKopDirty
+                      ? 'text-amber-700'
+                      : 'text-indigo-700'
+                }`}
+              >
+                {isKopLockedUi ? (
+                  <>
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>Tersimpan &amp; Terkunci</span>
+                  </>
+                ) : isKopDirty ? (
+                  <span>· Mode Edit (Belum Disimpan)</span>
+                ) : (
+                  <span>· Mode Edit Terbuka</span>
+                )}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Klik Buka Kunci untuk mengedit 6 baris teks &amp; logo kop surat, lalu klik Simpan &amp; Kunci Kop Surat agar terkunci permanen
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {isKopLockedUi ? (
+              <button
+                type="button"
+                onClick={() => setIsKopLockedUi(false)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap"
+              >
+                <Unlock className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Buka Kunci / Edit Kop</span>
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={handleResetKopDraft}
+                  className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700 cursor-pointer whitespace-nowrap"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Batal</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingKop}
+                  onClick={handleSaveKopSurat}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shadow-sm"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>{isSavingKop ? 'Menyimpan...' : 'Simpan & Kunci Kop Surat'}</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         <div className="p-6 space-y-6">
+          <fieldset disabled={isKopLockedUi} className="space-y-6 disabled:opacity-80">
           {/* Pengaturan Jenis Huruf (Font) & Ukuran Logo Kop Surat */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-xl border border-slate-200 bg-slate-50">
             <div>
@@ -706,7 +1178,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     },
                   })
                 }
-                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white disabled:bg-slate-100 disabled:cursor-not-allowed font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
               >
                 {PRINT_FONT_OPTIONS.map((f) => (
                   <option key={f} value={f}>
@@ -726,36 +1198,37 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="flex items-center gap-2.5">
                 <input
                   type="range"
-                  min={36}
-                  max={120}
+                  min={24}
+                  max={160}
                   step={2}
                   value={normalizeKopSurat(draft.kopSurat).leftLogoSize}
                   onChange={(e) =>
-                    setDraft({
-                      ...draft,
+                    setDraft((prev) => ({
+                      ...prev,
                       kopSurat: {
-                        ...draft.kopSurat,
+                        ...prev.kopSurat,
                         leftLogoSize: Number(e.target.value),
                       },
-                    })
+                    }))
                   }
-                  className="flex-1 accent-indigo-600 cursor-pointer"
+                  className="flex-1 accent-indigo-600 cursor-pointer disabled:cursor-not-allowed"
                 />
                 <input
                   type="number"
-                  min={36}
-                  max={120}
+                  min={24}
+                  max={160}
                   value={normalizeKopSurat(draft.kopSurat).leftLogoSize}
-                  onChange={(e) =>
-                    setDraft({
-                      ...draft,
+                  onChange={(e) => {
+                    const val = Math.max(24, Math.min(160, Number(e.target.value) || 64));
+                    setDraft((prev) => ({
+                      ...prev,
                       kopSurat: {
-                        ...draft.kopSurat,
-                        leftLogoSize: Math.max(36, Math.min(120, Number(e.target.value) || 64)),
+                        ...prev.kopSurat,
+                        leftLogoSize: val,
                       },
-                    })
-                  }
-                  className="w-16 px-2 py-1 text-xs font-mono text-center rounded-md border border-slate-300 bg-white tabular-nums"
+                    }));
+                  }}
+                  className="w-16 px-2 py-1 text-xs font-mono text-center rounded-md border border-slate-300 bg-white disabled:bg-slate-100 tabular-nums"
                 />
               </div>
             </div>
@@ -770,36 +1243,37 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="flex items-center gap-2.5">
                 <input
                   type="range"
-                  min={36}
-                  max={120}
+                  min={24}
+                  max={160}
                   step={2}
                   value={normalizeKopSurat(draft.kopSurat).rightLogoSize}
                   onChange={(e) =>
-                    setDraft({
-                      ...draft,
+                    setDraft((prev) => ({
+                      ...prev,
                       kopSurat: {
-                        ...draft.kopSurat,
+                        ...prev.kopSurat,
                         rightLogoSize: Number(e.target.value),
                       },
-                    })
+                    }))
                   }
-                  className="flex-1 accent-indigo-600 cursor-pointer"
+                  className="flex-1 accent-indigo-600 cursor-pointer disabled:cursor-not-allowed"
                 />
                 <input
                   type="number"
-                  min={36}
-                  max={120}
+                  min={24}
+                  max={160}
                   value={normalizeKopSurat(draft.kopSurat).rightLogoSize}
-                  onChange={(e) =>
-                    setDraft({
-                      ...draft,
+                  onChange={(e) => {
+                    const val = Math.max(24, Math.min(160, Number(e.target.value) || 64));
+                    setDraft((prev) => ({
+                      ...prev,
                       kopSurat: {
-                        ...draft.kopSurat,
-                        rightLogoSize: Math.max(36, Math.min(120, Number(e.target.value) || 64)),
+                        ...prev.kopSurat,
+                        rightLogoSize: val,
                       },
-                    })
-                  }
-                  className="w-16 px-2 py-1 text-xs font-mono text-center rounded-md border border-slate-300 bg-white tabular-nums"
+                    }));
+                  }}
+                  className="w-16 px-2 py-1 text-xs font-mono text-center rounded-md border border-slate-300 bg-white disabled:bg-slate-100 tabular-nums"
                 />
               </div>
             </div>
@@ -831,7 +1305,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             onClick={() => toggleKopStyle(item.key, 'bold')}
                             aria-pressed={st.bold}
                             title="Tebal (Bold)"
-                            className={`px-2 py-0.5 text-xs font-bold cursor-pointer transition-colors ${
+                            className={`px-2 py-0.5 text-xs font-bold cursor-pointer transition-colors disabled:cursor-not-allowed ${
                               st.bold
                                 ? 'bg-indigo-600 text-white'
                                 : 'text-slate-600 hover:bg-slate-100'
@@ -844,7 +1318,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             onClick={() => toggleKopStyle(item.key, 'italic')}
                             aria-pressed={st.italic}
                             title="Miring (Italic)"
-                            className={`px-2 py-0.5 text-xs border-l border-slate-200 cursor-pointer transition-colors ${
+                            className={`px-2 py-0.5 text-xs border-l border-slate-200 cursor-pointer transition-colors disabled:cursor-not-allowed ${
                               st.italic
                                 ? 'bg-indigo-600 text-white'
                                 : 'text-slate-600 hover:bg-slate-100'
@@ -857,7 +1331,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             onClick={() => toggleKopStyle(item.key, 'underline')}
                             aria-pressed={st.underline}
                             title="Garis Bawah (Underline)"
-                            className={`px-2 py-0.5 text-xs border-l border-slate-200 cursor-pointer transition-colors ${
+                            className={`px-2 py-0.5 text-xs border-l border-slate-200 cursor-pointer transition-colors disabled:cursor-not-allowed ${
                               st.underline
                                 ? 'bg-indigo-600 text-white'
                                 : 'text-slate-600 hover:bg-slate-100'
@@ -885,7 +1359,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             })
                           }
                           aria-label={`Ukuran font ${item.label}`}
-                          className="w-14 px-1.5 py-0.5 text-xs font-mono text-center rounded border border-slate-300 bg-white tabular-nums"
+                          className="w-14 px-1.5 py-0.5 text-xs font-mono text-center rounded border border-slate-300 bg-white disabled:bg-slate-100 tabular-nums"
                         />
                         <span>px</span>
                       </div>
@@ -904,119 +1378,192 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         fontStyle: st.italic ? 'italic' : 'normal',
                         textDecoration: st.underline ? 'underline' : 'none',
                       }}
-                      className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white disabled:bg-slate-100 disabled:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-600"
                     />
                   </div>
                 );
               })}
             </div>
 
-            {/* Unggah Logo Kiri & Logo Kanan */}
+            {/* Unggah & Atur Ukuran Logo Kiri & Logo Kanan */}
             <div className="lg:col-span-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
-              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex items-center gap-4">
-                <div className="w-16 h-16 rounded-lg bg-white border border-slate-200 flex items-center justify-center p-1.5 shrink-0">
-                  {draft.kopSurat.leftLogoDataUrl ? (
-                    <img
-                      src={draft.kopSurat.leftLogoDataUrl}
-                      alt="Preview Logo Kiri"
-                      className="max-w-full max-h-full object-contain"
-                    />
-                  ) : (
-                    <span className="text-[10px] text-slate-400">Kosong</span>
-                  )}
-                </div>
-                <div className="space-y-2 min-w-0">
-                  <p className="text-xs font-bold text-slate-900">Logo Kiri (Dinas / Pemda)</p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer">
-                      <ImagePlus className="w-3.5 h-3.5" />
-                      <span>Unggah Logo</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => handleLogoUpload('left', e.target.files?.[0])}
-                        className="hidden"
+              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-lg bg-white border border-slate-200 flex items-center justify-center p-1.5 shrink-0">
+                    {draft.kopSurat.leftLogoDataUrl ? (
+                      <img
+                        src={draft.kopSurat.leftLogoDataUrl}
+                        alt="Preview Logo Kiri"
+                        className="max-w-full max-h-full object-contain"
                       />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setDraft({
-                          ...draft,
-                          kopSurat: { ...draft.kopSurat, leftLogoDataUrl: DEFAULT_LEFT_LOGO },
-                        })
-                      }
-                      className="px-2 py-1.5 rounded-md border border-slate-300 bg-white text-xs text-slate-600 hover:bg-slate-100 cursor-pointer"
-                    >
-                      Default
-                    </button>
+                    ) : (
+                      <span className="text-[10px] text-slate-400">Kosong</span>
+                    )}
                   </div>
+                  <div className="space-y-2 min-w-0">
+                    <p className="text-xs font-bold text-slate-900">Logo Kiri (Dinas / Pemda)</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-indigo-600 text-white text-xs font-semibold ${
+                          isKopLockedUi
+                            ? 'opacity-50 cursor-not-allowed pointer-events-none'
+                            : 'hover:bg-indigo-700 cursor-pointer'
+                        }`}
+                      >
+                        <ImagePlus className="w-3.5 h-3.5" />
+                        <span>Unggah Logo</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          disabled={isKopLockedUi}
+                          onChange={(e) => handleLogoUpload('left', e.target.files?.[0])}
+                          className="hidden"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            kopSurat: {
+                              ...prev.kopSurat,
+                              leftLogoDataUrl: DEFAULT_LEFT_LOGO,
+                              leftLogoSize: 64,
+                            },
+                          }))
+                        }
+                        className="px-2 py-1.5 rounded-md border border-slate-300 bg-white text-xs text-slate-600 hover:bg-slate-100 cursor-pointer disabled:cursor-not-allowed"
+                      >
+                        Default
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 pt-2 border-t border-slate-200/80">
+                  <span className="text-[11px] font-semibold text-slate-600 shrink-0">
+                    Ukuran ({normalizeKopSurat(draft.kopSurat).leftLogoSize}px)
+                  </span>
+                  <input
+                    type="range"
+                    min={24}
+                    max={160}
+                    step={2}
+                    value={normalizeKopSurat(draft.kopSurat).leftLogoSize}
+                    onChange={(e) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        kopSurat: {
+                          ...prev.kopSurat,
+                          leftLogoSize: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    className="flex-1 accent-indigo-600 cursor-pointer disabled:cursor-not-allowed"
+                  />
                 </div>
               </div>
 
-              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex items-center gap-4">
-                <div className="w-16 h-16 rounded-lg bg-white border border-slate-200 flex items-center justify-center p-1.5 shrink-0">
-                  {draft.kopSurat.rightLogoDataUrl ? (
-                    <img
-                      src={draft.kopSurat.rightLogoDataUrl}
-                      alt="Preview Logo Kanan"
-                      className="max-w-full max-h-full object-contain"
-                    />
-                  ) : (
-                    <span className="text-[10px] text-slate-400">Kosong</span>
-                  )}
-                </div>
-                <div className="space-y-2 min-w-0">
-                  <p className="text-xs font-bold text-slate-900">Logo Kanan (Sekolah)</p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer">
-                      <ImagePlus className="w-3.5 h-3.5" />
-                      <span>Unggah Logo</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => handleLogoUpload('right', e.target.files?.[0])}
-                        className="hidden"
+              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-lg bg-white border border-slate-200 flex items-center justify-center p-1.5 shrink-0">
+                    {draft.kopSurat.rightLogoDataUrl ? (
+                      <img
+                        src={draft.kopSurat.rightLogoDataUrl}
+                        alt="Preview Logo Kanan"
+                        className="max-w-full max-h-full object-contain"
                       />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setDraft({
-                          ...draft,
-                          kopSurat: { ...draft.kopSurat, rightLogoDataUrl: DEFAULT_RIGHT_LOGO },
-                        })
-                      }
-                      className="px-2 py-1.5 rounded-md border border-slate-300 bg-white text-xs text-slate-600 hover:bg-slate-100 cursor-pointer"
-                    >
-                      Default
-                    </button>
+                    ) : (
+                      <span className="text-[10px] text-slate-400">Kosong</span>
+                    )}
                   </div>
+                  <div className="space-y-2 min-w-0">
+                    <p className="text-xs font-bold text-slate-900">Logo Kanan (Sekolah)</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-indigo-600 text-white text-xs font-semibold ${
+                          isKopLockedUi
+                            ? 'opacity-50 cursor-not-allowed pointer-events-none'
+                            : 'hover:bg-indigo-700 cursor-pointer'
+                        }`}
+                      >
+                        <ImagePlus className="w-3.5 h-3.5" />
+                        <span>Unggah Logo</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          disabled={isKopLockedUi}
+                          onChange={(e) => handleLogoUpload('right', e.target.files?.[0])}
+                          className="hidden"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            kopSurat: {
+                              ...prev.kopSurat,
+                              rightLogoDataUrl: DEFAULT_RIGHT_LOGO,
+                              rightLogoSize: 64,
+                            },
+                          }))
+                        }
+                        className="px-2 py-1.5 rounded-md border border-slate-300 bg-white text-xs text-slate-600 hover:bg-slate-100 cursor-pointer disabled:cursor-not-allowed"
+                      >
+                        Default
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 pt-2 border-t border-slate-200/80">
+                  <span className="text-[11px] font-semibold text-slate-600 shrink-0">
+                    Ukuran ({normalizeKopSurat(draft.kopSurat).rightLogoSize}px)
+                  </span>
+                  <input
+                    type="range"
+                    min={24}
+                    max={160}
+                    step={2}
+                    value={normalizeKopSurat(draft.kopSurat).rightLogoSize}
+                    onChange={(e) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        kopSurat: {
+                          ...prev.kopSurat,
+                          rightLogoSize: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    className="flex-1 accent-indigo-600 cursor-pointer disabled:cursor-not-allowed"
+                  />
                 </div>
               </div>
             </div>
           </div>
+          </fieldset>
 
           {/* Kotak Pratinjau Langsung (Live Preview) Kop Surat Bergaris Ganda */}
           {(() => {
             const normKop = normalizeKopSurat(draft.kopSurat);
+            const logoSlotSize = Math.max(normKop.leftLogoSize, normKop.rightLogoSize);
             return (
-              <div className="p-5 rounded-xl border border-slate-300 bg-white">
+              <div className="eguru-paper-preview p-5 rounded-xl border border-slate-300 bg-white">
                 <p className="text-xs font-semibold text-slate-500 mb-3">
                   Pratinjau Langsung Kop Surat Bergaris Ganda ({normKop.fontFamily} · Logo Kiri {normKop.leftLogoSize}px · Logo Kanan {normKop.rightLogoSize}px):
                 </p>
-                <div className="border border-slate-200 p-5 rounded-lg bg-white overflow-x-auto">
+                <div className="eguru-paper-preview border border-slate-200 p-5 rounded-lg bg-white overflow-x-auto">
                   <div className="pb-2 border-b-[3px] border-double border-slate-900">
                     <div className="flex items-center justify-between gap-4 pb-2 border-b border-slate-900">
                       <div
-                        style={{ width: normKop.leftLogoSize, height: normKop.leftLogoSize }}
+                        style={{ width: logoSlotSize, minHeight: normKop.leftLogoSize }}
                         className="shrink-0 flex items-center justify-center"
                       >
                         {normKop.leftLogoDataUrl && (
                           <img
                             src={normKop.leftLogoDataUrl}
                             alt="Live Preview Logo Kiri"
-                            className="w-full h-full object-contain"
+                            style={{ width: normKop.leftLogoSize, height: normKop.leftLogoSize }}
+                            className="object-contain"
                           />
                         )}
                       </div>
@@ -1054,14 +1601,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         )}
                       </div>
                       <div
-                        style={{ width: normKop.rightLogoSize, height: normKop.rightLogoSize }}
+                        style={{ width: logoSlotSize, minHeight: normKop.rightLogoSize }}
                         className="shrink-0 flex items-center justify-center"
                       >
                         {normKop.rightLogoDataUrl && (
                           <img
                             src={normKop.rightLogoDataUrl}
                             alt="Live Preview Logo Kanan"
-                            className="w-full h-full object-contain"
+                            style={{ width: normKop.rightLogoSize, height: normKop.rightLogoSize }}
+                            className="object-contain"
                           />
                         )}
                       </div>
@@ -1071,6 +1619,48 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
             );
           })()}
+
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200">
+            <span className="text-xs text-slate-500">
+              {isKopLockedUi
+                ? 'Kop Surat sedang terkunci permanen dan siap digunakan untuk seluruh akun saat cetak/PDF.'
+                : isKopDirty
+                  ? 'Terdapat perubahan Kop Surat yang belum disimpan.'
+                  : 'Mode edit terbuka. Klik Simpan & Kunci Kop Surat setelah selesai mengubah.'}
+            </span>
+            <div className="flex items-center gap-2">
+              {isKopLockedUi ? (
+                <button
+                  type="button"
+                  onClick={() => setIsKopLockedUi(false)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-xs font-semibold cursor-pointer"
+                >
+                  <Unlock className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Buka Kunci / Edit Kop</span>
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleResetKopDraft}
+                    className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Batal</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSavingKop}
+                    onClick={handleSaveKopSurat}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs font-semibold cursor-pointer shadow-sm"
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>{isSavingKop ? 'Menyimpan...' : 'Simpan & Kunci Kop Surat'}</span>
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -1092,12 +1682,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {(() => {
           const sigStamp = normalizeSignatureStamp(draft);
           const updateSigStamp = (patch: Partial<typeof sigStamp>) => {
-            const next: SystemSettings = {
-              ...draft,
-              signatureStamp: { ...sigStamp, ...patch },
-            };
-            setDraft(next);
-            onUpdateSettings(next);
+            const nextSigStamp = { ...sigStamp, ...patch };
+            setDraft((prev) => ({
+              ...prev,
+              signatureStamp: nextSigStamp,
+            }));
+            onUpdateSettings({
+              ...settings,
+              signatureStamp: nextSigStamp,
+            });
           };
 
           const handleAssetFile = (
@@ -1115,63 +1708,165 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             reader.readAsDataURL(file);
           };
 
+          const startSigDrag = (
+            target: 'principalSig' | 'teacherSig' | 'stamp' | 'principalBlock' | 'teacherBlock',
+            e: React.PointerEvent<HTMLElement>
+          ) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.currentTarget.setPointerCapture(e.pointerId);
+            const initOffX =
+              target === 'principalSig'
+                ? sigStamp.principalSigOffsetX
+                : target === 'teacherSig'
+                  ? sigStamp.teacherSigOffsetX
+                  : target === 'stamp'
+                    ? sigStamp.stampOffsetX
+                    : target === 'principalBlock'
+                      ? sigStamp.principalBlockOffsetX
+                      : sigStamp.teacherBlockOffsetX;
+            const initOffY =
+              target === 'principalSig'
+                ? sigStamp.principalSigOffsetY
+                : target === 'teacherSig'
+                  ? sigStamp.teacherSigOffsetY
+                  : target === 'stamp'
+                    ? sigStamp.stampOffsetY
+                    : target === 'principalBlock'
+                      ? sigStamp.principalBlockOffsetY
+                      : sigStamp.teacherBlockOffsetY;
+            dragOriginRef.current = {
+              target,
+              startX: e.clientX,
+              startY: e.clientY,
+              initOffX,
+              initOffY,
+            };
+            setDragTarget(target);
+          };
+
+          const handleSigPointerMove = (e: React.PointerEvent<HTMLElement>) => {
+            const origin = dragOriginRef.current;
+            if (!origin) return;
+            const dx = Math.round(e.clientX - origin.startX);
+            const dy = Math.round(e.clientY - origin.startY);
+            const isBlock = origin.target === 'principalBlock' || origin.target === 'teacherBlock';
+            const minX = isBlock ? -320 : -120;
+            const maxX = isBlock ? 320 : 120;
+            const minY = isBlock ? -80 : -60;
+            const maxY = isBlock ? 120 : 60;
+            const nextX = Math.max(minX, Math.min(maxX, origin.initOffX + dx));
+            const nextY = Math.max(minY, Math.min(maxY, origin.initOffY + dy));
+
+            if (origin.target === 'principalSig') {
+              updateSigStamp({ principalSigOffsetX: nextX, principalSigOffsetY: nextY });
+            } else if (origin.target === 'teacherSig') {
+              updateSigStamp({ teacherSigOffsetX: nextX, teacherSigOffsetY: nextY });
+            } else if (origin.target === 'stamp') {
+              updateSigStamp({ stampOffsetX: nextX, stampOffsetY: nextY });
+            } else if (origin.target === 'principalBlock') {
+              updateSigStamp({ principalBlockOffsetX: nextX, principalBlockOffsetY: nextY });
+            } else {
+              updateSigStamp({ teacherBlockOffsetX: nextX, teacherBlockOffsetY: nextY });
+            }
+          };
+
+          const stopSigDrag = () => {
+            dragOriginRef.current = null;
+            setDragTarget(null);
+          };
+
           const activeFont: PrintFontFamily =
             draft.reportFontFamily || normalizeKopSurat(draft.kopSurat).fontFamily || 'Times New Roman';
 
           return (
             <div className="p-6 space-y-6">
-              {/* Font Default & Ukuran + Saklar Stempel */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200">
+              {/* Ringkasan Font, Ukuran, Penempatan Stempel & Saklar */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200">
                 <div>
                   <label className="block text-xs font-bold text-slate-800 mb-1.5">
-                    Font Default Cetak &amp; PDF Laporan
+                    Font &amp; Kertas Standar
                   </label>
-                  <select
-                    value={activeFont}
-                    onChange={(e) => {
-                      const next: SystemSettings = {
-                        ...draft,
-                        reportFontFamily: e.target.value as PrintFontFamily,
-                      };
-                      setDraft(next);
-                      onUpdateSettings(next);
-                    }}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
-                  >
-                    {PRINT_FONT_OPTIONS.map((f) => (
-                      <option key={f} value={f}>
-                        {f}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="px-3 py-2 text-xs rounded-lg border border-slate-200 bg-white font-semibold text-slate-700">
+                    {activeFont} · {getPaperSizeMeta(draft.reportPaperSize).id}
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Diatur pada panel Standar Format Dokumen di atas
+                  </p>
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-800 mb-1.5">
                     Tinggi TTD ({sigStamp.signatureSize} px)
                   </label>
-                  <input
-                    type="range"
-                    min={36}
-                    max={96}
-                    value={sigStamp.signatureSize}
-                    onChange={(e) => updateSigStamp({ signatureSize: Number(e.target.value) })}
-                    className="w-full accent-indigo-600 mt-1.5 cursor-pointer"
-                  />
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      type="range"
+                      min={28}
+                      max={200}
+                      step={2}
+                      value={sigStamp.signatureSize}
+                      onChange={(e) => updateSigStamp({ signatureSize: Number(e.target.value) })}
+                      className="flex-1 accent-indigo-600 cursor-pointer"
+                    />
+                    <input
+                      type="number"
+                      min={28}
+                      max={200}
+                      value={sigStamp.signatureSize}
+                      onChange={(e) =>
+                        updateSigStamp({
+                          signatureSize: Math.max(28, Math.min(200, Number(e.target.value) || 54)),
+                        })
+                      }
+                      className="w-14 px-1.5 py-1 text-xs font-mono text-center rounded-md border border-slate-300 bg-white tabular-nums"
+                    />
+                  </div>
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-800 mb-1.5">
                     Ukuran Stempel ({sigStamp.stampSize} px)
                   </label>
-                  <input
-                    type="range"
-                    min={48}
-                    max={110}
-                    value={sigStamp.stampSize}
-                    onChange={(e) => updateSigStamp({ stampSize: Number(e.target.value) })}
-                    className="w-full accent-indigo-600 mt-1.5 cursor-pointer"
-                  />
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      type="range"
+                      min={32}
+                      max={220}
+                      step={2}
+                      value={sigStamp.stampSize}
+                      onChange={(e) => updateSigStamp({ stampSize: Number(e.target.value) })}
+                      className="flex-1 accent-indigo-600 cursor-pointer"
+                    />
+                    <input
+                      type="number"
+                      min={32}
+                      max={220}
+                      value={sigStamp.stampSize}
+                      onChange={(e) =>
+                        updateSigStamp({
+                          stampSize: Math.max(32, Math.min(220, Number(e.target.value) || 74)),
+                        })
+                      }
+                      className="w-14 px-1.5 py-1 text-xs font-mono text-center rounded-md border border-slate-300 bg-white tabular-nums"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1.5">
+                    Area Penempatan Stempel
+                  </label>
+                  <select
+                    value={sigStamp.stampTarget}
+                    onChange={(e) =>
+                      updateSigStamp({ stampTarget: e.target.value as 'principal' | 'teacher' })
+                    }
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                  >
+                    <option value="principal">Kepala Sekolah (Kiri)</option>
+                    <option value="teacher">Guru Mapel (Kanan)</option>
+                  </select>
                 </div>
 
                 <div className="flex items-center">
@@ -1182,12 +1877,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       onChange={(e) => updateSigStamp({ showStampDefault: e.target.checked })}
                       className="rounded border-slate-300 text-indigo-600 mt-0.5"
                     />
-                    <span>Tampilkan Stempel secara default saat cetak/unduh laporan</span>
+                    <span>Tampilkan Stempel default saat cetak/PDF</span>
                   </label>
                 </div>
               </div>
 
-              {/* 3 Kartu Upload/Link: TTD Kepsek, TTD Guru, Stempel Sekolah */}
+              {/* 3 Kartu Upload/Link + Slider Posisi X/Y */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {(
                   [
@@ -1198,6 +1893,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       defaultUrl: DEFAULT_PRINCIPAL_TTD,
                       defaultLabel: 'Contoh TTD',
                       val: sigStamp.principalSignatureDataUrl,
+                      offXKey: 'principalSigOffsetX' as const,
+                      offYKey: 'principalSigOffsetY' as const,
+                      offX: sigStamp.principalSigOffsetX,
+                      offY: sigStamp.principalSigOffsetY,
                     },
                     {
                       field: 'teacherSignatureDataUrl' as const,
@@ -1206,6 +1905,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       defaultUrl: DEFAULT_TEACHER_TTD,
                       defaultLabel: 'Contoh TTD',
                       val: sigStamp.teacherSignatureDataUrl,
+                      offXKey: 'teacherSigOffsetX' as const,
+                      offYKey: 'teacherSigOffsetY' as const,
+                      offX: sigStamp.teacherSigOffsetX,
+                      offY: sigStamp.teacherSigOffsetY,
                     },
                     {
                       field: 'stampDataUrl' as const,
@@ -1214,6 +1917,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       defaultUrl: DEFAULT_SCHOOL_STAMP,
                       defaultLabel: 'Stempel Default',
                       val: sigStamp.stampDataUrl,
+                      offXKey: 'stampOffsetX' as const,
+                      offYKey: 'stampOffsetY' as const,
+                      offX: sigStamp.stampOffsetX,
+                      offY: sigStamp.stampOffsetY,
                     },
                   ]
                 ).map((box) => (
@@ -1267,7 +1974,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       </div>
                     </div>
 
-                    <div>
+                    <div className="space-y-2">
                       <input
                         type="url"
                         value={box.val.startsWith('data:') ? '' : box.val}
@@ -1275,62 +1982,370 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         placeholder="Atau tempel link URL gambar (https://...)"
                         className="w-full px-2.5 py-1.5 text-[11px] rounded-md border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
                       />
+
+                      <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/80">
+                        <div>
+                          <div className="flex items-center justify-between text-[10px] font-semibold text-slate-600">
+                            <span>Geser X</span>
+                            <span className="font-mono tabular-nums">{box.offX}px</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={-120}
+                            max={120}
+                            value={box.offX}
+                            onChange={(e) => updateSigStamp({ [box.offXKey]: Number(e.target.value) })}
+                            className="w-full accent-indigo-600 cursor-pointer"
+                          />
+                        </div>
+                        <div>
+                          <div className="flex items-center justify-between text-[10px] font-semibold text-slate-600">
+                            <span>Geser Y</span>
+                            <span className="font-mono tabular-nums">{box.offY}px</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={-60}
+                            max={60}
+                            value={box.offY}
+                            onChange={(e) => updateSigStamp({ [box.offYKey]: Number(e.target.value) })}
+                            className="w-full accent-indigo-600 cursor-pointer"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
 
-              {/* Mini Preview Tanda Tangan & Stempel */}
-              <div className="p-4 rounded-xl border border-slate-200 bg-white">
-                <p className="text-xs font-semibold text-slate-500 mb-3">
-                  Pratinjau Pengesahan Laporan (Font {activeFont} · Stempel {sigStamp.showStampDefault ? 'Ditampilkan' : 'Disembunyikan Default'}):
-                </p>
-                <div
-                  style={{ fontFamily: getPrintFontCss(activeFont) }}
-                  className="grid grid-cols-2 gap-6 text-xs text-slate-950 p-3 rounded-lg border border-slate-200 bg-slate-50/40"
-                >
-                  <div className="pl-2">
-                    <p>Mengetahui,</p>
-                    <p>{draft.principalTitle}</p>
-                    <div className="relative min-h-[64px] flex items-center py-1">
-                      {sigStamp.stampDataUrl && sigStamp.showStampDefault && (
-                        <img
-                          src={sigStamp.stampDataUrl}
-                          alt="Stempel Sekolah"
-                          style={{ width: sigStamp.stampSize, height: sigStamp.stampSize }}
-                          className="object-contain opacity-85 mix-blend-multiply -ml-2 pointer-events-none select-none"
-                        />
-                      )}
-                      {sigStamp.principalSignatureDataUrl && (
-                        <img
-                          src={sigStamp.principalSignatureDataUrl}
-                          alt="TTD Kepala Sekolah"
-                          style={{ height: sigStamp.signatureSize }}
-                          className={`object-contain ${
-                            sigStamp.stampDataUrl && sigStamp.showStampDefault ? '-ml-8' : ''
-                          }`}
-                        />
-                      )}
+              {/* Pengaturan Geser Bebas Blok Pengesahan (Kiri/Kanan/Atas/Bawah) */}
+              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-bold text-slate-900">
+                      Posisi Blok Pengesahan (Nama, Jabatan, TTD &amp; Stempel)
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      Geser bebas posisi seluruh blok Kepala Sekolah atau Guru Mapel via slider atau seret langsung kotak pengesahan pada pratinjau di bawah
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateSigStamp({
+                          principalBlockOffsetX: 0,
+                          principalBlockOffsetY: 0,
+                          teacherBlockOffsetX: 0,
+                          teacherBlockOffsetY: 0,
+                        });
+                        onNotify('Blok pengesahan dikembalikan ke sejajar kiri-kanan default.');
+                      }}
+                      className="px-2.5 py-1 rounded-md border border-slate-300 bg-white hover:bg-slate-100 text-[11px] font-semibold text-slate-700 cursor-pointer whitespace-nowrap"
+                    >
+                      Sejajar Default
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateSigStamp({
+                          principalBlockOffsetX: 290,
+                          principalBlockOffsetY: 0,
+                          teacherBlockOffsetX: -290,
+                          teacherBlockOffsetY: 0,
+                        });
+                        onNotify('Posisi blok pengesahan Kepala Sekolah & Guru ditukar sisi.');
+                      }}
+                      className="px-2.5 py-1 rounded-md border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-[11px] font-semibold text-indigo-700 cursor-pointer whitespace-nowrap"
+                    >
+                      Tukar Kiri ↔ Kanan
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-3 rounded-lg bg-white border border-slate-200 grid grid-cols-2 gap-3">
+                    <div className="col-span-2 flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-800">
+                        Blok Pengesahan Kepala Sekolah
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-500">
+                        ({sigStamp.principalBlockOffsetX}, {sigStamp.principalBlockOffsetY}) px
+                      </span>
                     </div>
-                    <p className="font-bold underline">{draft.principalName}</p>
-                    <p>NIP. {draft.principalNip}</p>
+                    <div>
+                      <div className="flex items-center justify-between text-[10px] font-semibold text-slate-600">
+                        <span>Geser Horizontal (X)</span>
+                        <span className="font-mono tabular-nums">{sigStamp.principalBlockOffsetX}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={-320}
+                        max={320}
+                        value={sigStamp.principalBlockOffsetX}
+                        onChange={(e) =>
+                          updateSigStamp({ principalBlockOffsetX: Number(e.target.value) })
+                        }
+                        className="w-full accent-indigo-600 cursor-pointer"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between text-[10px] font-semibold text-slate-600">
+                        <span>Geser Vertikal (Y)</span>
+                        <span className="font-mono tabular-nums">{sigStamp.principalBlockOffsetY}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={-80}
+                        max={120}
+                        value={sigStamp.principalBlockOffsetY}
+                        onChange={(e) =>
+                          updateSigStamp({ principalBlockOffsetY: Number(e.target.value) })
+                        }
+                        className="w-full accent-indigo-600 cursor-pointer"
+                      />
+                    </div>
                   </div>
 
-                  <div className="pl-4">
-                    <p>{draft.signatureCity}, Tanggal Cetak</p>
-                    <p>Guru Mata Pelajaran,</p>
-                    <div className="min-h-[64px] flex items-center py-1">
-                      {sigStamp.teacherSignatureDataUrl && (
-                        <img
-                          src={sigStamp.teacherSignatureDataUrl}
-                          alt="TTD Guru"
-                          style={{ height: sigStamp.signatureSize }}
-                          className="object-contain"
-                        />
-                      )}
+                  <div className="p-3 rounded-lg bg-white border border-slate-200 grid grid-cols-2 gap-3">
+                    <div className="col-span-2 flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-800">
+                        Blok Pengesahan Guru Mapel
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-500">
+                        ({sigStamp.teacherBlockOffsetX}, {sigStamp.teacherBlockOffsetY}) px
+                      </span>
                     </div>
-                    <p className="font-bold underline">{draft.teacherProfile.name}</p>
-                    <p>NIP. {draft.teacherProfile.nip}</p>
+                    <div>
+                      <div className="flex items-center justify-between text-[10px] font-semibold text-slate-600">
+                        <span>Geser Horizontal (X)</span>
+                        <span className="font-mono tabular-nums">{sigStamp.teacherBlockOffsetX}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={-320}
+                        max={320}
+                        value={sigStamp.teacherBlockOffsetX}
+                        onChange={(e) =>
+                          updateSigStamp({ teacherBlockOffsetX: Number(e.target.value) })
+                        }
+                        className="w-full accent-indigo-600 cursor-pointer"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between text-[10px] font-semibold text-slate-600">
+                        <span>Geser Vertikal (Y)</span>
+                        <span className="font-mono tabular-nums">{sigStamp.teacherBlockOffsetY}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={-80}
+                        max={120}
+                        value={sigStamp.teacherBlockOffsetY}
+                        onChange={(e) =>
+                          updateSigStamp({ teacherBlockOffsetY: Number(e.target.value) })
+                        }
+                        className="w-full accent-indigo-600 cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Pratinjau Interaktif Drag-to-Position Tanda Tangan, Stempel & Blok Pengesahan */}
+              <div className="eguru-paper-preview p-4 rounded-xl border border-slate-300 bg-white space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                    <Move className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>
+                      Pratinjau Pengesahan Interaktif — Seret kotak pengesahan untuk menggeser seluruh blok, atau seret TTD/Stempel untuk posisi detail (Font {activeFont})
+                    </span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateSigStamp({
+                        principalSigOffsetX: 0,
+                        principalSigOffsetY: 0,
+                        teacherSigOffsetX: 0,
+                        teacherSigOffsetY: 0,
+                        stampOffsetX: 0,
+                        stampOffsetY: 0,
+                        principalBlockOffsetX: 0,
+                        principalBlockOffsetY: 0,
+                        teacherBlockOffsetX: 0,
+                        teacherBlockOffsetY: 0,
+                      });
+                      onNotify('Semua posisi blok pengesahan, TTD & stempel dikembalikan ke default (0, 0).');
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-[11px] font-semibold text-slate-700 cursor-pointer whitespace-nowrap"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Reset Semua Posisi</span>
+                  </button>
+                </div>
+
+                <div
+                  style={{
+                    fontFamily: getPrintFontCss(activeFont),
+                    paddingTop:
+                      34 +
+                      Math.max(0, -Math.min(sigStamp.principalBlockOffsetY, sigStamp.teacherBlockOffsetY)),
+                    paddingBottom:
+                      34 + Math.max(0, sigStamp.principalBlockOffsetY, sigStamp.teacherBlockOffsetY),
+                  }}
+                  className="eguru-paper-preview grid grid-cols-1 sm:grid-cols-2 gap-6 text-xs text-slate-950 px-6 rounded-lg border border-slate-200 bg-white select-none overflow-visible"
+                >
+                  {/* Area Kepala Sekolah */}
+                  <div className="pl-2 overflow-visible">
+                    <div
+                      onPointerDown={(e) => startSigDrag('principalBlock', e)}
+                      onPointerMove={handleSigPointerMove}
+                      onPointerUp={stopSigDrag}
+                      onPointerCancel={stopSigDrag}
+                      title="Seret untuk menggeser seluruh blok pengesahan Kepala Sekolah"
+                      style={{
+                        transform: `translate(${sigStamp.principalBlockOffsetX}px, ${sigStamp.principalBlockOffsetY}px)`,
+                      }}
+                      className={`relative p-2.5 -m-2.5 rounded-lg border border-dashed cursor-grab active:cursor-grabbing touch-none transition-colors ${
+                        dragTarget === 'principalBlock'
+                          ? 'z-30 border-indigo-500 bg-indigo-50/40 ring-2 ring-indigo-500/30'
+                          : 'z-10 border-slate-200 hover:border-indigo-300 hover:bg-slate-50/50'
+                      }`}
+                    >
+                      <p>Mengetahui,</p>
+                      <p>{draft.principalTitle}</p>
+                      <div className="relative h-[86px] w-full overflow-visible">
+                        {sigStamp.stampDataUrl && sigStamp.showStampDefault && sigStamp.stampTarget === 'principal' && (
+                          <img
+                            src={sigStamp.stampDataUrl}
+                            alt="Stempel Sekolah (Seret untuk geser)"
+                            title="Seret untuk mengatur posisi stempel"
+                            referrerPolicy="no-referrer"
+                            draggable={false}
+                            onPointerDown={(e) => startSigDrag('stamp', e)}
+                            onPointerMove={handleSigPointerMove}
+                            onPointerUp={stopSigDrag}
+                            onPointerCancel={stopSigDrag}
+                            style={{
+                              left: '34px',
+                              top: '50%',
+                              width: sigStamp.stampSize,
+                              height: sigStamp.stampSize,
+                              maxWidth: 'none',
+                              transform: `translate(calc(-50% + ${sigStamp.stampOffsetX}px), calc(-50% + ${sigStamp.stampOffsetY}px))`,
+                            }}
+                            className={`absolute z-10 object-contain opacity-85 mix-blend-multiply cursor-grab active:cursor-grabbing touch-none transition-shadow ${
+                              dragTarget === 'stamp' ? 'ring-2 ring-indigo-500 rounded-md' : 'hover:ring-1 hover:ring-indigo-300 rounded-md'
+                            }`}
+                          />
+                        )}
+                        {sigStamp.principalSignatureDataUrl && (
+                          <img
+                            src={sigStamp.principalSignatureDataUrl}
+                            alt="TTD Kepala Sekolah (Seret untuk geser)"
+                            title="Seret untuk mengatur posisi TTD Kepala Sekolah"
+                            referrerPolicy="no-referrer"
+                            draggable={false}
+                            onPointerDown={(e) => startSigDrag('principalSig', e)}
+                            onPointerMove={handleSigPointerMove}
+                            onPointerUp={stopSigDrag}
+                            onPointerCancel={stopSigDrag}
+                            style={{
+                              left: '78px',
+                              top: '50%',
+                              height: sigStamp.signatureSize,
+                              width: 'auto',
+                              maxWidth: 'none',
+                              transform: `translate(calc(-50% + ${sigStamp.principalSigOffsetX}px), calc(-50% + ${sigStamp.principalSigOffsetY}px))`,
+                            }}
+                            className={`absolute z-20 object-contain cursor-grab active:cursor-grabbing touch-none ${
+                              dragTarget === 'principalSig'
+                                ? 'ring-2 ring-indigo-500 rounded-md'
+                                : 'hover:ring-1 hover:ring-indigo-300 rounded-md'
+                            }`}
+                          />
+                        )}
+                      </div>
+                      <p className="font-bold underline">{draft.principalName}</p>
+                      <p>NIP. {draft.principalNip}</p>
+                    </div>
+                  </div>
+
+                  {/* Area Guru Mapel */}
+                  <div className="pl-4 overflow-visible">
+                    <div
+                      onPointerDown={(e) => startSigDrag('teacherBlock', e)}
+                      onPointerMove={handleSigPointerMove}
+                      onPointerUp={stopSigDrag}
+                      onPointerCancel={stopSigDrag}
+                      title="Seret untuk menggeser seluruh blok pengesahan Guru Mapel"
+                      style={{
+                        transform: `translate(${sigStamp.teacherBlockOffsetX}px, ${sigStamp.teacherBlockOffsetY}px)`,
+                      }}
+                      className={`relative p-2.5 -m-2.5 rounded-lg border border-dashed cursor-grab active:cursor-grabbing touch-none transition-colors ${
+                        dragTarget === 'teacherBlock'
+                          ? 'z-30 border-indigo-500 bg-indigo-50/40 ring-2 ring-indigo-500/30'
+                          : 'z-10 border-slate-200 hover:border-indigo-300 hover:bg-slate-50/50'
+                      }`}
+                    >
+                      <p>{draft.signatureCity}, Tanggal Cetak</p>
+                      <p>Guru Mata Pelajaran,</p>
+                      <div className="relative h-[86px] w-full overflow-visible">
+                        {sigStamp.stampDataUrl && sigStamp.showStampDefault && sigStamp.stampTarget === 'teacher' && (
+                          <img
+                            src={sigStamp.stampDataUrl}
+                            alt="Stempel Sekolah (Seret untuk geser)"
+                            title="Seret untuk mengatur posisi stempel"
+                            referrerPolicy="no-referrer"
+                            draggable={false}
+                            onPointerDown={(e) => startSigDrag('stamp', e)}
+                            onPointerMove={handleSigPointerMove}
+                            onPointerUp={stopSigDrag}
+                            onPointerCancel={stopSigDrag}
+                            style={{
+                              left: '34px',
+                              top: '50%',
+                              width: sigStamp.stampSize,
+                              height: sigStamp.stampSize,
+                              maxWidth: 'none',
+                              transform: `translate(calc(-50% + ${sigStamp.stampOffsetX}px), calc(-50% + ${sigStamp.stampOffsetY}px))`,
+                            }}
+                            className={`absolute z-10 object-contain opacity-85 mix-blend-multiply cursor-grab active:cursor-grabbing touch-none ${
+                              dragTarget === 'stamp' ? 'ring-2 ring-indigo-500 rounded-md' : 'hover:ring-1 hover:ring-indigo-300 rounded-md'
+                            }`}
+                          />
+                        )}
+                        {sigStamp.teacherSignatureDataUrl && (
+                          <img
+                            src={sigStamp.teacherSignatureDataUrl}
+                            alt="TTD Guru Mapel (Seret untuk geser)"
+                            title="Seret untuk mengatur posisi TTD Guru Mapel"
+                            referrerPolicy="no-referrer"
+                            draggable={false}
+                            onPointerDown={(e) => startSigDrag('teacherSig', e)}
+                            onPointerMove={handleSigPointerMove}
+                            onPointerUp={stopSigDrag}
+                            onPointerCancel={stopSigDrag}
+                            style={{
+                              left: '78px',
+                              top: '50%',
+                              height: sigStamp.signatureSize,
+                              width: 'auto',
+                              maxWidth: 'none',
+                              transform: `translate(calc(-50% + ${sigStamp.teacherSigOffsetX}px), calc(-50% + ${sigStamp.teacherSigOffsetY}px))`,
+                            }}
+                            className={`absolute z-20 object-contain cursor-grab active:cursor-grabbing touch-none ${
+                              dragTarget === 'teacherSig'
+                                ? 'ring-2 ring-indigo-500 rounded-md'
+                                : 'hover:ring-1 hover:ring-indigo-300 rounded-md'
+                            }`}
+                          />
+                        )}
+                      </div>
+                      <p className="font-bold underline">{draft.teacherProfile.name}</p>
+                      <p>NIP. {draft.teacherProfile.nip}</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1522,148 +2537,113 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </section>
 
       {/* ===================================================================== */}
-      {/* 4 & 5. KARTU LAUNCHER POP-UP PROFIL GURU & MANAJEMEN ADMIN/USER */}
+      {/* 4. CADANGAN & UPGRADE AMAN (BACKUP & RESTORE JSON DATABASE) */}
       {/* ===================================================================== */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Card Launcher 1: Profil Guru Mapel, Akun Login & Sinkronisasi */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 flex flex-col justify-between gap-5">
-          <div className="space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <UserCheck className="w-4 h-4 text-indigo-600" />
-                  <span>Profil Guru Mapel, Akun Login & Sinkronisasi</span>
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Atur biodata guru, foto profil (unggah/URL), email login, dan sinkronisasi Google Sheets melalui pop-up
-                </p>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-4">
-              <img
-                src={getUserPhotoUrl({
-                  photoDataUrl:
-                    activeUser?.photoDataUrl ??
-                    (currentUserRole === 'guru' ? draft.teacherProfile.photoDataUrl : undefined),
-                  role: currentUserRole,
-                  gender: activeUser?.gender || draft.teacherProfile.gender || 'P',
-                })}
-                onError={(e) => {
-                  e.currentTarget.onerror = null;
-                  e.currentTarget.src = getUserPhotoUrl({
-                    photoDataUrl: '',
-                    role: currentUserRole,
-                    gender: activeUser?.gender || draft.teacherProfile.gender || 'P',
-                  });
-                }}
-                alt={activeUser?.name || draft.teacherProfile.name}
-                className="w-14 h-14 rounded-xl object-cover object-top border border-slate-300 bg-white shrink-0"
-              />
-              <div className="min-w-0 space-y-0.5 text-xs">
-                <p className="text-sm font-bold text-slate-900 truncate">
-                  {activeUser?.name || draft.teacherProfile.name}
-                </p>
-                <p className="font-mono text-slate-600 tabular-nums truncate">
-                  NIP. {activeUser?.nip || draft.teacherProfile.nip}
-                </p>
-                <p className="text-slate-600 truncate">
-                  {activeUser?.school || draft.teacherProfile.school} ·{' '}
-                  {activeUser?.email || draft.teacherProfile.email}
-                </p>
-                {(currentUserRole === 'guru' || currentUserRole === 'wali_kelas') && (
-                  <p className="text-[11px] text-slate-700 font-medium truncate">
-                    Tanggung Jawab:{' '}
-                    {formatAssignmentSummary(
-                      activeUser ? activeUser.assignedClasses : draft.teacherProfile.assignedClasses,
-                      activeUser ? activeUser.assignedSubjects : draft.teacherProfile.assignedSubjects
-                    )}
-                  </p>
-                )}
-                <p className="text-[11px] text-indigo-700 font-medium truncate">
-                  Google Sheets:{' '}
-                  {draft.sheetsWebAppUrl.trim() ? 'URL Terpasang' : 'Belum dikonfigurasi (Opsional)'}
-                </p>
-              </div>
-            </div>
+      <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <DatabaseBackup className="w-4 h-4 text-indigo-600" />
+              <span>Cadangan Data &amp; Upgrade Aman (JSON Backup / Restore)</span>
+            </h3>
+            <p className="text-xs text-slate-500">
+              Migrasi otomatis menjaga pengaturan kop surat, tema, tanda tangan, pengguna, dan data lama tetap aman saat pembaruan versi aplikasi
+            </p>
           </div>
-
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={onOpenTeacherProfileModal}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              <span>Buka Pop-up Profil & Tugas Mengajar</span>
-            </button>
-          </div>
+          <span className="text-[11px] font-mono font-semibold text-slate-600">
+            Skema Versi: {database?.version || '10.3.0'}
+          </span>
         </div>
 
-        {/* Card Launcher 2: Pengaturan Admin & Manajemen Pengguna (Multi-Role) */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 flex flex-col justify-between gap-5">
-          <div className="space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-indigo-600" />
-                  <span>Pengaturan Admin & Manajemen Pengguna (Multi-Role)</span>
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Kelola akun Admin Sistem, Guru Mapel, Wali Kelas, Kepala Sekolah & Staff beserta pembagian kelas dan mata pelajaran
-                </p>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-              <div>
-                <p className="text-slate-500">Sesi Aktif Saat Ini</p>
-                <p className="mt-0.5 font-bold text-slate-900">
-                  {USER_ROLE_LABELS[currentUserRole]}
-                </p>
-              </div>
-              <div>
-                <p className="text-slate-500">Total Pengguna</p>
-                <p className="mt-0.5 font-bold text-indigo-700 tabular-nums">
-                  {users.length} Akun Terdaftar
-                </p>
-              </div>
-              <div>
-                <p className="text-slate-500">Akun Aktif</p>
-                <p className="mt-0.5 font-bold text-emerald-700 tabular-nums">
-                  {users.filter((u) => u.active).length} Aktif
-                </p>
-              </div>
-            </div>
+        <div className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1 text-xs text-slate-600">
+            <p className="font-semibold text-slate-800">
+              Ekspor seluruh data portal ke berkas JSON terenkapsulasi atau pulihkan dari cadangan sebelumnya.
+            </p>
+            <p>
+              Proses pemulihan menjalankan migrasi skema aman (<span className="font-mono">migrateDatabase</span>) sehingga pengaturan versi sebelumnya tetap kompatibel.
+            </p>
           </div>
 
-          <div className="flex justify-end">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => setShowAdminModal(true)}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+              onClick={() => {
+                if (!database) {
+                  onNotify('Database belum siap untuk dicadangkan.');
+                  return;
+                }
+                const payload: PortalDatabase = {
+                  ...database,
+                  settings: draft,
+                  lastSyncedAt: new Date().toISOString(),
+                };
+                const blob = new Blob([JSON.stringify(payload, null, 2)], {
+                  type: 'application/json',
+                });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                const dateStamp = new Date().toISOString().slice(0, 10);
+                link.href = url;
+                link.download = `Portal_EGuru_Backup_${dateStamp}.json`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                onNotify('Cadangan database JSON berhasil diunduh.');
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap"
             >
-              <ExternalLink className="w-3.5 h-3.5 text-indigo-300" />
-              <span>Buka Pop-up Admin & Pengguna</span>
+              <HardDriveDownload className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Unduh Cadangan JSON</span>
+            </button>
+
+            <input
+              ref={backupFileRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                  try {
+                    const parsed = JSON.parse(String(reader.result || '{}')) as Partial<PortalDatabase>;
+                    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.students)) {
+                      onNotify('Berkas JSON tidak valid atau bukan cadangan Portal E-Guru.');
+                      return;
+                    }
+                    const migrated = migrateDatabase(parsed);
+                    if (!migrated) {
+                      onNotify('Struktur cadangan JSON tidak dapat dimigrasi.');
+                      return;
+                    }
+                    setDraft(migrated.settings);
+                    onRestoreDatabase?.(migrated);
+                    onNotify(
+                      `Berhasil memulihkan ${migrated.students.length} siswa, ${migrated.journals.length} jurnal, dan ${migrated.grades.length} nilai dengan aman.`
+                    );
+                  } catch {
+                    onNotify('Gagal membaca berkas JSON cadangan.');
+                  }
+                };
+                reader.readAsText(file);
+              }}
+            />
+
+            <button
+              type="button"
+              onClick={() => backupFileRef.current?.click()}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+            >
+              <Upload className="w-3.5 h-3.5 text-emerald-300" />
+              <span>Pulihkan dari JSON</span>
             </button>
           </div>
         </div>
       </section>
     </form>
-
-    <AdminUsersModal
-      isOpen={showAdminModal}
-      users={users}
-      allClasses={draft.classes}
-      allSubjects={draft.subjects}
-      defaultSchool={draft.teacherProfile.school}
-      currentUserRole={currentUserRole}
-      currentUserEmail={currentUserEmail}
-      onUpdateUsers={onUpdateUsers}
-      onSwitchUserSession={onSwitchUserSession}
-      onNotify={onNotify}
-      onClose={() => setShowAdminModal(false)}
-    />
-    </>
   );
 };

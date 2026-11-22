@@ -1,8 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { ImagePlus, Link2, Plus, Save, Trash2, X } from 'lucide-react';
 import { Student, StudentStatus } from '../types';
-import { getStudentPhotoUrl } from '../utils/defaultAvatars';
-import { generateId, STUDENT_STATUS_LABELS } from '../utils/helpers';
+import { getStudentPhotoUrl, hasRealPhoto } from '../utils/defaultAvatars';
+import {
+  formatStudentTtl,
+  generateId,
+  parseTtlFields,
+  STUDENT_STATUS_LABELS,
+} from '../utils/helpers';
 
 interface StudentEditModalProps {
   isOpen?: boolean;
@@ -10,6 +15,7 @@ interface StudentEditModalProps {
   student: Student | null;
   classes: string[];
   existingStudents?: Student[];
+  teacherSuggestions?: string[];
   defaultClassName?: string;
   defaultEnrollmentYear?: string;
   onSave: (studentData: Student, isEdit: boolean) => void;
@@ -22,6 +28,7 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
   student,
   classes,
   existingStudents = [],
+  teacherSuggestions = [],
   defaultClassName,
   defaultEnrollmentYear = '',
   onSave,
@@ -30,45 +37,61 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
   const effectiveOpen = isOpen ?? Boolean(student);
   const effectiveMode: 'create' | 'edit' = mode ?? (student ? 'edit' : 'create');
 
-  const [absenNo, setAbsenNo] = useState('');
   const [nis, setNis] = useState('');
+  const [nisn, setNisn] = useState('');
   const [name, setName] = useState('');
-  const [gender, setGender] = useState<'L' | 'P'>('L');
   const [className, setClassName] = useState(defaultClassName || classes[0] || '');
-  const [status, setStatus] = useState<StudentStatus>('aktif');
-  const [enrollmentYear, setEnrollmentYear] = useState(defaultEnrollmentYear);
-  const [ttl, setTtl] = useState('');
+  const [absenNo, setAbsenNo] = useState('');
+  const [birthPlace, setBirthPlace] = useState('');
+  const [birthDate, setBirthDate] = useState('');
   const [email, setEmail] = useState('');
-  const [address, setAddress] = useState('');
   const [photoDataUrl, setPhotoDataUrl] = useState('');
+  const [address, setAddress] = useState('');
+  const [phone, setPhone] = useState('');
+  const [gender, setGender] = useState<'L' | 'P'>('L');
+  const [status, setStatus] = useState<StudentStatus>('aktif');
+  const [homeroomTeacher, setHomeroomTeacher] = useState('');
+  const [counselor, setCounselor] = useState('');
+  const [enrollmentYear, setEnrollmentYear] = useState(defaultEnrollmentYear);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!effectiveOpen) return;
     if (effectiveMode === 'edit' && student) {
-      setAbsenNo(student.absenNo || '');
+      const parsedTtl = parseTtlFields(student.ttl);
       setNis(student.nis);
+      setNisn(student.nisn || '');
       setName(student.name);
-      setGender(student.gender);
       setClassName(student.className);
-      setStatus(student.status || 'aktif');
-      setEnrollmentYear(student.enrollmentYear || defaultEnrollmentYear);
-      setTtl(student.ttl || '');
+      setAbsenNo(student.absenNo || '');
+      setBirthPlace(student.birthPlace ?? parsedTtl.birthPlace);
+      setBirthDate(student.birthDate ?? parsedTtl.birthDate);
       setEmail(student.email || '');
-      setAddress(student.address || '');
       setPhotoDataUrl(student.photoDataUrl || '');
+      setAddress(student.address || '');
+      setPhone(student.phone || '');
+      setGender(student.gender);
+      setStatus(student.status || 'aktif');
+      setHomeroomTeacher(student.homeroomTeacher || '');
+      setCounselor(student.counselor || '');
+      setEnrollmentYear(student.enrollmentYear || defaultEnrollmentYear);
     } else {
-      setAbsenNo('');
       setNis('');
+      setNisn('');
       setName('');
-      setGender('L');
       setClassName(defaultClassName || classes[0] || '');
-      setStatus('aktif');
-      setEnrollmentYear(defaultEnrollmentYear);
-      setTtl('');
+      setAbsenNo('');
+      setBirthPlace('');
+      setBirthDate('');
       setEmail('');
-      setAddress('');
       setPhotoDataUrl('');
+      setAddress('');
+      setPhone('');
+      setGender('L');
+      setStatus('aktif');
+      setHomeroomTeacher('');
+      setCounselor('');
+      setEnrollmentYear(defaultEnrollmentYear);
     }
     setError(null);
 
@@ -95,6 +118,7 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const cleanNis = nis.trim();
+    const cleanNisn = nisn.trim();
     const cleanName = name.trim();
     if (!cleanNis || !cleanName || !className) {
       setError('NIS, Nama Lengkap, dan Kelas wajib diisi.');
@@ -102,29 +126,51 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
     }
 
     const isEdit = effectiveMode === 'edit' && Boolean(student);
-    const duplicate = existingStudents.find(
+    const duplicateNis = existingStudents.find(
       (s) => s.nis.trim().toLowerCase() === cleanNis.toLowerCase() && s.id !== student?.id
     );
-    if (duplicate) {
+    if (duplicateNis) {
       setError(
-        `NIS "${cleanNis}" sudah terdaftar atas nama ${duplicate.name} (${duplicate.className}). Gunakan NIS lain.`
+        `NIS "${cleanNis}" sudah terdaftar atas nama ${duplicateNis.name} (${duplicateNis.className}). Gunakan NIS lain.`
       );
       return;
     }
 
+    if (cleanNisn) {
+      const duplicateNisn = existingStudents.find(
+        (s) => (s.nisn || '').trim().toLowerCase() === cleanNisn.toLowerCase() && s.id !== student?.id
+      );
+      if (duplicateNisn) {
+        setError(
+          `NISN "${cleanNisn}" sudah terdaftar atas nama ${duplicateNisn.name} (${duplicateNisn.className}).`
+        );
+        return;
+      }
+    }
+
+    const cleanPlace = birthPlace.trim();
+    const cleanDate = birthDate.trim();
+    const combinedTtl = formatStudentTtl({ birthPlace: cleanPlace, birthDate: cleanDate });
+
     onSave(
       {
         id: isEdit && student ? student.id : generateId('std'),
-        absenNo: absenNo.trim(),
         nis: cleanNis,
+        nisn: cleanNisn,
+        absenNo: absenNo.trim(),
         name: cleanName,
         gender,
         className,
         status,
         enrollmentYear: enrollmentYear.trim() || undefined,
-        ttl: ttl.trim(),
+        birthPlace: cleanPlace,
+        birthDate: cleanDate,
+        ttl: combinedTtl,
         email: email.trim(),
+        phone: phone.trim(),
         address: address.trim(),
+        homeroomTeacher: homeroomTeacher.trim(),
+        counselor: counselor.trim(),
         photoDataUrl: photoDataUrl.trim(),
       },
       isEdit
@@ -143,7 +189,7 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
       aria-labelledby="edit-student-modal-title"
     >
       <div
-        className="w-full max-w-2xl bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+        className="w-full max-w-3xl bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between gap-4">
@@ -153,8 +199,8 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
             </h2>
             <p className="text-xs text-slate-300">
               {effectiveMode === 'create'
-                ? 'Lengkapi identitas, foto (unggah/link URL), kelas, dan kontak peserta didik baru'
-                : 'Perbarui identitas, foto (unggah/link URL), kelas, dan kontak peserta didik'}
+                ? 'Lengkapi identitas NIS/NISN, foto, kelahiran, kontak, wali kelas, dan guru BK peserta didik'
+                : 'Perbarui identitas NIS/NISN, foto, kelahiran, kontak, wali kelas, dan guru BK peserta didik'}
             </p>
           </div>
           <button
@@ -179,9 +225,12 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
             <div className="flex flex-wrap items-center gap-4">
               <img
                 src={previewPhoto}
+                referrerPolicy="no-referrer"
                 onError={(e) => {
-                  e.currentTarget.onerror = null;
-                  e.currentTarget.src = fallbackPhoto;
+                  if (!hasRealPhoto(photoDataUrl)) {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = fallbackPhoto;
+                  }
                 }}
                 alt="Foto Siswa"
                 className="w-16 h-16 rounded-xl object-cover object-top border border-slate-300 bg-white shrink-0"
@@ -189,12 +238,18 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
               <div className="space-y-1.5 flex-1 min-w-[200px]">
                 <p className="text-xs font-bold text-slate-900">
                   Foto Siswa{' '}
-                  {photoDataUrl ? '(Foto Khusus)' : `(Avatar Default ${gender === 'P' ? 'Perempuan' : 'Laki-laki'})`}
+                  {hasRealPhoto(photoDataUrl) ? (
+                    <span className="text-emerald-700">(Foto Asli Aktif — Tidak Pakai Dummy)</span>
+                  ) : (
+                    <span className="text-slate-500">
+                      (Avatar Dummy {gender === 'P' ? 'Perempuan' : 'Laki-laki'})
+                    </span>
+                  )}
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer">
                     <ImagePlus className="w-3.5 h-3.5" />
-                    <span>{photoDataUrl ? 'Ganti File Foto' : 'Unggah Foto'}</span>
+                    <span>{hasRealPhoto(photoDataUrl) ? 'Ganti File Foto' : 'Unggah Foto'}</span>
                     <input
                       type="file"
                       accept="image/*"
@@ -202,14 +257,14 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
                       className="hidden"
                     />
                   </label>
-                  {photoDataUrl && (
+                  {hasRealPhoto(photoDataUrl) && (
                     <button
                       type="button"
                       onClick={() => setPhotoDataUrl('')}
                       className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-rose-200 bg-white text-xs font-medium text-rose-700 hover:bg-rose-50 cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      <span>Gunakan Default</span>
+                      <span>Hapus Foto Asli</span>
                     </button>
                   )}
                 </div>
@@ -238,42 +293,32 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
             </div>
           </div>
 
+          {/* Baris 1: NIS, NISN, Kelas, No Absen */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">No. Absen</label>
-              <input
-                type="text"
-                value={absenNo}
-                onChange={(e) => setAbsenNo(e.target.value)}
-                placeholder="01"
-                className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">NIS</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">NIS *</label>
               <input
                 type="text"
                 value={nis}
                 onChange={(e) => setNis(e.target.value)}
+                placeholder="25261001"
                 className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Jenis Kelamin</label>
-              <select
-                value={gender}
-                onChange={(e) => setGender(e.target.value as 'L' | 'P')}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
-              >
-                <option value="L">L (Laki-laki)</option>
-                <option value="P">P (Perempuan)</option>
-              </select>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">NISN</label>
+              <input
+                type="text"
+                value={nisn}
+                onChange={(e) => setNisn(e.target.value)}
+                placeholder="0104100201"
+                className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Kelas</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Kelas *</label>
               <select
                 value={className}
                 onChange={(e) => setClassName(e.target.value)}
@@ -286,21 +331,50 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
                 ))}
               </select>
             </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">No. Absen</label>
+              <input
+                type="text"
+                value={absenNo}
+                onChange={(e) => setAbsenNo(e.target.value)}
+                placeholder="01"
+                className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              />
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Baris 2: Nama, Jenis Kelamin, Status */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Nama Lengkap</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Nama Lengkap *
+              </label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                placeholder="Nama lengkap sesuai ijazah"
                 className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Status Siswa</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Jenis Kelamin
+              </label>
+              <select
+                value={gender}
+                onChange={(e) => setGender(e.target.value as 'L' | 'P')}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              >
+                <option value="L">L (Laki-laki)</option>
+                <option value="P">P (Perempuan)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Status</label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as StudentStatus)}
@@ -315,7 +389,32 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
             </div>
           </div>
 
+          {/* Baris 3: Tempat, Tanggal Lahir, Tahun Masuk */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Tempat Lahir</label>
+              <input
+                type="text"
+                value={birthPlace}
+                onChange={(e) => setBirthPlace(e.target.value)}
+                placeholder="Bandung"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Tanggal Lahir
+              </label>
+              <input
+                type="text"
+                value={birthDate}
+                onChange={(e) => setBirthDate(e.target.value)}
+                placeholder="14 Mei 2010"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              />
+            </div>
+
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Tahun Masuk / Angkatan
@@ -328,17 +427,20 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
                 className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
               />
             </div>
+          </div>
 
+          {/* Baris 4: No HP & Email */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Tempat, Tanggal Lahir (TTL)
+                No. HP / WhatsApp
               </label>
               <input
                 type="text"
-                value={ttl}
-                onChange={(e) => setTtl(e.target.value)}
-                placeholder="Bandung, 14 Mei 2010"
-                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="0812-xxxx-xxxx"
+                className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
               />
             </div>
 
@@ -352,6 +454,41 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
                 className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
               />
             </div>
+          </div>
+
+          {/* Baris 5: Wali Kelas & Guru BK */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Wali Kelas</label>
+              <input
+                type="text"
+                list="eguru-teacher-suggestions"
+                value={homeroomTeacher}
+                onChange={(e) => setHomeroomTeacher(e.target.value)}
+                placeholder="Nama Wali Kelas"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Guru BK</label>
+              <input
+                type="text"
+                list="eguru-teacher-suggestions"
+                value={counselor}
+                onChange={(e) => setCounselor(e.target.value)}
+                placeholder="Nama Guru Bimbingan Konseling"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              />
+            </div>
+
+            {teacherSuggestions.length > 0 && (
+              <datalist id="eguru-teacher-suggestions">
+                {teacherSuggestions.map((tName) => (
+                  <option key={tName} value={tName} />
+                ))}
+              </datalist>
+            )}
           </div>
 
           <div>

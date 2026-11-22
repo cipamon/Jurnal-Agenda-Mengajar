@@ -5,12 +5,107 @@
     --font-display: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
     --font-sans: 'DM Sans', system-ui, -apple-system, sans-serif;
     --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+    --eguru-primary: #4f46e5;
+    --eguru-primary-hover: #4338ca;
+    --eguru-soft: #eef2ff;
+    --eguru-soft-text: #4338ca;
+    --eguru-border: #c7d2fe;
+    --eguru-sidebar-bg: #0f172a;
+    --eguru-sidebar-border: #1e293b;
+    --eguru-hero-from: #4f46e5;
+    --eguru-hero-via: #4338ca;
+    --eguru-hero-to: #6d28d9;
+  }
+
+  [data-theme="emerald"] {
+    --eguru-primary: #059669;
+    --eguru-primary-hover: #047857;
+    --eguru-soft: #ecfdf5;
+    --eguru-soft-text: #047857;
+    --eguru-border: #a7f3d0;
+    --eguru-sidebar-bg: #064e3b;
+    --eguru-sidebar-border: #065f46;
+    --eguru-hero-from: #059669;
+    --eguru-hero-via: #047857;
+    --eguru-hero-to: #0f766e;
+  }
+
+  [data-theme="teal"] {
+    --eguru-primary: #0d9488;
+    --eguru-primary-hover: #0f766e;
+    --eguru-soft: #f0fdfa;
+    --eguru-soft-text: #0f766e;
+    --eguru-border: #99f6e4;
+    --eguru-sidebar-bg: #0f293a;
+    --eguru-sidebar-border: #164e63;
+    --eguru-hero-from: #0d9488;
+    --eguru-hero-via: #0284c7;
+    --eguru-hero-to: #0369a1;
+  }
+
+  [data-theme="amber"] {
+    --eguru-primary: #d97706;
+    --eguru-primary-hover: #b45309;
+    --eguru-soft: #fffbeb;
+    --eguru-soft-text: #b45309;
+    --eguru-border: #fde68a;
+    --eguru-sidebar-bg: #271a0c;
+    --eguru-sidebar-border: #451a03;
+    --eguru-hero-from: #d97706;
+    --eguru-hero-via: #b45309;
+    --eguru-hero-to: #92400e;
+  }
+
+  [data-theme="rose"] {
+    --eguru-primary: #e11d48;
+    --eguru-primary-hover: #be123c;
+    --eguru-soft: #fff1f2;
+    --eguru-soft-text: #be123c;
+    --eguru-border: #fecdd3;
+    --eguru-sidebar-bg: #2d0c18;
+    --eguru-sidebar-border: #4c0519;
+    --eguru-hero-from: #e11d48;
+    --eguru-hero-via: #be123c;
+    --eguru-hero-to: #9f1239;
+  }
+
+  [data-theme="slate"] {
+    --eguru-primary: #334155;
+    --eguru-primary-hover: #1e293b;
+    --eguru-soft: #f1f5f9;
+    --eguru-soft-text: #1e293b;
+    --eguru-border: #cbd5e1;
+    --eguru-sidebar-bg: #0f172a;
+    --eguru-sidebar-border: #1e293b;
+    --eguru-hero-from: #334155;
+    --eguru-hero-via: #1e293b;
+    --eguru-hero-to: #0f172a;
+  }
+
+  [data-theme="midnight"] {
+    --eguru-primary: #6366f1;
+    --eguru-primary-hover: #4f46e5;
+    --eguru-soft: rgba(99, 102, 241, 0.16);
+    --eguru-soft-text: #a5b4fc;
+    --eguru-border: #4338ca;
+    --eguru-sidebar-bg: #020617;
+    --eguru-sidebar-border: #1e293b;
+    --eguru-hero-from: #312e81;
+    --eguru-hero-via: #3730a3;
+    --eguru-hero-to: #4c1d95;
   }
 
   body {
     font-family: var(--font-sans);
     background-color: #f8fafc;
     color: #0f172a;
+    transition: background-color 180ms ease, color 180ms ease;
+  }
+
+  [data-theme="midnight"] body {
+    background-color: #0b1120;
+    color: #e2e8f0;
   }
 
   h1, h2, h3, .font-display {
@@ -20,6 +115,122 @@
   .tabular-nums {
     font-variant-numeric: tabular-nums;
   }
+}
+
+/* =========================================================================
+   Theme Accent Overrides (Scales cleanly across all interactive components)
+   ========================================================================= */
+[data-theme]:not([data-theme="indigo"]) .bg-indigo-600 {
+  background-color: var(--eguru-primary) !important;
+}
+[data-theme]:not([data-theme="indigo"]) .hover\:bg-indigo-700:hover,
+[data-theme]:not([data-theme="indigo"]) .hover\:bg-indigo-600:hover {
+  background-color: var(--eguru-primary-hover) !important;
+}
+[data-theme]:not([data-theme="indigo"]) .text-indigo-600,
+[data-theme]:not([data-theme="indigo"]) .text-indigo-700 {
+  color: var(--eguru-soft-text) !important;
+}
+[data-theme]:not([data-theme="indigo"]) .bg-indigo-50 {
+  background-color: var(--eguru-soft) !important;
+}
+[data-theme]:not([data-theme="indigo"]) .border-indigo-200,
+[data-theme]:not([data-theme="indigo"]) .border-indigo-300,
+[data-theme]:not([data-theme="indigo"]) .border-indigo-600 {
+  border-color: var(--eguru-border) !important;
+}
+[data-theme]:not([data-theme="indigo"]) .accent-indigo-600 {
+  accent-color: var(--eguru-primary) !important;
+}
+
+.eguru-sidebar-surface {
+  background-color: var(--eguru-sidebar-bg);
+  border-color: var(--eguru-sidebar-border);
+}
+
+.eguru-hero-gradient {
+  background-image: linear-gradient(
+    to right,
+    var(--eguru-hero-from),
+    var(--eguru-hero-via),
+    var(--eguru-hero-to)
+  ) !important;
+}
+
+/* =========================================================================
+   Midnight Dark Mode Surfaces (Excludes Paper Print Sheets)
+   ========================================================================= */
+[data-theme="midnight"] .eguru-app-shell {
+  background-color: #0b1120 !important;
+  color: #e2e8f0 !important;
+}
+
+[data-theme="midnight"] header.bg-white,
+[data-theme="midnight"] .eguru-app-shell main .bg-white:not(.print-only-container):not(.eguru-paper-preview),
+[data-theme="midnight"] .fixed .bg-white:not(.print-only-container):not(.eguru-paper-preview) {
+  background-color: #111827 !important;
+  border-color: #1f2937 !important;
+  color: #f1f5f9 !important;
+}
+
+[data-theme="midnight"] .eguru-app-shell main .bg-slate-50:not(.eguru-paper-preview),
+[data-theme="midnight"] .eguru-app-shell main .bg-slate-100:not(.eguru-paper-preview),
+[data-theme="midnight"] .fixed .bg-slate-50:not(.eguru-paper-preview) {
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="midnight"] .eguru-app-shell header,
+[data-theme="midnight"] .eguru-app-shell .border-slate-200:not(.eguru-paper-preview),
+[data-theme="midnight"] .eguru-app-shell .border-slate-300:not(.eguru-paper-preview),
+[data-theme="midnight"] .fixed .border-slate-200:not(.eguru-paper-preview),
+[data-theme="midnight"] .fixed .border-slate-300:not(.eguru-paper-preview) {
+  border-color: #334155 !important;
+}
+
+[data-theme="midnight"] .eguru-app-shell .divide-slate-200 > :not(:last-child),
+[data-theme="midnight"] .eguru-app-shell .divide-slate-100 > :not(:last-child) {
+  border-color: #1f2937 !important;
+}
+
+[data-theme="midnight"] .eguru-app-shell .text-slate-900:not(.eguru-paper-preview *),
+[data-theme="midnight"] .eguru-app-shell .text-slate-800:not(.eguru-paper-preview *),
+[data-theme="midnight"] .fixed .text-slate-900:not(.eguru-paper-preview *),
+[data-theme="midnight"] .fixed .text-slate-800:not(.eguru-paper-preview *) {
+  color: #f1f5f9 !important;
+}
+
+[data-theme="midnight"] .eguru-app-shell .text-slate-600:not(.eguru-paper-preview *),
+[data-theme="midnight"] .eguru-app-shell .text-slate-700:not(.eguru-paper-preview *),
+[data-theme="midnight"] .eguru-app-shell .text-slate-500:not(.eguru-paper-preview *),
+[data-theme="midnight"] .fixed .text-slate-600:not(.eguru-paper-preview *),
+[data-theme="midnight"] .fixed .text-slate-700:not(.eguru-paper-preview *),
+[data-theme="midnight"] .fixed .text-slate-500:not(.eguru-paper-preview *) {
+  color: #94a3b8 !important;
+}
+
+[data-theme="midnight"] .eguru-app-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+[data-theme="midnight"] .eguru-app-shell select,
+[data-theme="midnight"] .eguru-app-shell textarea,
+[data-theme="midnight"] .fixed input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+[data-theme="midnight"] .fixed select,
+[data-theme="midnight"] .fixed textarea {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="midnight"] .eguru-app-shell .hover\:bg-slate-50:hover,
+[data-theme="midnight"] .eguru-app-shell .hover\:bg-slate-100:hover {
+  background-color: #1e293b !important;
+}
+
+/* Protect Official Paper Previews from Midnight Theme */
+.eguru-paper-preview,
+#official-print-sheet,
+#student-individual-print-sheet {
+  background-color: #ffffff !important;
+  color: #020617 !important;
 }
 
 /* Custom subtle scrollbars for long tables */
@@ -64,6 +275,8 @@
     width: 100% !important;
     max-width: none !important;
     overflow: visible !important;
+    background: #ffffff !important;
+    color: #000000 !important;
   }
 
   .print-page-break {

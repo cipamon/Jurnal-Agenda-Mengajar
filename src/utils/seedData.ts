@@ -20,8 +20,11 @@ export function createDefaultSettings(overrides?: Partial<SystemSettings>): Syst
     principalTitle: 'Kepala Sekolah',
     principalName: 'Drs. H. Ahmad Fauzi, M.Pd.',
     principalNip: '19680412 199403 1 008',
-    sheetsWebAppUrl: '',
+    themeId: 'indigo',
     reportFontFamily: 'Times New Roman',
+    reportPaperSize: 'A4',
+    reportOrientation: 'landscape',
+    lockReportFormat: true,
     signatureStamp: {
       principalSignatureDataUrl: '',
       teacherSignatureDataUrl: '',
@@ -29,11 +32,23 @@ export function createDefaultSettings(overrides?: Partial<SystemSettings>): Syst
       signatureSize: 54,
       stampSize: 74,
       showStampDefault: true,
+      principalSigOffsetX: 0,
+      principalSigOffsetY: 0,
+      teacherSigOffsetX: 0,
+      teacherSigOffsetY: 0,
+      stampOffsetX: 0,
+      stampOffsetY: 0,
+      principalBlockOffsetX: 0,
+      principalBlockOffsetY: 0,
+      teacherBlockOffsetX: 0,
+      teacherBlockOffsetY: 0,
+      stampTarget: 'principal',
     },
     webBrand: {
       appName: 'Portal E-Guru v10.2',
       tabTitle: 'Portal E-Guru v10.2 — Sistem Jurnal Mengajar, Presensi & Penilaian Guru Terpadu',
       webLogoDataUrl: DEFAULT_WEB_LOGO,
+      webLogoSize: 36,
     },
     kopSurat: {
       line1: 'PEMERINTAH DAERAH PROVINSI JAWA BARAT',
@@ -69,7 +84,7 @@ export function createDefaultSettings(overrides?: Partial<SystemSettings>): Syst
       nip: '19870915 201101 2 014',
       school: 'SMA Negeri 1 Nusantara',
       email: 'guru@sman1nusantara.sch.id',
-      password: 'guru123',
+      password: '',
       gender: 'P',
       assignedClasses: ['X IPA 1', 'X IPA 2', 'XI IPA 1'],
       assignedSubjects: ['Matematika Wajib', 'Matematika Peminatan'],
@@ -92,14 +107,12 @@ export function createDefaultSettings(overrides?: Partial<SystemSettings>): Syst
 
 export function createSeedDatabase(
   emailOverride?: string,
-  sheetsUrlOverride?: string,
   academicYearOverride?: string,
   semesterOverride?: 'Ganjil' | 'Genap'
 ): PortalDatabase {
   const settings = createDefaultSettings({
     ...(academicYearOverride ? { academicYear: academicYearOverride } : {}),
     ...(semesterOverride ? { semester: semesterOverride } : {}),
-    ...(sheetsUrlOverride ? { sheetsWebAppUrl: sheetsUrlOverride } : {}),
   });
 
   if (emailOverride) {
@@ -144,11 +157,39 @@ export function createSeedDatabase(
     { id: 'std-407', absenNo: '07', nis: '23241007', name: 'Gita Purnama Sari', gender: 'P', className: 'XII IPA 1', email: 'gita.purnama@siswa.sman1nusantara.sch.id', ttl: 'Bandung, 01 September 2008', address: 'Jl. Banda No. 28, Bandung Wetan, Kota Bandung' },
   ];
 
-  const students: Student[] = rawStudents.map((s) => ({
-    ...s,
-    status: 'aktif',
-    enrollmentYear: settings.academicYear,
-  }));
+  const homeroomByClass: Record<string, string> = {
+    'X IPA 1': 'Budi Hartono, S.Pd.',
+    'X IPA 2': 'Hendra Wijaya, S.Kom.',
+    'XI IPA 1': 'Dra. Rina Kusumawati, M.Pd.',
+    'XII IPA 1': 'Dr. Nurul Hidayah, M.Pd.',
+  };
+
+  const counselorByClass: Record<string, string> = {
+    'X IPA 1': 'Dra. Ratna Sari, M.Pd., Kons.',
+    'X IPA 2': 'Dra. Ratna Sari, M.Pd., Kons.',
+    'XI IPA 1': 'Ahmad Fauzan, S.Pd., Kons.',
+    'XII IPA 1': 'Ahmad Fauzan, S.Pd., Kons.',
+  };
+
+  const students: Student[] = rawStudents.map((s, idx) => {
+    const ttlParts = (s.ttl || '').split(',');
+    const birthPlace = (ttlParts[0] || 'Bandung').trim();
+    const birthDate = ttlParts.slice(1).join(',').trim() || '10 Mei 2010';
+    const baseYearCode = s.nis.startsWith('23') ? '008' : s.nis.startsWith('24') ? '009' : '010';
+    const nisn = `${baseYearCode}${String(4100201 + idx).padStart(7, '0')}`;
+    const phone = `0812-2300-${String(1001 + idx).padStart(4, '0')}`;
+    return {
+      ...s,
+      nisn,
+      birthPlace,
+      birthDate,
+      phone,
+      homeroomTeacher: homeroomByClass[s.className] || 'Budi Hartono, S.Pd.',
+      counselor: counselorByClass[s.className] || 'Dra. Ratna Sari, M.Pd., Kons.',
+      status: 'aktif',
+      enrollmentYear: settings.academicYear,
+    };
+  });
 
   // Build deterministic realistic attendance for a class
   const buildAttendance = (
@@ -413,10 +454,11 @@ export function createSeedDatabase(
   const users: AppUser[] = [
     {
       id: 'usr-admin-1',
+      username: 'admin',
       name: 'Administrator Sistem',
       nip: '19850101 201001 1 001',
       email: 'admin@sman1nusantara.sch.id',
-      password: 'admin123',
+      password: '',
       role: 'admin',
       school: settings.teacherProfile.school,
       gender: 'L',
@@ -425,10 +467,11 @@ export function createSeedDatabase(
     },
     {
       id: 'usr-guru-1',
+      username: 'guru',
       name: settings.teacherProfile.name,
       nip: settings.teacherProfile.nip,
       email: settings.teacherProfile.email,
-      password: settings.teacherProfile.password,
+      password: '',
       role: 'guru',
       school: settings.teacherProfile.school,
       gender: 'P',
@@ -439,10 +482,11 @@ export function createSeedDatabase(
     },
     {
       id: 'usr-guru-2',
+      username: 'guru2',
       name: 'Hendra Wijaya, S.Kom.',
       nip: '19900521 201603 1 006',
       email: 'guru2@sman1nusantara.sch.id',
-      password: 'guru123',
+      password: '',
       role: 'guru',
       school: settings.teacherProfile.school,
       gender: 'L',
@@ -453,10 +497,11 @@ export function createSeedDatabase(
     },
     {
       id: 'usr-wali-1',
+      username: 'walikelas',
       name: 'Budi Hartono, S.Pd.',
       nip: '19890310 201402 1 003',
       email: 'walikelas@sman1nusantara.sch.id',
-      password: 'wali123',
+      password: '',
       role: 'wali_kelas',
       school: settings.teacherProfile.school,
       gender: 'L',
@@ -467,10 +512,11 @@ export function createSeedDatabase(
     },
     {
       id: 'usr-kepsek-1',
+      username: 'kepsek',
       name: settings.principalName,
       nip: settings.principalNip,
       email: 'kepsek@sman1nusantara.sch.id',
-      password: 'kepsek123',
+      password: '',
       role: 'kepala_sekolah',
       school: settings.teacherProfile.school,
       gender: 'L',
@@ -479,10 +525,11 @@ export function createSeedDatabase(
     },
     {
       id: 'usr-staff-1',
+      username: 'staff',
       name: 'Siti Aminah, A.Md.',
       nip: '19920614 201903 2 009',
       email: 'staff@sman1nusantara.sch.id',
-      password: 'staff123',
+      password: '',
       role: 'karyawan',
       school: settings.teacherProfile.school,
       gender: 'P',
@@ -492,7 +539,7 @@ export function createSeedDatabase(
   ];
 
   return {
-    version: '10.2.0',
+    version: '10.3.0',
     lastSyncedAt: nowIso,
     students,
     journals,

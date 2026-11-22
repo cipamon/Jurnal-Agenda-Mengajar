@@ -6,10 +6,12 @@ import {
   FileEdit,
   FileSpreadsheet,
   FileText,
-  Mail,
+  Lock,
   MapPin,
+  Phone,
   Printer,
   User,
+  UserCheck,
   X,
 } from 'lucide-react';
 import {
@@ -20,11 +22,13 @@ import {
   Student,
   SystemSettings,
 } from '../types';
-import { getStudentPhotoUrl } from '../utils/defaultAvatars';
+import { getStudentPhotoUrl, hasRealPhoto } from '../utils/defaultAvatars';
 import { exportStudentIndividualPdf } from '../utils/exportReports';
 import {
   ATTENDANCE_META,
+  formatStudentTtl,
   formatTanggalID,
+  getPaperSizeMeta,
   getPrintFontCss,
   getTodayIso,
   normalizeKopSurat,
@@ -69,28 +73,33 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   onClose,
 }) => {
   const sigStamp = useMemo(() => normalizeSignatureStamp(settings), [settings]);
+  const isFormatLocked = settings.lockReportFormat ?? true;
+  const paperMeta = useMemo(
+    () => getPaperSizeMeta(settings.reportPaperSize),
+    [settings.reportPaperSize]
+  );
+  const adminFont: PrintFontFamily =
+    settings.reportFontFamily || normalizeKopSurat(settings.kopSurat).fontFamily || 'Times New Roman';
+
   const [activeTab, setActiveTab] = useState<'aktivitas' | 'nilai'>('aktivitas');
   const [exportingPdf, setExportingPdf] = useState(false);
   const [showPrincipalSig, setShowPrincipalSig] = useState(false);
   const [showTeacherSig, setShowTeacherSig] = useState(true);
   const [showStamp, setShowStamp] = useState<boolean>(sigStamp.showStampDefault);
-  const [printFont, setPrintFont] = useState<PrintFontFamily>(
-    settings.reportFontFamily || normalizeKopSurat(settings.kopSurat).fontFamily || 'Times New Roman'
-  );
+  const [printFont, setPrintFont] = useState<PrintFontFamily>(adminFont);
+  const effectiveFont: PrintFontFamily = isFormatLocked ? adminFont : printFont;
 
   useEffect(() => {
     if (!student) return;
     setActiveTab('aktivitas');
     setShowStamp(sigStamp.showStampDefault);
-    setPrintFont(
-      settings.reportFontFamily || normalizeKopSurat(settings.kopSurat).fontFamily || 'Times New Roman'
-    );
+    setPrintFont(adminFont);
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [student, onClose, sigStamp.showStampDefault, settings.reportFontFamily, settings.kopSurat]);
+  }, [student, onClose, sigStamp.showStampDefault, adminFont]);
 
   const studentJournals = useMemo(() => {
     if (!student) return [];
@@ -150,9 +159,10 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
         showPrincipalSig,
         showTeacherSig,
         showStamp,
-        fontFamily: printFont,
+        fontFamily: effectiveFont,
+        paperSize: paperMeta.id,
       });
-      onNotify?.(`PDF individu untuk ${student.name} (${printFont}) berhasil diunduh.`);
+      onNotify?.(`PDF individu untuk ${student.name} (${paperMeta.id} · ${effectiveFont}) berhasil diunduh.`);
     } catch {
       onNotify?.('Gagal membuat PDF profil siswa.');
     } finally {
@@ -183,6 +193,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
               <div className="w-16 h-16 rounded-xl bg-white border border-indigo-400/40 flex items-center justify-center shrink-0 overflow-hidden">
                 <img
                   src={photoSrc}
+                  referrerPolicy="no-referrer"
                   onError={(e) => {
                     e.currentTarget.onerror = null;
                     e.currentTarget.src = fallbackPhotoSrc;
@@ -212,6 +223,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                     <>Kelas {student.className}</>
                   )}{' '}
                   · No. Absen {student.absenNo || '-'} · NIS {student.nis}
+                  {student.nisn ? ` · NISN ${student.nisn}` : ''}
                 </p>
                 <p className="text-xs text-indigo-300 mt-0.5 flex items-center gap-1.5">
                   <User className="w-3.5 h-3.5 shrink-0" />
@@ -219,7 +231,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                     Peserta Didik ({STUDENT_STATUS_LABELS[student.status || 'aktif']}) ·{' '}
                     {student.gender === 'L' ? 'Laki-laki' : 'Perempuan'}
                     {student.enrollmentYear ? ` · Masuk ${student.enrollmentYear}` : ''}
-                    {!student.photoDataUrl && ' · Foto Default'}
+                    {hasRealPhoto(student.photoDataUrl) ? ' · Foto Asli' : ' · Foto Dummy Default'}
                   </span>
                 </p>
               </div>
@@ -247,28 +259,42 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
           </div>
 
           {/* Biodata Lengkap Siswa */}
-          <div className="px-6 py-4 bg-white border-b border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+          <div className="px-6 py-4 bg-white border-b border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
             <div className="flex items-start gap-2.5 min-w-0">
               <Calendar className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
               <div className="min-w-0">
                 <p className="text-slate-500 font-medium">Tempat, Tanggal Lahir</p>
                 <p className="text-slate-900 font-semibold mt-0.5 break-words">
-                  {student.ttl || 'Belum diisi'}
+                  {formatStudentTtl(student) || 'Belum diisi'}
                 </p>
               </div>
             </div>
 
             <div className="flex items-start gap-2.5 min-w-0">
-              <Mail className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+              <Phone className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
               <div className="min-w-0">
-                <p className="text-slate-500 font-medium">Email Siswa</p>
-                <p className="text-slate-900 font-semibold mt-0.5 break-all">
-                  {student.email || 'Belum diisi'}
+                <p className="text-slate-500 font-medium">No. HP &amp; Email Siswa</p>
+                <p className="text-slate-900 font-semibold mt-0.5 font-mono">
+                  {student.phone || 'Belum diisi'}
                 </p>
+                <p className="text-slate-500 break-all">{student.email || '-'}</p>
               </div>
             </div>
 
             <div className="flex items-start gap-2.5 min-w-0">
+              <UserCheck className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="text-slate-500 font-medium">Wali Kelas &amp; Guru BK</p>
+                <p className="text-slate-900 font-semibold mt-0.5 break-words">
+                  WK: {student.homeroomTeacher || 'Belum ditentukan'}
+                </p>
+                <p className="text-slate-500 break-words">
+                  BK: {student.counselor || 'Belum ditentukan'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2.5 min-w-0 sm:col-span-2 lg:col-span-3 pt-2 border-t border-slate-100">
               <MapPin className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
               <div className="min-w-0">
                 <p className="text-slate-500 font-medium">Alamat Tempat Tinggal</p>
@@ -476,18 +502,30 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
           <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3 text-xs text-slate-700">
               <div className="flex items-center gap-1.5">
-                <span className="font-semibold text-slate-500">Font:</span>
-                <select
-                  value={printFont}
-                  onChange={(e) => setPrintFont(e.target.value as PrintFontFamily)}
-                  className="px-2 py-1 text-xs rounded-md border border-slate-300 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
-                >
-                  {PRINT_FONT_OPTIONS.map((f) => (
-                    <option key={f} value={f}>
-                      {f}
-                    </option>
-                  ))}
-                </select>
+                <span className="font-semibold text-slate-500">Format:</span>
+                {isFormatLocked ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 bg-slate-100 text-xs font-semibold text-slate-700">
+                    <Lock className="w-3 h-3 text-slate-500" />
+                    <span>
+                      {effectiveFont} · {paperMeta.id} (Terkunci Admin)
+                    </span>
+                  </span>
+                ) : (
+                  <div className="inline-flex items-center gap-1.5">
+                    <select
+                      value={printFont}
+                      onChange={(e) => setPrintFont(e.target.value as PrintFontFamily)}
+                      className="px-2 py-1 text-xs rounded-md border border-slate-300 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                    >
+                      {PRINT_FONT_OPTIONS.map((f) => (
+                        <option key={f} value={f}>
+                          {f}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-[11px] font-semibold text-slate-500">· {paperMeta.id}</span>
+                  </div>
+                )}
               </div>
               <label className="inline-flex items-center gap-1.5 font-medium cursor-pointer">
                 <input
@@ -553,23 +591,27 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
       {/* ===================================================================== */}
       <section
         id="student-individual-print-sheet"
-        style={{ fontFamily: getPrintFontCss(printFont) }}
+        style={{ fontFamily: getPrintFontCss(effectiveFont) }}
         className="hidden print:block print-only-container bg-white text-slate-950 p-2"
       >
-        <style>{`@media print { @page { size: A4 portrait; margin: 12mm; } }`}</style>
+        <style>{`@media print { @page { size: ${paperMeta.cssPageSize} portrait; margin: 12mm; } }`}</style>
 
         {/* Kop Surat Dinas */}
         <div className="mb-5 pb-2 border-b-[3px] border-double border-slate-900">
           <div className="flex items-center justify-between gap-4 pb-2 border-b border-slate-900">
             <div
-              style={{ width: normKop.leftLogoSize, height: normKop.leftLogoSize }}
+              style={{
+                width: Math.max(normKop.leftLogoSize, normKop.rightLogoSize),
+                minHeight: normKop.leftLogoSize,
+              }}
               className="shrink-0 flex items-center justify-center"
             >
               {normKop.leftLogoDataUrl && (
                 <img
                   src={normKop.leftLogoDataUrl}
                   alt="Logo Kiri Instansi"
-                  className="w-full h-full object-contain"
+                  style={{ width: normKop.leftLogoSize, height: normKop.leftLogoSize }}
+                  className="object-contain"
                 />
               )}
             </div>
@@ -609,14 +651,18 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
               )}
             </div>
             <div
-              style={{ width: normKop.rightLogoSize, height: normKop.rightLogoSize }}
+              style={{
+                width: Math.max(normKop.leftLogoSize, normKop.rightLogoSize),
+                minHeight: normKop.rightLogoSize,
+              }}
               className="shrink-0 flex items-center justify-center"
             >
               {normKop.rightLogoDataUrl && (
                 <img
                   src={normKop.rightLogoDataUrl}
                   alt="Logo Kanan Sekolah"
-                  className="w-full h-full object-contain"
+                  style={{ width: normKop.rightLogoSize, height: normKop.rightLogoSize }}
+                  className="object-contain"
                 />
               )}
             </div>
@@ -637,6 +683,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
           <div className="w-24 h-28 border border-slate-400 shrink-0 overflow-hidden bg-slate-50">
             <img
               src={photoSrc}
+              referrerPolicy="no-referrer"
               onError={(e) => {
                 e.currentTarget.onerror = null;
                 e.currentTarget.src = fallbackPhotoSrc;
@@ -657,20 +704,35 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
               </strong>
             </div>
             <div>
-              <span className="text-slate-600">NIS:</span>{' '}
-              <strong className="tabular-nums">{student.nis}</strong>
+              <span className="text-slate-600">NIS / NISN:</span>{' '}
+              <strong className="tabular-nums">
+                {student.nis} / {student.nisn || '-'}
+              </strong>
             </div>
             <div>
-              <span className="text-slate-600">Jenis Kelamin:</span>{' '}
-              <strong>{student.gender === 'L' ? 'Laki-laki' : 'Perempuan'}</strong>
+              <span className="text-slate-600">Jenis Kelamin / Status:</span>{' '}
+              <strong>
+                {student.gender === 'L' ? 'Laki-laki' : 'Perempuan'} (
+                {STUDENT_STATUS_LABELS[student.status || 'aktif']})
+              </strong>
             </div>
             <div>
               <span className="text-slate-600">Tempat, Tgl Lahir:</span>{' '}
-              <strong>{student.ttl || '-'}</strong>
+              <strong>{formatStudentTtl(student) || '-'}</strong>
             </div>
             <div>
-              <span className="text-slate-600">Email:</span>{' '}
-              <strong className="break-all">{student.email || '-'}</strong>
+              <span className="text-slate-600">No. HP / Email:</span>{' '}
+              <strong className="break-all">
+                {student.phone || '-'} / {student.email || '-'}
+              </strong>
+            </div>
+            <div>
+              <span className="text-slate-600">Wali Kelas:</span>{' '}
+              <strong>{student.homeroomTeacher || '-'}</strong>
+            </div>
+            <div>
+              <span className="text-slate-600">Guru BK:</span>{' '}
+              <strong>{student.counselor || '-'}</strong>
             </div>
             <div className="col-span-2">
               <span className="text-slate-600">Alamat:</span>{' '}
@@ -780,72 +842,129 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
         </table>
 
         {/* Tanda Tangan */}
-        {(showPrincipalSig || showTeacherSig) && (
-          <div className="grid grid-cols-2 gap-8 text-xs pt-2">
-            <div className="pl-4">
-              {showPrincipalSig && (
-                <div>
-                  <p>Mengetahui,</p>
-                  <p>{settings.principalTitle}</p>
-                  <div className="relative min-h-[68px] flex items-center py-1">
-                    {showStamp && sigStamp.stampDataUrl && (
-                      <img
-                        src={sigStamp.stampDataUrl}
-                        alt="Stempel Sekolah"
-                        style={{ width: sigStamp.stampSize, height: sigStamp.stampSize }}
-                        className="object-contain opacity-85 mix-blend-multiply -ml-3"
-                      />
-                    )}
-                    {sigStamp.principalSignatureDataUrl && (
-                      <img
-                        src={sigStamp.principalSignatureDataUrl}
-                        alt="TTD Kepala Sekolah"
-                        style={{ height: sigStamp.signatureSize }}
-                        className={`object-contain ${
-                          showStamp && sigStamp.stampDataUrl ? '-ml-9' : ''
-                        }`}
-                      />
-                    )}
+        {(showPrincipalSig || showTeacherSig) && (() => {
+          const stampOnTeacher =
+            (sigStamp.stampTarget === 'teacher' && showTeacherSig) || !showPrincipalSig;
+          const extraPadTop = Math.max(
+            0,
+            -Math.min(sigStamp.principalBlockOffsetY, sigStamp.teacherBlockOffsetY)
+          );
+          const extraPadBottom = Math.max(
+            0,
+            sigStamp.principalBlockOffsetY,
+            sigStamp.teacherBlockOffsetY
+          );
+          return (
+            <div
+              style={{
+                paddingTop: 8 + extraPadTop,
+                paddingBottom: extraPadBottom,
+              }}
+              className="grid grid-cols-2 gap-8 text-xs overflow-visible"
+            >
+              <div className="pl-4 overflow-visible">
+                {showPrincipalSig && (
+                  <div
+                    style={{
+                      transform: `translate(${sigStamp.principalBlockOffsetX}px, ${sigStamp.principalBlockOffsetY}px)`,
+                    }}
+                    className="relative"
+                  >
+                    <p>Mengetahui,</p>
+                    <p>{settings.principalTitle}</p>
+                    <div className="relative h-[78px] w-full overflow-visible">
+                      {!stampOnTeacher && showStamp && sigStamp.stampDataUrl && (
+                        <img
+                          src={sigStamp.stampDataUrl}
+                          alt="Stempel Sekolah"
+                          referrerPolicy="no-referrer"
+                          style={{
+                            left: '32px',
+                            top: '50%',
+                            width: sigStamp.stampSize,
+                            height: sigStamp.stampSize,
+                            maxWidth: 'none',
+                            transform: `translate(calc(-50% + ${sigStamp.stampOffsetX}px), calc(-50% + ${sigStamp.stampOffsetY}px))`,
+                          }}
+                          className="absolute z-10 object-contain opacity-85 mix-blend-multiply pointer-events-none select-none"
+                        />
+                      )}
+                      {sigStamp.principalSignatureDataUrl && (
+                        <img
+                          src={sigStamp.principalSignatureDataUrl}
+                          alt="TTD Kepala Sekolah"
+                          referrerPolicy="no-referrer"
+                          style={{
+                            left: '74px',
+                            top: '50%',
+                            height: sigStamp.signatureSize,
+                            width: 'auto',
+                            maxWidth: 'none',
+                            transform: `translate(calc(-50% + ${sigStamp.principalSigOffsetX}px), calc(-50% + ${sigStamp.principalSigOffsetY}px))`,
+                          }}
+                          className="absolute z-20 object-contain pointer-events-none select-none"
+                        />
+                      )}
+                    </div>
+                    <p className="font-bold underline">{settings.principalName}</p>
+                    <p>NIP. {settings.principalNip}</p>
                   </div>
-                  <p className="font-bold underline">{settings.principalName}</p>
-                  <p>NIP. {settings.principalNip}</p>
-                </div>
-              )}
-            </div>
-            <div className="pl-12">
-              {showTeacherSig && (
-                <div>
-                  <p>
-                    {settings.signatureCity}, {formatTanggalID(getTodayIso())}
-                  </p>
-                  <p>Guru Mata Pelajaran,</p>
-                  <div className="relative min-h-[68px] flex items-center py-1">
-                    {!showPrincipalSig && showStamp && sigStamp.stampDataUrl && (
-                      <img
-                        src={sigStamp.stampDataUrl}
-                        alt="Stempel Sekolah"
-                        style={{ width: sigStamp.stampSize, height: sigStamp.stampSize }}
-                        className="object-contain opacity-85 mix-blend-multiply -ml-4"
-                      />
-                    )}
-                    {sigStamp.teacherSignatureDataUrl && (
-                      <img
-                        src={sigStamp.teacherSignatureDataUrl}
-                        alt="TTD Guru Mapel"
-                        style={{ height: sigStamp.signatureSize }}
-                        className={`object-contain ${
-                          !showPrincipalSig && showStamp && sigStamp.stampDataUrl ? '-ml-9' : ''
-                        }`}
-                      />
-                    )}
+                )}
+              </div>
+              <div className="pl-12 overflow-visible">
+                {showTeacherSig && (
+                  <div
+                    style={{
+                      transform: `translate(${sigStamp.teacherBlockOffsetX}px, ${sigStamp.teacherBlockOffsetY}px)`,
+                    }}
+                    className="relative"
+                  >
+                    <p>
+                      {settings.signatureCity}, {formatTanggalID(getTodayIso())}
+                    </p>
+                    <p>Guru Mata Pelajaran,</p>
+                    <div className="relative h-[78px] w-full overflow-visible">
+                      {stampOnTeacher && showStamp && sigStamp.stampDataUrl && (
+                        <img
+                          src={sigStamp.stampDataUrl}
+                          alt="Stempel Sekolah"
+                          referrerPolicy="no-referrer"
+                          style={{
+                            left: '32px',
+                            top: '50%',
+                            width: sigStamp.stampSize,
+                            height: sigStamp.stampSize,
+                            maxWidth: 'none',
+                            transform: `translate(calc(-50% + ${sigStamp.stampOffsetX}px), calc(-50% + ${sigStamp.stampOffsetY}px))`,
+                          }}
+                          className="absolute z-10 object-contain opacity-85 mix-blend-multiply pointer-events-none select-none"
+                        />
+                      )}
+                      {sigStamp.teacherSignatureDataUrl && (
+                        <img
+                          src={sigStamp.teacherSignatureDataUrl}
+                          alt="TTD Guru Mapel"
+                          referrerPolicy="no-referrer"
+                          style={{
+                            left: '74px',
+                            top: '50%',
+                            height: sigStamp.signatureSize,
+                            width: 'auto',
+                            maxWidth: 'none',
+                            transform: `translate(calc(-50% + ${sigStamp.teacherSigOffsetX}px), calc(-50% + ${sigStamp.teacherSigOffsetY}px))`,
+                          }}
+                          className="absolute z-20 object-contain pointer-events-none select-none"
+                        />
+                      )}
+                    </div>
+                    <p className="font-bold underline">{settings.teacherProfile.name}</p>
+                    <p>NIP. {settings.teacherProfile.nip}</p>
                   </div>
-                  <p className="font-bold underline">{settings.teacherProfile.name}</p>
-                  <p>NIP. {settings.teacherProfile.nip}</p>
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </section>
     </>
   );

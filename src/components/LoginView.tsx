@@ -1,303 +1,779 @@
-import React, { useState } from 'react';
-import { ChevronRight, Database, Eye, EyeOff, Lock, Mail, ShieldCheck, Sparkles } from 'lucide-react';
-import { UserRole, WebBrandConfig } from '../types';
+import React, { useEffect, useState } from 'react';
+import {
+  ArrowRight,
+  Check,
+  Copy,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Lock,
+  Mail,
+  Moon,
+  ShieldCheck,
+  Sparkles,
+  Sun,
+  User,
+} from 'lucide-react';
+import { WebBrandConfig } from '../types';
+import { apiGetAuthStatus, ServerAuthStatus } from '../utils/apiClient';
+
+const LS_REMEMBERED_USERNAME = 'portal_eguru_remembered_user';
+const LS_LOGIN_THEME_DARK = 'portal_eguru_login_dark';
 
 interface LoginViewProps {
   defaultEmail: string;
   defaultAcademicYear: string;
   defaultSemester: 'Ganjil' | 'Genap';
-  defaultSheetsUrl: string;
   academicYears: string[];
   webBrand: WebBrandConfig;
-  onLogin: (payload: {
-    email: string;
-    password: string;
-    sheetsWebAppUrl: string;
+  externalError?: string | null;
+  onGoogleLogin?: (payload: {
     academicYear: string;
     semester: 'Ganjil' | 'Genap';
-    useDemoSeed: boolean;
-    demoAsAdmin?: boolean;
-    demoRole?: UserRole;
-  }) => string | null;
+  }) => Promise<string | null>;
+  onServerLogin: (payload: {
+    identifier: string;
+    password: string;
+    academicYear: string;
+    semester: 'Ganjil' | 'Genap';
+  }) => Promise<string | null>;
+  onClaimAdmin: (payload: {
+    username: string;
+    password: string;
+    email?: string;
+    academicYear: string;
+    semester: 'Ganjil' | 'Genap';
+  }) => Promise<string | null>;
+}
+
+function generateStrongPassword(length = 12): string {
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower = 'abcdefghijkmnopqrstuvwxyz';
+  const digits = '23456789';
+  const symbols = '!@#$%&*';
+  const all = upper + lower + digits + symbols;
+  const pick = (pool: string) => {
+    const arr = new Uint32Array(1);
+    window.crypto.getRandomValues(arr);
+    return pool[arr[0] % pool.length];
+  };
+  const chars = [pick(upper), pick(lower), pick(digits), pick(symbols)];
+  while (chars.length < length) chars.push(pick(all));
+  for (let i = chars.length - 1; i > 0; i--) {
+    const arr = new Uint32Array(1);
+    window.crypto.getRandomValues(arr);
+    const j = arr[0] % (i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join('');
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({
   defaultEmail,
   defaultAcademicYear,
   defaultSemester,
-  defaultSheetsUrl,
   academicYears,
   webBrand,
-  onLogin,
+  externalError,
+  onServerLogin,
+  onClaimAdmin,
 }) => {
-  const [email, setEmail] = useState(defaultEmail);
-  const [password, setPassword] = useState('guru123');
+  const [authStatus, setAuthStatus] = useState<ServerAuthStatus | null>(null);
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(LS_LOGIN_THEME_DARK) === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  const [rememberUsername, setRememberUsername] = useState<boolean>(() => {
+    try {
+      return Boolean(localStorage.getItem(LS_REMEMBERED_USERNAME));
+    } catch {
+      return true;
+    }
+  });
+
+  const [identifier, setIdentifier] = useState<string>(() => {
+    try {
+      return localStorage.getItem(LS_REMEMBERED_USERNAME) || defaultEmail || 'admin';
+    } catch {
+      return defaultEmail || 'admin';
+    }
+  });
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [sheetsUrl, setSheetsUrl] = useState(defaultSheetsUrl);
+  const [showForgotHelp, setShowForgotHelp] = useState(false);
+
+  // First-run Admin activation state (when server ADMIN_PASSWORD & claimed hash are unset)
+  const [claimUsername, setClaimUsername] = useState('admin');
+  const [claimEmail, setClaimEmail] = useState('admin@sman1nusantara.sch.id');
+  const [claimPassword, setClaimPassword] = useState('');
+  const [showClaimPassword, setShowClaimPassword] = useState(true);
+  const [copiedCreds, setCopiedCreds] = useState(false);
+
   const [academicYear, setAcademicYear] = useState(defaultAcademicYear);
   const [semester, setSemester] = useState<'Ganjil' | 'Genap'>(defaultSemester);
   const [error, setError] = useState<string | null>(null);
+  const [isServerLoading, setIsServerLoading] = useState(false);
+  const [logoFailed, setLogoFailed] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    let active = true;
+    apiGetAuthStatus()
+      .then((status) => {
+        if (!active) return;
+        setAuthStatus(status);
+        try {
+          const saved = localStorage.getItem(LS_REMEMBERED_USERNAME);
+          if (!saved && status.adminUsernameHint) {
+            setIdentifier(status.adminUsernameHint);
+          }
+        } catch {
+          if (status.adminUsernameHint) {
+            setIdentifier(status.adminUsernameHint);
+          }
+        }
+      })
+      .catch(() => {
+        if (!active) return;
+        setAuthStatus({
+          ok: true,
+          adminConfigured: true,
+          envAdminManaged: false,
+          adminUsernameHint: 'admin',
+        });
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const toggleDarkMode = () => {
+    setIsDark((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(LS_LOGIN_THEME_DARK, next ? '1' : '0');
+      } catch {
+        // ignore storage errors
+      }
+      return next;
+    });
+  };
+
+  const handleToggleRemember = () => {
+    setRememberUsername((prev) => {
+      const next = !prev;
+      try {
+        if (!next) {
+          localStorage.removeItem(LS_REMEMBERED_USERNAME);
+        } else if (identifier.trim()) {
+          localStorage.setItem(LS_REMEMBERED_USERNAME, identifier.trim());
+        }
+      } catch {
+        // ignore storage errors
+      }
+      return next;
+    });
+  };
+
+  const handleServerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !password.trim()) {
-      setError('Email pengguna dan password wajib diisi.');
+    setError(null);
+    const cleanId = identifier.trim();
+    if (!cleanId || !password) {
+      setError('Username atau Email dan Password wajib diisi.');
       return;
     }
-    const err = onLogin({
-      email: email.trim(),
-      password,
-      sheetsWebAppUrl: sheetsUrl.trim(),
-      academicYear,
-      semester,
-      useDemoSeed: false,
-    });
-    if (err) setError(err);
+    try {
+      if (rememberUsername) {
+        localStorage.setItem(LS_REMEMBERED_USERNAME, cleanId);
+      } else {
+        localStorage.removeItem(LS_REMEMBERED_USERNAME);
+      }
+    } catch {
+      // ignore storage errors
+    }
+
+    setIsServerLoading(true);
+    try {
+      const err = await onServerLogin({
+        identifier: cleanId,
+        password,
+        academicYear,
+        semester,
+      });
+      if (err) setError(err);
+    } finally {
+      setIsServerLoading(false);
+    }
   };
 
-  const handleDemoLogin = (role: UserRole = 'guru') => {
+  const handleClaimAdminSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError(null);
-    const demoEmails: Record<UserRole, { email: string; password: string }> = {
-      guru: { email: defaultEmail, password: 'guru123' },
-      wali_kelas: { email: 'walikelas@sman1nusantara.sch.id', password: 'wali123' },
-      kepala_sekolah: { email: 'kepsek@sman1nusantara.sch.id', password: 'kepsek123' },
-      karyawan: { email: 'tu@sman1nusantara.sch.id', password: 'staff123' },
-      admin: { email: 'admin@sman1nusantara.sch.id', password: 'admin123' },
-    };
-    const creds = demoEmails[role];
-    onLogin({
-      email: creds.email,
-      password: creds.password,
-      sheetsWebAppUrl: sheetsUrl.trim(),
-      academicYear,
-      semester,
-      useDemoSeed: true,
-      demoAsAdmin: role === 'admin',
-      demoRole: role,
-    });
+    if (!claimUsername.trim()) {
+      setError('Username Admin wajib diisi.');
+      return;
+    }
+    if (claimPassword.length < 8) {
+      setError('Password Admin wajib minimal 8 karakter.');
+      return;
+    }
+    setIsServerLoading(true);
+    try {
+      const err = await onClaimAdmin({
+        username: claimUsername.trim(),
+        password: claimPassword,
+        email: claimEmail.trim(),
+        academicYear,
+        semester,
+      });
+      if (err) setError(err);
+    } finally {
+      setIsServerLoading(false);
+    }
   };
+
+  const handleGenerateAdminPass = () => {
+    const generated = generateStrongPassword(12);
+    setClaimPassword(generated);
+    setShowClaimPassword(true);
+    setCopiedCreds(false);
+  };
+
+  const handleCopyClaimCredentials = async () => {
+    if (!claimUsername.trim() || !claimPassword) return;
+    const text = `Username Admin: ${claimUsername.trim()}\nPassword Admin: ${claimPassword}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedCreds(true);
+      window.setTimeout(() => setCopiedCreds(false), 3000);
+    } catch {
+      // ignore clipboard restrictions
+    }
+  };
+
+  const displayError = error || externalError;
+  const needsAdminClaim = authStatus !== null && !authStatus.adminConfigured;
+
+  // Soft frosted neumorphic surface tokens matched to light/dark modes
+  const pageBgStyle: React.CSSProperties = isDark
+    ? { background: 'linear-gradient(155deg, #0b1324 0%, #101c36 52%, #0a1020 100%)' }
+    : { background: 'linear-gradient(155deg, #f3f7fd 0%, #eaf0fa 52%, #e1eaf7 100%)' };
+
+  const raisedSquircleClass = isDark
+    ? 'bg-[#13203b]/90 border border-white/10 shadow-[12px_16px_32px_rgba(2,6,23,0.75),-8px_-8px_20px_rgba(30,48,88,0.35),inset_0_1px_1px_rgba(255,255,255,0.08)]'
+    : 'bg-white/75 backdrop-blur-md border border-white/80 shadow-[14px_18px_36px_rgba(162,182,216,0.55),-10px_-10px_24px_rgba(255,255,255,0.95),inset_0_1px_2px_rgba(255,255,255,0.95)]';
+
+  const frostedFieldClass = isDark
+    ? 'bg-[#121e38]/90 border border-white/10 shadow-[8px_10px_24px_rgba(2,6,23,0.65),-5px_-5px_14px_rgba(34,54,96,0.28),inset_0_1px_1px_rgba(255,255,255,0.06)] focus-within:ring-2 focus-within:ring-blue-400/70'
+    : 'bg-white/75 backdrop-blur-md border border-white/85 shadow-[8px_12px_26px_rgba(167,185,216,0.42),-7px_-7px_18px_rgba(255,255,255,0.92),inset_0_1px_1px_rgba(255,255,255,0.95)] focus-within:ring-2 focus-within:ring-blue-500/60';
+
+  const frostedInputTextClass = isDark
+    ? 'text-slate-100 placeholder:text-slate-400'
+    : 'text-slate-800 placeholder:text-slate-400';
+
+  const iconTintClass = isDark ? 'text-slate-400' : 'text-slate-500';
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col lg:flex-row">
-      {/* Left Institutional Panel */}
-      <div className="lg:w-5/12 bg-slate-900 text-white p-8 lg:p-14 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-slate-800">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-white p-1 flex items-center justify-center shrink-0 overflow-hidden">
-              <img
-                src={webBrand.webLogoDataUrl}
-                alt={webBrand.appName}
-                className="w-full h-full object-contain"
-              />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight text-white">{webBrand.appName}</h1>
-              <p className="text-xs text-slate-400">Sistem Administrasi Mengajar Terpadu</p>
-            </div>
-          </div>
+    <div
+      style={pageBgStyle}
+      className="relative min-h-screen w-full overflow-hidden flex flex-col items-center justify-center px-5 py-10 transition-colors duration-200"
+    >
+      {/* Decorative soft sculpted background geometry matching the visual template */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">
+        {/* Top-left large sculpted ring with royal blue rim reflection */}
+        <div
+          className="absolute -top-28 -left-24 w-72 h-72 sm:w-96 sm:h-96 rounded-full transition-opacity duration-200"
+          style={{
+            background: isDark
+              ? 'radial-gradient(circle at 65% 65%, rgba(37,99,235,0.18) 0%, rgba(19,32,59,0.75) 58%, rgba(37,99,235,0.45) 100%)'
+              : 'radial-gradient(circle at 65% 65%, rgba(255,255,255,0.92) 0%, rgba(232,240,254,0.8) 58%, rgba(96,150,255,0.42) 100%)',
+            boxShadow: isDark
+              ? '18px 22px 48px rgba(2,6,23,0.75), inset -4px -6px 18px rgba(59,130,246,0.45)'
+              : '18px 24px 48px rgba(154,178,218,0.45), inset -6px -8px 22px rgba(59,130,246,0.5)',
+          }}
+        />
 
-          <div className="mt-12 max-w-md">
-            <h2 className="text-3xl lg:text-4xl font-bold tracking-tight text-white leading-tight [text-wrap:balance]">
-              Jurnal Mengajar, Presensi, dan Leger Nilai dalam Satu Workspace
-            </h2>
-            <p className="mt-4 text-sm text-slate-300 leading-relaxed">
-              Dirancang khusus untuk ketertiban administrasi sekolah dan guru mata pelajaran: pencatatan pertemuan
-              harian, rekap kehadiran mendatar otomatis, matriks penilaian KKM, manajemen multi-role, hingga cetak
-              laporan resmi ber-Kop Dinas.
-            </p>
-          </div>
+        {/* Right edge soft blue sculpted orb */}
+        <div
+          className="absolute top-[22%] -right-14 sm:-right-12 w-36 h-36 sm:w-48 sm:h-48 rounded-full"
+          style={{
+            background: isDark
+              ? 'radial-gradient(circle at 30% 30%, rgba(96,165,250,0.42) 0%, rgba(37,99,235,0.22) 65%, rgba(15,23,42,0.5) 100%)'
+              : 'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95) 0%, rgba(186,210,255,0.72) 55%, rgba(121,164,252,0.68) 100%)',
+            boxShadow: isDark
+              ? '-10px 16px 36px rgba(2,6,23,0.7)'
+              : '-12px 18px 38px rgba(139,169,224,0.48), inset 4px 4px 12px rgba(255,255,255,0.8)',
+          }}
+        />
 
-          <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md">
-            <div className="p-4 rounded-lg bg-slate-800/70 border border-slate-700/70">
-              <p className="text-xs font-medium text-indigo-300">Penyimpanan Mandiri</p>
-              <p className="mt-1 text-sm font-semibold text-white">IndexedDB & LocalStorage</p>
-              <p className="mt-1 text-xs text-slate-400">Tetap aktif dan cepat tanpa bergantung koneksi internet.</p>
-            </div>
-            <div className="p-4 rounded-lg bg-slate-800/70 border border-slate-700/70">
-              <p className="text-xs font-medium text-indigo-300">Output Resmi Sekolah</p>
-              <p className="mt-1 text-sm font-semibold text-white">PDF Vektor, XLSX & XLS</p>
-              <p className="mt-1 text-xs text-slate-400">Kop Surat fleksibel, profil siswa, dan 6 font cetak.</p>
-            </div>
-          </div>
-        </div>
+        {/* Bottom-left soft translucent ring */}
+        <div
+          className="absolute -bottom-24 -left-20 w-64 h-64 sm:w-80 sm:h-80 rounded-full"
+          style={{
+            background: isDark
+              ? 'radial-gradient(circle at 70% 30%, rgba(59,130,246,0.22) 0%, rgba(15,25,48,0.8) 70%)'
+              : 'radial-gradient(circle at 70% 30%, rgba(235,243,255,0.92) 0%, rgba(184,209,255,0.65) 75%, rgba(120,165,255,0.5) 100%)',
+            boxShadow: isDark
+              ? '12px -12px 36px rgba(2,6,23,0.65), inset -3px 4px 14px rgba(96,165,250,0.3)'
+              : '14px -10px 38px rgba(154,178,218,0.42), inset -4px 4px 16px rgba(255,255,255,0.88)',
+          }}
+        />
 
-        <div className="mt-10 space-y-1 text-xs text-slate-400">
-          <p className="text-slate-300 font-semibold mb-1.5">Akun Demo per Role (Hak Akses &amp; Menu Berbeda):</p>
-          <p>
-            Guru Mapel: <span className="font-mono text-slate-200">{defaultEmail}</span> /{' '}
-            <span className="font-mono text-slate-200">guru123</span>
-          </p>
-          <p>
-            Wali Kelas: <span className="font-mono text-slate-200">walikelas@sman1nusantara.sch.id</span> /{' '}
-            <span className="font-mono text-slate-200">wali123</span>
-          </p>
-          <p>
-            Kepala Sekolah: <span className="font-mono text-slate-200">kepsek@sman1nusantara.sch.id</span> /{' '}
-            <span className="font-mono text-slate-200">kepsek123</span>
-          </p>
-          <p>
-            Staff / TU: <span className="font-mono text-slate-200">tu@sman1nusantara.sch.id</span> /{' '}
-            <span className="font-mono text-slate-200">staff123</span>
-          </p>
-          <p>
-            Admin Sistem: <span className="font-mono text-slate-200">admin@sman1nusantara.sch.id</span> /{' '}
-            <span className="font-mono text-slate-200">admin123</span>
-          </p>
-        </div>
+        {/* Bottom-right smooth raised curve */}
+        <div
+          className="absolute -bottom-28 -right-20 w-72 h-72 sm:w-96 sm:h-96 rounded-full"
+          style={{
+            background: isDark
+              ? 'radial-gradient(circle at 25% 25%, rgba(30,48,88,0.65) 0%, rgba(12,20,38,0.92) 72%)'
+              : 'radial-gradient(circle at 25% 25%, rgba(255,255,255,0.96) 0%, rgba(223,234,250,0.85) 68%, rgba(168,191,230,0.55) 100%)',
+            boxShadow: isDark
+              ? '-14px -14px 36px rgba(2,6,23,0.75), inset 3px 3px 12px rgba(96,165,250,0.2)'
+              : '-14px -14px 40px rgba(154,178,218,0.42), inset 4px 4px 14px rgba(255,255,255,0.95)',
+          }}
+        />
       </div>
 
-      {/* Right Login Form Surface */}
-      <div className="flex-1 bg-slate-50 flex items-center justify-center p-6 sm:p-10 lg:p-16">
-        <div className="w-full max-w-lg bg-white rounded-xl border border-slate-200 p-6 sm:p-9 shadow-sm">
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-slate-900">Masuk ke Ruang Kerja</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Masuk sesuai akun role Anda atau gunakan data demo otomatis untuk langsung menguji seluruh modul.
-            </p>
-          </div>
+      {/* Top-right Light / Dark toggle button matching reference */}
+      <button
+        type="button"
+        onClick={toggleDarkMode}
+        aria-label={isDark ? 'Aktifkan mode terang' : 'Aktifkan mode gelap'}
+        title={isDark ? 'Mode Terang' : 'Mode Gelap'}
+        className={`fixed top-5 right-5 sm:top-7 sm:right-8 z-20 w-11 h-11 rounded-2xl flex items-center justify-center transition-transform duration-150 hover:scale-105 active:scale-95 cursor-pointer ${raisedSquircleClass}`}
+      >
+        {isDark ? (
+          <Sun className="w-5 h-5 text-amber-300" />
+        ) : (
+          <Moon className="w-5 h-5 text-slate-800" />
+        )}
+      </button>
 
-          {error && (
-            <div className="mb-5 p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-sm text-rose-700">
-              {error}
-            </div>
+      {/* Main Centered Login Container */}
+      <main
+        className={`relative z-10 w-full ${
+          needsAdminClaim ? 'max-w-[440px]' : 'max-w-[390px]'
+        } flex flex-col items-center`}
+      >
+        {/* Top App Emblem Squircle */}
+        <div
+          className={`w-24 h-24 rounded-[28px] p-4 flex items-center justify-center mb-6 ${raisedSquircleClass}`}
+        >
+          {!logoFailed && webBrand.webLogoDataUrl ? (
+            <img
+              src={webBrand.webLogoDataUrl}
+              alt={webBrand.appName}
+              referrerPolicy="no-referrer"
+              onError={() => setLogoFailed(true)}
+              className="w-full h-full object-contain drop-shadow-sm"
+            />
+          ) : (
+            <ShieldCheck className="w-11 h-11 text-blue-600" />
           )}
+        </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Email Akun</label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="nama@sekolah.sch.id"
-                  className="w-full pl-10 pr-3.5 py-2.5 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-indigo-600"
-                />
-              </div>
+        {/* Heading & Subtitle */}
+        <div className="text-center mb-7 space-y-1.5">
+          <h1
+            className={`font-display text-3xl sm:text-[34px] font-extrabold tracking-tight ${
+              isDark ? 'text-white' : 'text-[#0c1428]'
+            }`}
+          >
+            {needsAdminClaim ? 'Aktivasi Admin' : 'Selamat Datang'}
+          </h1>
+          <p
+            className={`text-xs font-medium tracking-[0.22em] uppercase ${
+              isDark ? 'text-slate-300' : 'text-slate-600'
+            }`}
+          >
+            {needsAdminClaim ? 'Penyiapan Server Pertama Kali' : 'Masuk untuk melanjutkan'}
+          </p>
+          <p
+            className={`text-xs font-medium pt-0.5 ${
+              isDark ? 'text-blue-300/90' : 'text-slate-500'
+            }`}
+          >
+            {webBrand.appName}
+          </p>
+        </div>
+
+        {/* Error Alert */}
+        {displayError && (
+          <div
+            role="alert"
+            className={`w-full mb-5 px-4 py-3 rounded-2xl text-xs sm:text-sm font-medium border ${
+              isDark
+                ? 'bg-rose-950/75 border-rose-500/40 text-rose-200'
+                : 'bg-rose-50/90 border-rose-200 text-rose-700 shadow-sm'
+            }`}
+          >
+            {displayError}
+          </div>
+        )}
+
+        {needsAdminClaim ? (
+          <form onSubmit={handleClaimAdminSubmit} className="w-full space-y-4">
+            <p
+              className={`text-xs leading-relaxed text-center px-2 ${
+                isDark ? 'text-slate-300' : 'text-slate-600'
+              }`}
+            >
+              Tetapkan username dan password Admin utama Anda (atau klik{' '}
+              <strong className={isDark ? 'text-white' : 'text-slate-900'}>Buat Otomatis</strong>)
+              untuk mengunci akses server pertama kali.
+            </p>
+
+            {/* Username Admin */}
+            <div
+              className={`flex items-center gap-3 px-4 py-3 rounded-[18px] transition-shadow ${frostedFieldClass}`}
+            >
+              <User className={`w-4 h-4 shrink-0 ${iconTintClass}`} />
+              <input
+                type="text"
+                value={claimUsername}
+                onChange={(e) => setClaimUsername(e.target.value)}
+                placeholder="Username Admin (contoh: admin)"
+                aria-label="Username Admin"
+                className={`w-full bg-transparent text-sm font-medium focus:outline-none ${frostedInputTextClass}`}
+              />
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Password</label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Masukkan kata sandi"
-                  className="w-full pl-10 pr-10 py-2.5 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-indigo-600"
-                />
+            {/* Email Admin */}
+            <div
+              className={`flex items-center gap-3 px-4 py-3 rounded-[18px] transition-shadow ${frostedFieldClass}`}
+            >
+              <Mail className={`w-4 h-4 shrink-0 ${iconTintClass}`} />
+              <input
+                type="email"
+                value={claimEmail}
+                onChange={(e) => setClaimEmail(e.target.value)}
+                placeholder="Email Admin"
+                aria-label="Email Admin"
+                className={`w-full bg-transparent text-sm font-medium focus:outline-none ${frostedInputTextClass}`}
+              />
+            </div>
+
+            {/* Password Admin + Auto Generate */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between px-1">
+                <label
+                  htmlFor="claim-admin-password"
+                  className={`text-xs font-semibold ${
+                    isDark ? 'text-slate-300' : 'text-slate-600'
+                  }`}
+                >
+                  Password Admin (min. 8 karakter)
+                </label>
                 <button
                   type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
-                  aria-label="Tampilkan atau sembunyikan password"
+                  onClick={handleGenerateAdminPass}
+                  className={`inline-flex items-center gap-1 text-xs font-semibold cursor-pointer ${
+                    isDark
+                      ? 'text-blue-300 hover:text-blue-200'
+                      : 'text-[#1d6ef5] hover:text-blue-800'
+                  }`}
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Buat Otomatis</span>
                 </button>
               </div>
+              <div
+                className={`flex items-center gap-3 px-4 py-3 rounded-[18px] transition-shadow ${frostedFieldClass}`}
+              >
+                <KeyRound className={`w-4 h-4 shrink-0 ${iconTintClass}`} />
+                <input
+                  id="claim-admin-password"
+                  type={showClaimPassword ? 'text' : 'password'}
+                  value={claimPassword}
+                  onChange={(e) => {
+                    setClaimPassword(e.target.value);
+                    setCopiedCreds(false);
+                  }}
+                  placeholder="Masukkan atau buat password admin"
+                  className={`w-full bg-transparent text-sm font-mono focus:outline-none ${frostedInputTextClass}`}
+                />
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {claimPassword && (
+                    <button
+                      type="button"
+                      onClick={handleCopyClaimCredentials}
+                      className={`p-1 rounded-lg cursor-pointer ${iconTintClass} hover:text-blue-600`}
+                      title="Salin Username & Password"
+                      aria-label="Salin Username dan Password"
+                    >
+                      {copiedCreds ? (
+                        <Check className="w-4 h-4 text-emerald-500" />
+                      ) : (
+                        <Copy className="w-4 h-4" />
+                      )}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowClaimPassword((v) => !v)}
+                    className={`p-1 rounded-lg cursor-pointer ${iconTintClass}`}
+                    aria-label="Tampilkan atau sembunyikan password"
+                  >
+                    {showClaimPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+              {claimPassword && (
+                <p
+                  className={`text-[11px] px-1 ${
+                    isDark ? 'text-slate-300' : 'text-slate-600'
+                  }`}
+                >
+                  Catat sebelum melanjutkan:{' '}
+                  <span className="font-mono font-semibold">
+                    {claimUsername.trim()} / {claimPassword}
+                  </span>
+                </p>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Tahun Ajaran</label>
+            {/* Academic Period Selectors */}
+            <div className="grid grid-cols-2 gap-3 pt-0.5">
+              <div className={`px-3.5 py-2.5 rounded-2xl ${frostedFieldClass}`}>
                 <select
+                  aria-label="Tahun Ajaran"
                   value={academicYear}
                   onChange={(e) => setAcademicYear(e.target.value)}
-                  className="w-full px-3 py-2.5 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                  className={`w-full bg-transparent text-xs font-semibold focus:outline-none cursor-pointer ${frostedInputTextClass}`}
                 >
                   {academicYears.map((yr) => (
-                    <option key={yr} value={yr}>
+                    <option
+                      key={yr}
+                      value={yr}
+                      className={isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}
+                    >
                       {yr}
                     </option>
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Semester</label>
+              <div className={`px-3.5 py-2.5 rounded-2xl ${frostedFieldClass}`}>
                 <select
+                  aria-label="Semester"
                   value={semester}
                   onChange={(e) => setSemester(e.target.value as 'Ganjil' | 'Genap')}
-                  className="w-full px-3 py-2.5 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                  className={`w-full bg-transparent text-xs font-semibold focus:outline-none cursor-pointer ${frostedInputTextClass}`}
                 >
-                  <option value="Ganjil">Ganjil</option>
-                  <option value="Genap">Genap</option>
+                  <option
+                    value="Ganjil"
+                    className={isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}
+                  >
+                    Semester Ganjil
+                  </option>
+                  <option
+                    value="Genap"
+                    className={isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}
+                  >
+                    Semester Genap
+                  </option>
                 </select>
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Google Sheets Web App URL <span className="font-normal text-slate-400">(Opsional)</span>
-              </label>
-              <div className="relative">
-                <Database className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="url"
-                  value={sheetsUrl}
-                  onChange={(e) => setSheetsUrl(e.target.value)}
-                  placeholder="https://script.google.com/macros/s/.../exec"
-                  className="w-full pl-10 pr-3.5 py-2.5 text-sm rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600"
-                />
-              </div>
-            </div>
-
-            <div className="pt-2 space-y-2.5">
+            {/* Primary Blue CTA */}
+            <div className="pt-2">
               <button
                 type="submit"
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap"
+                disabled={isServerLoading}
+                style={{
+                  background: 'linear-gradient(95deg, #217bfe 0%, #1d5ef2 55%, #3f3be6 100%)',
+                }}
+                className="relative w-full flex items-center justify-center py-3.5 px-6 rounded-full text-white text-sm sm:text-base font-bold shadow-[0_14px_28px_-6px_rgba(37,99,235,0.55),inset_0_1px_1px_rgba(255,255,255,0.35)] hover:brightness-105 active:scale-[0.99] disabled:opacity-60 transition-all duration-150 cursor-pointer whitespace-nowrap"
               >
-                <span>Masuk ke Portal</span>
-                <ChevronRight className="w-4 h-4" />
+                <span>{isServerLoading ? 'Mengaktifkan...' : 'Aktifkan & Masuk'}</span>
+                <span className="absolute right-2.5 w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                  <ArrowRight className="w-4 h-4 text-white" />
+                </span>
               </button>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => handleDemoLogin('guru')}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  <Sparkles className="w-4 h-4 text-indigo-300 shrink-0" />
-                  <span>Demo Otomatis (Guru)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDemoLogin('admin')}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-900 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
-                  <span>Demo Otomatis (Admin)</span>
-                </button>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 pt-0.5">
-                <button
-                  type="button"
-                  onClick={() => handleDemoLogin('wali_kelas')}
-                  className="py-1.5 px-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-semibold cursor-pointer whitespace-nowrap"
-                >
-                  Demo Wali Kelas
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDemoLogin('kepala_sekolah')}
-                  className="py-1.5 px-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-semibold cursor-pointer whitespace-nowrap"
-                >
-                  Demo Kepsek
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDemoLogin('karyawan')}
-                  className="py-1.5 px-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-semibold cursor-pointer whitespace-nowrap"
-                >
-                  Demo Staff TU
-                </button>
-              </div>
             </div>
           </form>
-        </div>
-      </div>
+        ) : (
+          <form onSubmit={handleServerSubmit} className="w-full space-y-4">
+            {/* Username or Email Field */}
+            <div
+              className={`flex items-center gap-3.5 px-4 py-3.5 rounded-[18px] transition-shadow ${frostedFieldClass}`}
+            >
+              <User className={`w-4 h-4 shrink-0 ${iconTintClass}`} />
+              <input
+                type="text"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder={
+                  authStatus?.adminUsernameHint
+                    ? `Username atau Email (${authStatus.adminUsernameHint})`
+                    : 'Username atau Email'
+                }
+                aria-label="Username atau Email"
+                autoComplete="username"
+                className={`w-full bg-transparent text-sm font-medium focus:outline-none ${frostedInputTextClass}`}
+              />
+            </div>
+
+            {/* Password Field */}
+            <div
+              className={`flex items-center gap-3.5 px-4 py-3.5 rounded-[18px] transition-shadow ${frostedFieldClass}`}
+            >
+              <Lock className={`w-4 h-4 shrink-0 ${iconTintClass}`} />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                aria-label="Password"
+                autoComplete="current-password"
+                className={`w-full bg-transparent text-sm font-medium focus:outline-none ${frostedInputTextClass}`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className={`p-1 rounded-lg shrink-0 cursor-pointer ${iconTintClass} hover:text-blue-600`}
+                aria-label={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+
+            {/* Compact Period Selectors */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className={`px-3.5 py-2.5 rounded-2xl ${frostedFieldClass}`}>
+                <select
+                  aria-label="Tahun Ajaran"
+                  value={academicYear}
+                  onChange={(e) => setAcademicYear(e.target.value)}
+                  className={`w-full bg-transparent text-xs font-semibold focus:outline-none cursor-pointer ${frostedInputTextClass}`}
+                >
+                  {academicYears.map((yr) => (
+                    <option
+                      key={yr}
+                      value={yr}
+                      className={isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}
+                    >
+                      TA {yr}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className={`px-3.5 py-2.5 rounded-2xl ${frostedFieldClass}`}>
+                <select
+                  aria-label="Semester"
+                  value={semester}
+                  onChange={(e) => setSemester(e.target.value as 'Ganjil' | 'Genap')}
+                  className={`w-full bg-transparent text-xs font-semibold focus:outline-none cursor-pointer ${frostedInputTextClass}`}
+                >
+                  <option
+                    value="Ganjil"
+                    className={isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}
+                  >
+                    Semester Ganjil
+                  </option>
+                  <option
+                    value="Genap"
+                    className={isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}
+                  >
+                    Semester Genap
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            {/* Remember Me & Forgot Password Row */}
+            <div className="flex items-center justify-between px-1 pt-0.5 text-xs">
+              <button
+                type="button"
+                onClick={handleToggleRemember}
+                className="inline-flex items-center gap-2.5 cursor-pointer group"
+              >
+                <span
+                  className={`w-4 h-4 rounded-md flex items-center justify-center transition-colors ${
+                    rememberUsername
+                      ? 'bg-[#1d6ef5] text-white shadow-sm'
+                      : isDark
+                        ? 'bg-slate-800 border border-slate-600 text-transparent'
+                        : 'bg-white/80 border border-slate-300 text-transparent'
+                  }`}
+                >
+                  <Check className="w-3 h-3 stroke-[3]" />
+                </span>
+                <span
+                  className={`font-medium ${
+                    isDark
+                      ? 'text-slate-300 group-hover:text-white'
+                      : 'text-slate-700 group-hover:text-slate-900'
+                  }`}
+                >
+                  Ingat saya
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowForgotHelp((v) => !v)}
+                className={`font-semibold cursor-pointer hover:underline ${
+                  isDark ? 'text-blue-400' : 'text-[#1d6ef5]'
+                }`}
+              >
+                Lupa Password?
+              </button>
+            </div>
+
+            {showForgotHelp && (
+              <div
+                className={`px-4 py-3 rounded-2xl text-xs leading-relaxed ${
+                  isDark
+                    ? 'bg-slate-900/80 border border-slate-700 text-slate-300'
+                    : 'bg-white/80 border border-slate-200/80 text-slate-600'
+                }`}
+              >
+                Untuk mengatur ulang kata sandi Guru/Pegawai, hubungi{' '}
+                <strong className={isDark ? 'text-white' : 'text-slate-900'}>Admin Sistem</strong>{' '}
+                di menu Manajemen Pengguna. Admin dapat memperbarui kredensial utama melalui panel
+                pengaturan Secrets server.
+              </div>
+            )}
+
+            {/* Signature Blue Gradient Pill Login Button */}
+            <div className="pt-2">
+              <button
+                type="submit"
+                disabled={isServerLoading}
+                style={{
+                  background: 'linear-gradient(95deg, #217bfe 0%, #1d5ef2 55%, #3f3be6 100%)',
+                }}
+                className="relative w-full flex items-center justify-center py-3.5 px-6 rounded-full text-white text-sm sm:text-base font-bold shadow-[0_14px_28px_-6px_rgba(37,99,235,0.55),inset_0_1px_1px_rgba(255,255,255,0.35)] hover:brightness-105 active:scale-[0.99] disabled:opacity-60 transition-all duration-150 cursor-pointer whitespace-nowrap"
+              >
+                <span>{isServerLoading ? 'Memverifikasi...' : 'Masuk'}</span>
+                <span className="absolute right-2.5 w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                  <ArrowRight className="w-4 h-4 text-white" />
+                </span>
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* Quiet Unboxed Footer Tagline (No Social Login Buttons) */}
+        <footer className="mt-10 text-center">
+          <p
+            className={`text-[11px] font-medium tracking-[0.26em] uppercase ${
+              isDark ? 'text-slate-400' : 'text-slate-500'
+            }`}
+          >
+            Jurnal <span aria-hidden="true">·</span> Presensi <span aria-hidden="true">·</span>{' '}
+            Leger Nilai
+          </p>
+        </footer>
+      </main>
     </div>
   );
 };

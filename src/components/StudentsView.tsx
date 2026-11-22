@@ -12,7 +12,12 @@ import {
 import * as XLSX from 'xlsx';
 import { Student, StudentStatus, SystemSettings } from '../types';
 import { getStudentPhotoUrl } from '../utils/defaultAvatars';
-import { generateId, STUDENT_STATUS_LABELS } from '../utils/helpers';
+import {
+  formatStudentTtl,
+  generateId,
+  parseTtlFields,
+  STUDENT_STATUS_LABELS,
+} from '../utils/helpers';
 
 interface StudentsViewProps {
   students: Student[];
@@ -69,7 +74,22 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
         if (filterStatus !== 'ALL' && stStatus !== filterStatus) return false;
         if (filterClass !== 'ALL' && st.className !== filterClass) return false;
         if (q) {
-          const hay = `${st.nis} ${st.absenNo || ''} ${st.name} ${st.className} ${st.email || ''}`.toLowerCase();
+          const hay = [
+            st.nis,
+            st.nisn || '',
+            st.absenNo || '',
+            st.name,
+            st.className,
+            st.email || '',
+            st.phone || '',
+            st.birthPlace || '',
+            st.birthDate || '',
+            st.address || '',
+            st.homeroomTeacher || '',
+            st.counselor || '',
+          ]
+            .join(' ')
+            .toLowerCase();
           if (!hay.includes(q)) return false;
         }
         return true;
@@ -109,37 +129,47 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
   const handleDownloadTemplate = () => {
     const templateRows = [
       {
-        'No Absen': '01',
         NIS: '25261099',
-        'Nama Lengkap': 'Contoh Nama Siswa',
-        'L/P': 'L',
+        NISN: '0104109901',
+        Nama: 'Contoh Nama Siswa',
         Kelas: settings.classes[0] || 'X IPA 1',
-        Status: 'aktif',
-        'Tahun Masuk': settings.academicYear,
+        'No Absen': '01',
+        Tempat: 'Bandung',
+        'Tanggal Lahir': '12 Mei 2010',
         Email: 'siswa@sekolah.sch.id',
-        TTL: 'Bandung, 12 Mei 2010',
-        Alamat: 'Jl. Pendidikan No. 10, Bandung',
-        'Foto URL': '',
+        Foto: '',
+        ALAMAT: 'Jl. Pendidikan No. 10, Bandung',
+        NO_HP: '0812-3456-7890',
+        JENIS_KELAMIN: 'L',
+        Status: 'aktif',
+        'Wali Kelas': 'Budi Hartono, S.Pd.',
+        'Guru BK': 'Dra. Ratna Sari, M.Pd., Kons.',
+        'Tahun Masuk': settings.academicYear,
       },
       {
-        'No Absen': '02',
         NIS: '25261100',
-        'Nama Lengkap': 'Contoh Nama Siswi',
-        'L/P': 'P',
+        NISN: '0104109902',
+        Nama: 'Contoh Nama Siswi',
         Kelas: settings.classes[0] || 'X IPA 1',
-        Status: 'aktif',
-        'Tahun Masuk': settings.academicYear,
+        'No Absen': '02',
+        Tempat: 'Cimahi',
+        'Tanggal Lahir': '20 Agustus 2010',
         Email: 'siswi@sekolah.sch.id',
-        TTL: 'Bandung, 20 Agustus 2010',
-        Alamat: 'Jl. Merdeka No. 25, Bandung',
-        'Foto URL': '',
+        Foto: '',
+        ALAMAT: 'Jl. Merdeka No. 25, Bandung',
+        NO_HP: '0813-9876-5432',
+        JENIS_KELAMIN: 'P',
+        Status: 'aktif',
+        'Wali Kelas': 'Budi Hartono, S.Pd.',
+        'Guru BK': 'Dra. Ratna Sari, M.Pd., Kons.',
+        'Tahun Masuk': settings.academicYear,
       },
     ];
     const ws = XLSX.utils.json_to_sheet(templateRows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Template Siswa');
     XLSX.writeFile(wb, 'Template_Impor_Siswa_EGuru.xlsx');
-    onNotify('Template Excel (.xlsx) siswa berhasil diunduh.');
+    onNotify('Template Excel (.xlsx) siswa dengan 15 kolom standar berhasil diunduh.');
   };
 
   const handleExportStudents = () => {
@@ -147,20 +177,30 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
       selectedIds.length > 0
         ? filteredStudents.filter((st) => selectedIds.includes(st.id))
         : filteredStudents;
-    const rows = targetList.map((st, idx) => ({
-      No: idx + 1,
-      'No Absen': st.absenNo || '-',
-      NIS: st.nis,
-      'Nama Lengkap': st.name,
-      'L/P': st.gender,
-      Kelas: st.className,
-      Status: STUDENT_STATUS_LABELS[st.status || 'aktif'],
-      'Tahun Masuk': st.enrollmentYear || settings.academicYear,
-      Email: st.email || '-',
-      TTL: st.ttl || '-',
-      Alamat: st.address || '-',
-      'Foto URL': st.photoDataUrl && !st.photoDataUrl.startsWith('data:') ? st.photoDataUrl : '',
-    }));
+    const rows = targetList.map((st, idx) => {
+      const parsedTtl = parseTtlFields(st.ttl);
+      const tempat = st.birthPlace || parsedTtl.birthPlace || '-';
+      const tglLahir = st.birthDate || parsedTtl.birthDate || '-';
+      return {
+        No: idx + 1,
+        NIS: st.nis,
+        NISN: st.nisn || '-',
+        Nama: st.name,
+        Kelas: st.className,
+        'No Absen': st.absenNo || '-',
+        Tempat: tempat,
+        'Tanggal Lahir': tglLahir,
+        Email: st.email || '-',
+        Foto: st.photoDataUrl && !st.photoDataUrl.startsWith('data:') ? st.photoDataUrl : '',
+        ALAMAT: st.address || '-',
+        NO_HP: st.phone || '-',
+        JENIS_KELAMIN: st.gender,
+        Status: STUDENT_STATUS_LABELS[st.status || 'aktif'],
+        'Wali Kelas': st.homeroomTeacher || '-',
+        'Guru BK': st.counselor || '-',
+        'Tahun Masuk': st.enrollmentYear || settings.academicYear,
+      };
+    });
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Data Siswa');
@@ -181,16 +221,22 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
   const parseAndImportRows = (
     rawRows: Array<{
       nis: string;
+      nisn?: string;
       name: string;
-      gender: string;
       className: string;
       absenNo?: string;
-      status?: string;
-      enrollmentYear?: string;
-      email?: string;
+      birthPlace?: string;
+      birthDate?: string;
       ttl?: string;
-      address?: string;
+      email?: string;
       photoDataUrl?: string;
+      address?: string;
+      phone?: string;
+      gender: string;
+      status?: string;
+      homeroomTeacher?: string;
+      counselor?: string;
+      enrollmentYear?: string;
     }>
   ) => {
     const valid: Student[] = [];
@@ -198,12 +244,19 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
       const cleanNis = String(r.nis || '').trim();
       const cleanName = String(r.name || '').trim();
       const cleanGenderRaw = String(r.gender || 'L').trim().toUpperCase();
-      const cleanGender: 'L' | 'P' = cleanGenderRaw.startsWith('P') ? 'P' : 'L';
+      const cleanGender: 'L' | 'P' =
+        cleanGenderRaw.startsWith('P') || cleanGenderRaw === 'PEREMPUAN' ? 'P' : 'L';
       const cleanClass = String(r.className || settings.classes[0] || 'X IPA 1').trim();
       if (cleanNis && cleanName && cleanNis.toLowerCase() !== 'nis') {
+        const parsedTtl = parseTtlFields(r.ttl);
+        const birthPlace = String(r.birthPlace || '').trim() || parsedTtl.birthPlace;
+        const birthDate = String(r.birthDate || '').trim() || parsedTtl.birthDate;
+        const combinedTtl = formatStudentTtl({ birthPlace, birthDate, ttl: r.ttl });
+
         valid.push({
           id: generateId('std'),
           nis: cleanNis,
+          nisn: String(r.nisn || '').trim(),
           absenNo: String(r.absenNo || '').trim(),
           name: cleanName,
           gender: cleanGender,
@@ -211,8 +264,13 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
           status: parseStatus(r.status),
           enrollmentYear: String(r.enrollmentYear || settings.academicYear).trim(),
           email: String(r.email || '').trim(),
-          ttl: String(r.ttl || '').trim(),
+          birthPlace,
+          birthDate,
+          ttl: combinedTtl,
           address: String(r.address || '').trim(),
+          phone: String(r.phone || '').trim(),
+          homeroomTeacher: String(r.homeroomTeacher || '').trim(),
+          counselor: String(r.counselor || '').trim(),
           photoDataUrl: String(r.photoDataUrl || '').trim(),
         });
       }
@@ -234,19 +292,27 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
       .map((l) => l.trim())
       .filter(Boolean);
 
+    // Format kolom sesuai urutan user:
+    // NIS | NISN | Nama | Kelas | No Absen | Tempat | Tanggal Lahir | Email | Foto | ALAMAT | NO_HP | JENIS_KELAMIN | Status | Wali Kelas | Guru BK
     const parsed = lines.map((line) => {
       const delimiter = line.includes('\t') ? '\t' : line.includes(';') ? ';' : ',';
       const cols = line.split(delimiter).map((c) => c.trim());
       return {
         nis: cols[0] || '',
-        name: cols[1] || '',
-        gender: cols[2] || 'L',
+        nisn: cols[1] || '',
+        name: cols[2] || '',
         className: cols[3] || settings.classes[0] || 'X IPA 1',
         absenNo: cols[4] || '',
-        email: cols[5] || '',
-        ttl: cols[6] || '',
-        address: cols[7] || '',
+        birthPlace: cols[5] || '',
+        birthDate: cols[6] || '',
+        email: cols[7] || '',
         photoDataUrl: cols[8] || '',
+        address: cols[9] || '',
+        phone: cols[10] || '',
+        gender: cols[11] || 'L',
+        status: cols[12] || 'aktif',
+        homeroomTeacher: cols[13] || '',
+        counselor: cols[14] || '',
       };
     });
 
@@ -260,20 +326,37 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
       const buffer = await file.arrayBuffer();
       const wb = XLSX.read(buffer, { type: 'array' });
       const firstSheet = wb.Sheets[wb.SheetNames[0]];
-      const jsonRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet);
+      const jsonRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, {
+        raw: false,
+      });
+
+      const pick = (row: Record<string, unknown>, keys: string[], fallback = '') => {
+        for (const k of keys) {
+          if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') {
+            return String(row[k]).trim();
+          }
+        }
+        return fallback;
+      };
 
       const mapped = jsonRows.map((row) => ({
-        nis: String(row['NIS'] ?? row['nis'] ?? row['No Induk'] ?? ''),
-        absenNo: String(row['No Absen'] ?? row['No. Absen'] ?? row['Absen'] ?? ''),
-        name: String(row['Nama Lengkap'] ?? row['Nama'] ?? row['nama'] ?? row['Nama Siswa'] ?? ''),
-        gender: String(row['L/P'] ?? row['Jenis Kelamin'] ?? row['JK'] ?? 'L'),
-        className: String(row['Kelas'] ?? row['kelas'] ?? settings.classes[0] ?? 'X IPA 1'),
-        status: String(row['Status'] ?? row['status'] ?? 'aktif'),
-        enrollmentYear: String(row['Tahun Masuk'] ?? row['Angkatan'] ?? settings.academicYear),
-        email: String(row['Email'] ?? row['email'] ?? ''),
-        ttl: String(row['TTL'] ?? row['Tempat Tanggal Lahir'] ?? ''),
-        address: String(row['Alamat'] ?? row['alamat'] ?? ''),
-        photoDataUrl: String(row['Foto URL'] ?? row['Link Foto'] ?? row['Foto'] ?? ''),
+        nis: pick(row, ['NIS', 'nis', 'No Induk']),
+        nisn: pick(row, ['NISN', 'nisn']),
+        name: pick(row, ['Nama', 'Nama Lengkap', 'nama', 'Nama Siswa']),
+        className: pick(row, ['Kelas', 'kelas'], settings.classes[0] || 'X IPA 1'),
+        absenNo: pick(row, ['No Absen', 'No. Absen', 'Absen', 'NO_ABSEN']),
+        birthPlace: pick(row, ['Tempat', 'Tempat Lahir', 'tempat', 'TEMPAT']),
+        birthDate: pick(row, ['Tanggal Lahir', 'Tgl Lahir', 'TGL_LAHIR', 'tanggal_lahir']),
+        ttl: pick(row, ['TTL', 'Tempat Tanggal Lahir']),
+        email: pick(row, ['Email', 'email', 'EMAIL']),
+        photoDataUrl: pick(row, ['Foto', 'Foto URL', 'Link Foto', 'FOTO']),
+        address: pick(row, ['ALAMAT', 'Alamat', 'alamat']),
+        phone: pick(row, ['NO_HP', 'No HP', 'No. HP', 'HP', 'Telepon', 'No WA']),
+        gender: pick(row, ['JENIS_KELAMIN', 'Jenis Kelamin', 'L/P', 'JK'], 'L'),
+        status: pick(row, ['Status', 'status', 'STATUS'], 'aktif'),
+        homeroomTeacher: pick(row, ['Wali Kelas', 'WALI_KELAS', 'wali_kelas']),
+        counselor: pick(row, ['Guru BK', 'GURU_BK', 'guru_bk', 'BK']),
+        enrollmentYear: pick(row, ['Tahun Masuk', 'Angkatan'], settings.academicYear),
       }));
 
       parseAndImportRows(mapped);
@@ -292,16 +375,16 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Action Card: Tambah Siswa (Pop-up), Naik Kelas & Impor/Ekspor Excel */}
+      {/* Top Action Card */}
       <section className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div className="space-y-1">
           <h2 className="text-base font-bold text-slate-900">
-            Manajemen Biodata, Kenaikan Kelas & Peserta Didik
+            Manajemen Biodata, Kenaikan Kelas &amp; Peserta Didik
           </h2>
           <p className="text-xs text-slate-500 leading-relaxed max-w-2xl">
-            Tambah siswa baru melalui pop-up biodata, proses{' '}
-            <strong className="text-slate-700">Naik Kelas / Mutasi</strong> secara massal, atau klik{' '}
-            <strong className="text-slate-700">Nama Siswa</strong> / <strong className="text-slate-700">Kelas</strong> untuk melihat detail & riwayat aktivitas.
+            Kelola data lengkap siswa (NIS, NISN, TTL, Kontak, Alamat, Wali Kelas, Guru BK), proses{' '}
+            <strong className="text-slate-700">Naik Kelas / Mutasi</strong>, atau klik{' '}
+            <strong className="text-slate-700">Nama Siswa</strong> untuk membuka profil &amp; cetak individu.
           </p>
         </div>
 
@@ -374,9 +457,9 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
             <div>
               <h3 className="text-sm font-bold text-slate-900">Kotak Impor Data Siswa</h3>
               <p className="text-xs text-slate-500">
-                Format kolom berurutan:{' '}
+                Format kolom tempel (Tab):{' '}
                 <span className="font-mono font-semibold">
-                  NIS [Tab] Nama Lengkap [Tab] L/P [Tab] Kelas [Tab] No Absen [Tab] Email [Tab] TTL [Tab] Alamat [Tab] Foto URL
+                  NIS [Tab] NISN [Tab] Nama [Tab] Kelas [Tab] No Absen [Tab] Tempat [Tab] Tanggal Lahir [Tab] Email [Tab] Foto [Tab] ALAMAT [Tab] NO_HP [Tab] JENIS_KELAMIN [Tab] Status [Tab] Wali Kelas [Tab] Guru BK
                 </span>
               </p>
             </div>
@@ -401,10 +484,10 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
           </div>
 
           <textarea
-            rows={5}
+            rows={4}
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
-            placeholder={`25261011\tBudi Santoso\tL\tX IPA 1\t08\tbudi@siswa.sch.id\tBandung, 10 Mei 2010\tJl. Riau No. 12`}
+            placeholder={`25261011\t0104109901\tBudi Santoso\tX IPA 1\t08\tBandung\t10 Mei 2010\tbudi@siswa.sch.id\t\tJl. Riau No. 12\t081234567890\tL\taktif\tBudi Hartono, S.Pd.\tDra. Ratna Sari, M.Pd., Kons.`}
             className="w-full p-3 text-xs font-mono rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
           />
 
@@ -445,8 +528,8 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Cari nama, NIS, atau email..."
-                className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600 w-52 sm:w-56"
+                placeholder="Cari NIS, NISN, nama, HP, wali..."
+                className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600 w-56 sm:w-64"
               />
             </div>
 
@@ -488,7 +571,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
           </div>
         </div>
 
-        <div className="max-h-[460px] overflow-auto eguru-scroll">
+        <div className="max-h-[480px] overflow-auto eguru-scroll">
           <table className="w-full text-left border-collapse">
             <thead className="sticky top-0 z-10 bg-slate-900 text-white text-xs">
               <tr>
@@ -505,24 +588,27 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                   />
                 </th>
                 <th className="py-2.5 px-3 font-semibold w-14 text-center">Absen</th>
-                <th className="py-2.5 px-3 font-semibold w-28">NIS</th>
-                <th className="py-2.5 px-3 font-semibold min-w-[210px]">Nama Lengkap</th>
-                <th className="py-2.5 px-3 font-semibold text-center w-16">L/P</th>
-                <th className="py-2.5 px-3 font-semibold w-28">Kelas & Status</th>
-                <th className="py-2.5 px-3 font-semibold min-w-[180px]">Email & TTL</th>
+                <th className="py-2.5 px-3 font-semibold min-w-[125px]">NIS / NISN</th>
+                <th className="py-2.5 px-3 font-semibold min-w-[200px]">Nama &amp; Foto</th>
+                <th className="py-2.5 px-3 font-semibold text-center w-14">JK</th>
+                <th className="py-2.5 px-3 font-semibold min-w-[110px]">Kelas &amp; Status</th>
+                <th className="py-2.5 px-3 font-semibold min-w-[190px]">Tempat, Tgl Lahir &amp; Alamat</th>
+                <th className="py-2.5 px-3 font-semibold min-w-[170px]">No. HP &amp; Email</th>
+                <th className="py-2.5 px-3 font-semibold min-w-[180px]">Wali Kelas &amp; Guru BK</th>
                 <th className="py-2.5 px-4 font-semibold text-right w-32">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 text-sm">
               {filteredStudents.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-10 text-center text-slate-500 text-sm">
+                  <td colSpan={10} className="py-10 text-center text-slate-500 text-sm">
                     Tidak ada data siswa yang cocok dengan filter kelas/status.
                   </td>
                 </tr>
               ) : (
                 filteredStudents.map((st, idx) => {
                   const stStatus: StudentStatus = st.status || 'aktif';
+                  const displayTtl = formatStudentTtl(st);
                   return (
                     <tr key={st.id} className="hover:bg-slate-50">
                       <td className="py-2.5 px-3 text-center">
@@ -537,14 +623,18 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                       <td className="py-2.5 px-3 text-center text-xs font-mono text-slate-600 tabular-nums">
                         {st.absenNo || String(idx + 1).padStart(2, '0')}
                       </td>
-                      <td className="py-2.5 px-3 font-mono text-xs text-slate-700 tabular-nums">
-                        {st.nis}
+                      <td className="py-2.5 px-3 font-mono text-xs tabular-nums">
+                        <div className="font-semibold text-slate-800">{st.nis}</div>
+                        <div className="text-[11px] text-slate-400">
+                          {st.nisn ? `NISN: ${st.nisn}` : 'NISN: -'}
+                        </div>
                       </td>
                       <td className="py-2.5 px-3">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 overflow-hidden">
+                          <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 overflow-hidden">
                             <img
                               src={getStudentPhotoUrl(st)}
+                              referrerPolicy="no-referrer"
                               onError={(e) => {
                                 e.currentTarget.onerror = null;
                                 e.currentTarget.src = getStudentPhotoUrl({
@@ -584,16 +674,45 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                             <span className="font-semibold text-indigo-700">{st.className}</span>
                           )}
                         </div>
-                        {stStatus !== 'aktif' && (
-                          <div className="text-[11px] font-medium text-amber-700">
-                            {STUDENT_STATUS_LABELS[stStatus]}
-                          </div>
-                        )}
+                        <div
+                          className={`text-[11px] font-medium ${
+                            stStatus === 'aktif' ? 'text-emerald-700' : 'text-amber-700'
+                          }`}
+                        >
+                          {STUDENT_STATUS_LABELS[stStatus]}
+                        </div>
                       </td>
                       <td className="py-2.5 px-3 text-xs text-slate-600">
-                        <div className="truncate max-w-[220px]">{st.email || '-'}</div>
-                        <div className="text-[11px] text-slate-400 truncate max-w-[220px]">
-                          {st.ttl || '-'}
+                        <div className="font-medium text-slate-800 truncate max-w-[200px]">
+                          {displayTtl || '-'}
+                        </div>
+                        <div
+                          className="text-[11px] text-slate-400 truncate max-w-[200px]"
+                          title={st.address}
+                        >
+                          {st.address || '-'}
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-3 text-xs text-slate-600">
+                        <div className="font-mono text-slate-800 truncate max-w-[180px]">
+                          {st.phone || '-'}
+                        </div>
+                        <div
+                          className="text-[11px] text-slate-400 truncate max-w-[180px]"
+                          title={st.email}
+                        >
+                          {st.email || '-'}
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-3 text-xs text-slate-600">
+                        <div className="truncate max-w-[190px]" title={st.homeroomTeacher}>
+                          <span className="text-slate-400">WK:</span>{' '}
+                          <span className="font-medium text-slate-800">
+                            {st.homeroomTeacher || '-'}
+                          </span>
+                        </div>
+                        <div className="text-[11px] truncate max-w-[190px]" title={st.counselor}>
+                          <span className="text-slate-400">BK:</span> {st.counselor || '-'}
                         </div>
                       </td>
                       <td className="py-2.5 px-4 text-right whitespace-nowrap">

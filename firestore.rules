@@ -1,0 +1,450 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net (Default-Deny Catch-All)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Global Primitives & Identity Helpers
+    // -------------------------------------------------------------------------
+    function isValidId(id) {
+      return id is string
+        && id.size() >= 1
+        && id.size() <= 128
+        && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email is string
+        && request.auth.token.email.size() >= 3
+        && request.auth.token.email.size() <= 200;
+    }
+
+    function authEmailLower() {
+      return request.auth.token.email.lower();
+    }
+
+    function authEmailKey() {
+      return request.auth.token.email.lower()
+        .replace('@', '_at_')
+        .replace('\\.', '_dot_')
+        .replace('-', '_dash_')
+        .replace('\\+', '_plus_');
+    }
+
+    function memberDocPath() {
+      return /databases/$(database)/documents/memberAccess/$(authEmailKey());
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && authEmailLower() == 'wikwikeuy@gmail.com';
+    }
+
+    function isActiveMember() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser()
+        && exists(memberDocPath())
+        && get(memberDocPath()).data.active == true
+      );
+    }
+
+    function memberRole() {
+      return isBootstrappedAdmin() ? 'admin' : get(memberDocPath()).data.role;
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser()
+        && exists(memberDocPath())
+        && get(memberDocPath()).data.active == true
+        && get(memberDocPath()).data.role == 'admin'
+      );
+    }
+
+    function isStudentManager() {
+      return isAdmin() || (
+        isActiveMember() && memberRole() in ['guru', 'wali_kelas', 'karyawan']
+      );
+    }
+
+    function isAcademicManager() {
+      return isAdmin() || (
+        isActiveMember() && memberRole() in ['guru', 'wali_kelas']
+      );
+    }
+
+    function isSelfAppUser(userId) {
+      return isActiveMember()
+        && exists(memberDocPath())
+        && get(memberDocPath()).data.userId == userId;
+    }
+
+    function isValidRole(role) {
+      return role in ['admin', 'guru', 'wali_kelas', 'kepala_sekolah', 'karyawan'];
+    }
+
+    function isValidSemester(sem) {
+      return sem in ['Ganjil', 'Genap'];
+    }
+
+    function isValidStringList(arr, maxItems) {
+      return arr is list
+        && arr.size() <= maxItems
+        && (arr.size() == 0 || (arr[0] is string && arr[0].size() <= 160));
+    }
+
+    // -------------------------------------------------------------------------
+    // Entity Validation Blueprints
+    // -------------------------------------------------------------------------
+    function isValidSchoolSettings(data) {
+      return data.keys().hasAll([
+          'version', 'academicYear', 'semester', 'kkm', 'signatureCity',
+          'principalTitle', 'principalName', 'principalNip', 'themeId',
+          'reportFontFamily', 'reportPaperSize', 'reportOrientation', 'lockReportFormat',
+          'signatureStamp', 'webBrand', 'kopSurat',
+          'teacherProfile', 'classes', 'subjects', 'examTypes',
+          'examWeights', 'useWeightedAverage', 'academicYears',
+          'updatedAt', 'updatedByUid'
+        ])
+        && data.keys().hasOnly([
+          'version', 'academicYear', 'semester', 'kkm', 'signatureCity',
+          'principalTitle', 'principalName', 'principalNip', 'themeId',
+          'reportFontFamily', 'reportPaperSize', 'reportOrientation', 'lockReportFormat',
+          'signatureStamp', 'webBrand', 'kopSurat',
+          'teacherProfile', 'classes', 'subjects', 'examTypes',
+          'examWeights', 'useWeightedAverage', 'academicYears',
+          'updatedAt', 'updatedByUid'
+        ])
+        && data.version is string && data.version.size() <= 32
+        && data.academicYear is string && data.academicYear.size() >= 4 && data.academicYear.size() <= 20
+        && isValidSemester(data.semester)
+        && data.kkm is number && data.kkm >= 0 && data.kkm <= 100
+        && data.signatureCity is string && data.signatureCity.size() <= 100
+        && data.principalTitle is string && data.principalTitle.size() <= 120
+        && data.principalName is string && data.principalName.size() <= 150
+        && data.principalNip is string && data.principalNip.size() <= 60
+        && data.themeId in ['indigo', 'emerald', 'teal', 'amber', 'rose', 'slate', 'midnight']
+        && data.reportFontFamily in ['Times New Roman', 'Tahoma', 'Arial', 'Verdana', 'Calibri', 'Georgia']
+        && data.reportPaperSize in ['A4', 'F4', 'Letter', 'Legal']
+        && data.reportOrientation in ['portrait', 'landscape']
+        && data.lockReportFormat is bool
+        && data.signatureStamp is map
+        && data.webBrand is map
+        && data.kopSurat is map
+        && data.teacherProfile is map
+        && isValidStringList(data.classes, 200)
+        && isValidStringList(data.subjects, 200)
+        && isValidStringList(data.examTypes, 100)
+        && data.examWeights is map
+        && data.useWeightedAverage is bool
+        && isValidStringList(data.academicYears, 50)
+        && data.updatedAt == request.time
+        && data.updatedByUid == request.auth.uid;
+    }
+
+    function isValidSchoolAsset(data, assetId) {
+      return data.keys().hasAll(['id', 'dataUrl', 'updatedAt', 'updatedByUid'])
+        && data.keys().hasOnly(['id', 'dataUrl', 'updatedAt', 'updatedByUid'])
+        && data.id == assetId
+        && isValidId(data.id)
+        && data.dataUrl is string && data.dataUrl.size() <= 900000
+        && data.updatedAt == request.time
+        && data.updatedByUid == request.auth.uid;
+    }
+
+    function isValidMemberAccess(data) {
+      return data.keys().hasAll(['userId', 'emailLower', 'role', 'active', 'updatedAt'])
+        && data.keys().hasOnly(['userId', 'emailLower', 'role', 'active', 'updatedAt'])
+        && isValidId(data.userId)
+        && data.emailLower is string && data.emailLower.size() >= 3 && data.emailLower.size() <= 200
+        && isValidRole(data.role)
+        && data.active is bool
+        && data.updatedAt == request.time;
+    }
+
+    function isValidAppUserPublic(data, userId) {
+      return data.keys().hasAll([
+          'id', 'name', 'nip', 'role', 'school', 'gender',
+          'photoDataUrl', 'assignedClasses', 'assignedSubjects',
+          'active', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'name', 'nip', 'role', 'school', 'gender',
+          'photoDataUrl', 'assignedClasses', 'assignedSubjects',
+          'active', 'createdAt', 'updatedAt'
+        ])
+        && data.id == userId
+        && isValidId(data.id)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 150
+        && data.nip is string && data.nip.size() <= 60
+        && isValidRole(data.role)
+        && data.school is string && data.school.size() <= 180
+        && data.gender in ['L', 'P']
+        && data.photoDataUrl is string && data.photoDataUrl.size() <= 350000
+        && isValidStringList(data.assignedClasses, 200)
+        && isValidStringList(data.assignedSubjects, 200)
+        && data.active is bool
+        && data.createdAt is timestamp
+        && data.updatedAt == request.time;
+    }
+
+    function isValidAppUserPrivate(data, userId) {
+      return data.keys().hasAll(['userId', 'email', 'emailLower', 'updatedAt'])
+        && data.keys().hasOnly(['userId', 'email', 'emailLower', 'updatedAt'])
+        && data.userId == userId
+        && isValidId(data.userId)
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 200
+        && data.emailLower is string && data.emailLower.size() >= 3 && data.emailLower.size() <= 200
+        && data.emailLower == data.email.lower()
+        && data.updatedAt == request.time;
+    }
+
+    function isValidStudentPublic(data, studentId) {
+      return data.keys().hasAll([
+          'id', 'nis', 'nisn', 'absenNo', 'name', 'gender', 'className',
+          'status', 'enrollmentYear', 'photoDataUrl', 'birthPlace',
+          'birthDate', 'ttl', 'homeroomTeacher', 'counselor', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'nis', 'nisn', 'absenNo', 'name', 'gender', 'className',
+          'status', 'enrollmentYear', 'photoDataUrl', 'birthPlace',
+          'birthDate', 'ttl', 'homeroomTeacher', 'counselor', 'updatedAt'
+        ])
+        && data.id == studentId
+        && isValidId(data.id)
+        && data.nis is string && data.nis.size() >= 1 && data.nis.size() <= 40
+        && data.nisn is string && data.nisn.size() <= 40
+        && data.absenNo is string && data.absenNo.size() <= 16
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 150
+        && data.gender in ['L', 'P']
+        && data.className is string && data.className.size() >= 1 && data.className.size() <= 60
+        && data.status in ['aktif', 'lulus', 'pindah', 'keluar']
+        && data.enrollmentYear is string && data.enrollmentYear.size() <= 20
+        && data.photoDataUrl is string && data.photoDataUrl.size() <= 350000
+        && data.birthPlace is string && data.birthPlace.size() <= 100
+        && data.birthDate is string && data.birthDate.size() <= 30
+        && data.ttl is string && data.ttl.size() <= 140
+        && data.homeroomTeacher is string && data.homeroomTeacher.size() <= 150
+        && data.counselor is string && data.counselor.size() <= 150
+        && data.updatedAt == request.time;
+    }
+
+    function isValidStudentContact(data, studentId) {
+      return data.keys().hasAll(['studentId', 'email', 'address', 'phone', 'updatedAt'])
+        && data.keys().hasOnly(['studentId', 'email', 'address', 'phone', 'updatedAt'])
+        && data.studentId == studentId
+        && isValidId(data.studentId)
+        && data.email is string && data.email.size() <= 200
+        && data.address is string && data.address.size() <= 400
+        && data.phone is string && data.phone.size() <= 40
+        && data.updatedAt == request.time;
+    }
+
+    function isValidJournal(data, journalId) {
+      return data.keys().hasAll([
+          'id', 'date', 'period', 'className', 'subject', 'topic',
+          'activities', 'attendance', 'teacherId', 'teacherName',
+          'academicYear', 'semester', 'createdAt', 'updatedAt', 'updatedByUid'
+        ])
+        && data.keys().hasOnly([
+          'id', 'date', 'period', 'className', 'subject', 'topic',
+          'activities', 'attendance', 'teacherId', 'teacherName',
+          'academicYear', 'semester', 'createdAt', 'updatedAt', 'updatedByUid'
+        ])
+        && data.id == journalId
+        && isValidId(data.id)
+        && data.date is string && data.date.size() <= 20
+        && data.period is string && data.period.size() <= 40
+        && data.className is string && data.className.size() >= 1 && data.className.size() <= 60
+        && data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 120
+        && data.topic is string && data.topic.size() <= 300
+        && data.activities is string && data.activities.size() <= 2000
+        && data.attendance is map && data.attendance.size() <= 100
+        && data.teacherId is string && data.teacherId.size() <= 128
+        && data.teacherName is string && data.teacherName.size() <= 150
+        && data.academicYear is string && data.academicYear.size() <= 20
+        && isValidSemester(data.semester)
+        && data.createdAt is timestamp
+        && data.updatedAt == request.time
+        && data.updatedByUid == request.auth.uid;
+    }
+
+    function isValidGrade(data, gradeId) {
+      return data.keys().hasAll([
+          'id', 'studentId', 'className', 'subject', 'examType', 'score',
+          'note', 'marker', 'teacherId', 'teacherName', 'academicYear',
+          'semester', 'updatedAt', 'updatedByUid'
+        ])
+        && data.keys().hasOnly([
+          'id', 'studentId', 'className', 'subject', 'examType', 'score',
+          'note', 'marker', 'teacherId', 'teacherName', 'academicYear',
+          'semester', 'updatedAt', 'updatedByUid'
+        ])
+        && data.id == gradeId
+        && isValidId(data.id)
+        && isValidId(data.studentId)
+        && data.className is string && data.className.size() >= 1 && data.className.size() <= 60
+        && data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 120
+        && data.examType is string && data.examType.size() >= 1 && data.examType.size() <= 80
+        && (data.score == null || (data.score is number && data.score >= 0 && data.score <= 100))
+        && data.note is string && data.note.size() <= 500
+        && data.marker in ['neutral', 'green', 'yellow', 'red', 'blue']
+        && data.teacherId is string && data.teacherId.size() <= 128
+        && data.teacherName is string && data.teacherName.size() <= 150
+        && data.academicYear is string && data.academicYear.size() <= 20
+        && isValidSemester(data.semester)
+        && data.updatedAt == request.time
+        && data.updatedByUid == request.auth.uid;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection Match Rules (Ordered: Auth -> Static Validation -> DB Reads)
+    // -------------------------------------------------------------------------
+    match /test/connection {
+      allow get: if isSignedIn();
+      allow list, write: if false;
+    }
+
+    match /settings/{settingId} {
+      allow get: if isVerifiedUser() && isValidId(settingId) && isActiveMember();
+      allow list: if isVerifiedUser() && isActiveMember() && resource.data.academicYear is string;
+      allow create, update: if isVerifiedUser()
+        && isValidId(settingId)
+        && isValidSchoolSettings(incoming())
+        && isAdmin();
+      allow delete: if false;
+    }
+
+    match /schoolAssets/{assetId} {
+      allow get: if isVerifiedUser() && isValidId(assetId) && isActiveMember();
+      allow list: if isVerifiedUser() && isActiveMember() && resource.data.id is string;
+      allow create, update: if isVerifiedUser()
+        && isValidId(assetId)
+        && isValidSchoolAsset(incoming(), assetId)
+        && isAdmin();
+      allow delete: if isVerifiedUser() && isValidId(assetId) && isAdmin();
+    }
+
+    match /memberAccess/{emailKey} {
+      allow get: if isVerifiedUser() && isValidId(emailKey) && (
+        emailKey == authEmailKey() || isAdmin()
+      );
+      allow list: if isVerifiedUser() && isAdmin() && resource.data.emailLower is string;
+      allow create, update: if isVerifiedUser()
+        && isValidId(emailKey)
+        && isValidMemberAccess(incoming())
+        && isAdmin();
+      allow delete: if isVerifiedUser()
+        && isValidId(emailKey)
+        && emailKey != authEmailKey()
+        && isAdmin();
+    }
+
+    match /appUsers/{userId} {
+      allow get: if isVerifiedUser() && isValidId(userId) && isActiveMember();
+      allow list: if isVerifiedUser() && isActiveMember() && resource.data.id is string;
+      allow create: if isVerifiedUser()
+        && isValidId(userId)
+        && isValidAppUserPublic(incoming(), userId)
+        && incoming().createdAt == request.time
+        && isAdmin();
+      allow update: if isVerifiedUser()
+        && isValidId(userId)
+        && isValidAppUserPublic(incoming(), userId)
+        && incoming().createdAt == existing().createdAt
+        && (
+          isAdmin() || (
+            incoming().role == existing().role
+            && incoming().active == existing().active
+            && incoming().id == existing().id
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'name', 'nip', 'school', 'gender', 'photoDataUrl',
+              'assignedClasses', 'assignedSubjects', 'updatedAt'
+            ])
+            && isSelfAppUser(userId)
+          )
+        );
+      allow delete: if isVerifiedUser() && isValidId(userId) && isAdmin();
+    }
+
+    match /appUserPrivates/{userId} {
+      allow get: if isVerifiedUser() && isValidId(userId) && (
+        isAdmin() || (isActiveMember() && existing().emailLower == authEmailLower())
+      );
+      allow list: if isVerifiedUser() && (
+        (isAdmin() && resource.data.emailLower is string)
+        || (isActiveMember() && resource.data.emailLower == authEmailLower())
+      );
+      allow create, update: if isVerifiedUser()
+        && isValidId(userId)
+        && isValidAppUserPrivate(incoming(), userId)
+        && isAdmin();
+      allow delete: if isVerifiedUser() && isValidId(userId) && isAdmin();
+    }
+
+    match /students/{studentId} {
+      allow get: if isVerifiedUser() && isValidId(studentId) && isActiveMember();
+      allow list: if isVerifiedUser() && isActiveMember() && resource.data.id is string;
+      allow create, update: if isVerifiedUser()
+        && isValidId(studentId)
+        && isValidStudentPublic(incoming(), studentId)
+        && isStudentManager();
+      allow delete: if isVerifiedUser() && isValidId(studentId) && isStudentManager();
+    }
+
+    match /studentContacts/{studentId} {
+      allow get: if isVerifiedUser() && isValidId(studentId) && isActiveMember();
+      allow list: if isVerifiedUser() && isActiveMember() && resource.data.studentId is string;
+      allow create, update: if isVerifiedUser()
+        && isValidId(studentId)
+        && isValidStudentContact(incoming(), studentId)
+        && isStudentManager()
+        && existsAfter(/databases/$(database)/documents/students/$(studentId));
+      allow delete: if isVerifiedUser() && isValidId(studentId) && isStudentManager();
+    }
+
+    match /journals/{journalId} {
+      allow get: if isVerifiedUser() && isValidId(journalId) && isActiveMember();
+      allow list: if isVerifiedUser() && isActiveMember() && resource.data.id is string;
+      allow create: if isVerifiedUser()
+        && isValidId(journalId)
+        && isValidJournal(incoming(), journalId)
+        && incoming().createdAt == request.time
+        && isAcademicManager();
+      allow update: if isVerifiedUser()
+        && isValidId(journalId)
+        && isValidJournal(incoming(), journalId)
+        && incoming().createdAt == existing().createdAt
+        && isAcademicManager();
+      allow delete: if isVerifiedUser() && isValidId(journalId) && isAcademicManager();
+    }
+
+    match /grades/{gradeId} {
+      allow get: if isVerifiedUser() && isValidId(gradeId) && isActiveMember();
+      allow list: if isVerifiedUser() && isActiveMember() && resource.data.id is string;
+      allow create, update: if isVerifiedUser()
+        && isValidId(gradeId)
+        && isValidGrade(incoming(), gradeId)
+        && isAcademicManager()
+        && existsAfter(/databases/$(database)/documents/students/$(incoming().studentId));
+      allow delete: if isVerifiedUser() && isValidId(gradeId) && isAcademicManager();
+    }
+  }
+}
