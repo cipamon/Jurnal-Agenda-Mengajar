@@ -16,6 +16,7 @@ interface TopbarProps {
 
 const MENU_TITLES: Record<MenuId, string> = {
   dashboard: 'Dashboard Analitik',
+  jadwal: 'Jadwal Mengajar & Agenda Guru',
   pegawai: 'Data Guru & Karyawan',
   jurnal: 'Jurnal & Absensi',
   nilai: 'Input & Matriks Riwayat Nilai',

@@ -202,6 +202,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissionConfig> = {
       'Akses penuh ke seluruh modul, Data Guru & Karyawan, Master Data, Identitas Web, Manajemen Akun Multi-Role, Stempel & Pengaturan Sistem.',
     allowedMenus: [
       'dashboard',
+      'jadwal',
       'pegawai',
       'jurnal',
       'nilai',
@@ -221,8 +222,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissionConfig> = {
   guru: {
     label: 'Guru Mapel',
     description:
-      'Kelola Jurnal Mengajar, Presensi, Input & Leger Nilai, serta cetak laporan pada kelas dan mata pelajaran ampuannya.',
-    allowedMenus: ['dashboard', 'jurnal', 'nilai', 'siswa', 'laporan', 'profil'],
+      'Kelola Jadwal Mengajar, Jurnal Mengajar, Presensi, Input & Leger Nilai, serta cetak laporan pada kelas dan mata pelajaran ampuannya.',
+    allowedMenus: ['dashboard', 'jadwal', 'jurnal', 'nilai', 'siswa', 'laporan', 'profil'],
     canAccessSettings: false,
     canManageStudents: true,
     canPromoteStudents: false,
@@ -233,8 +234,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissionConfig> = {
   wali_kelas: {
     label: 'Wali Kelas',
     description:
-      'Kelola peserta didik dan kenaikan kelas pada rombongan belajar binaan, serta pantau kehadiran dan nilai kelas.',
-    allowedMenus: ['dashboard', 'siswa', 'jurnal', 'nilai', 'laporan', 'profil'],
+      'Kelola peserta didik dan kenaikan kelas pada rombongan belajar binaan, jadwal mengajar, serta pantau kehadiran dan nilai kelas.',
+    allowedMenus: ['dashboard', 'jadwal', 'siswa', 'jurnal', 'nilai', 'laporan', 'profil'],
     canAccessSettings: false,
     canManageStudents: true,
     canPromoteStudents: true,
@@ -245,8 +246,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissionConfig> = {
   kepala_sekolah: {
     label: 'Kepala Sekolah',
     description:
-      'Mode Pemantauan Eksekutif: memantau grafik, jurnal guru, rekap nilai seluruh kelas, dan mencetak laporan resmi.',
-    allowedMenus: ['dashboard', 'laporan', 'jurnal', 'nilai', 'siswa', 'profil'],
+      'Mode Pemantauan Eksekutif: memantau grafik, jadwal mengajar, jurnal guru, rekap nilai seluruh kelas, dan mencetak laporan resmi.',
+    allowedMenus: ['dashboard', 'jadwal', 'laporan', 'jurnal', 'nilai', 'siswa', 'profil'],
     canAccessSettings: false,
     canManageStudents: false,
     canPromoteStudents: false,
@@ -314,13 +315,23 @@ export function normalizeKopSurat(kop: KopSuratConfig): Required<KopSuratConfig>
 export function normalizeWebBrand(settings: SystemSettings): Required<WebBrandConfig> {
   return {
     appName: settings.webBrand?.appName || 'Portal E-Guru v10.2',
+    schoolName:
+      settings.webBrand?.schoolName ||
+      settings.teacherProfile?.school ||
+      'SMA Negeri 1 Nusantara',
     tabTitle:
       settings.webBrand?.tabTitle ||
       'Portal E-Guru v10.2 — Sistem Jurnal Mengajar, Presensi & Penilaian Guru Terpadu',
+    loginTitle: settings.webBrand?.loginTitle || 'Selamat Datang',
+    loginSubtitle: settings.webBrand?.loginSubtitle || 'Masuk untuk melanjutkan',
+    loginFooterText:
+      settings.webBrand?.loginFooterText || 'Jurnal · Presensi · Leger Nilai',
     webLogoDataUrl: settings.webBrand?.webLogoDataUrl || DEFAULT_WEB_LOGO,
     webLogoSize: settings.webBrand?.webLogoSize ?? 36,
   };
 }
+
+export const PX_TO_MM = 0.264583;
 
 export function normalizeSignatureStamp(
   settings: SystemSettings
@@ -333,6 +344,8 @@ export function normalizeSignatureStamp(
     signatureSize: cfg?.signatureSize ?? 54,
     stampSize: cfg?.stampSize ?? 74,
     showStampDefault: cfg?.showStampDefault ?? true,
+    showPrincipalSigImgDefault: cfg?.showPrincipalSigImgDefault ?? true,
+    showTeacherSigImgDefault: cfg?.showTeacherSigImgDefault ?? true,
     principalSigOffsetX: Number(cfg?.principalSigOffsetX ?? 0),
     principalSigOffsetY: Number(cfg?.principalSigOffsetY ?? 0),
     teacherSigOffsetX: Number(cfg?.teacherSigOffsetX ?? 0),
@@ -344,6 +357,56 @@ export function normalizeSignatureStamp(
     teacherBlockOffsetX: Number(cfg?.teacherBlockOffsetX ?? 0),
     teacherBlockOffsetY: Number(cfg?.teacherBlockOffsetY ?? 0),
     stampTarget: cfg?.stampTarget === 'teacher' ? 'teacher' : 'principal',
+  };
+}
+
+export function resolveEffectiveTeacherSignature(
+  settings: SystemSettings,
+  activeUser?: AppUser | null,
+  selectedTeacher?: AppUser | null
+): {
+  teacherSignatureDataUrl: string;
+  teacherSignatureSize: number;
+  teacherSigOffsetX: number;
+  teacherSigOffsetY: number;
+  isPersonalSignature: boolean;
+} {
+  const globalSig = normalizeSignatureStamp(settings);
+  const candidate = selectedTeacher || activeUser;
+  const personalUrl = String(
+    candidate?.signatureDataUrl ||
+      (candidate && candidate.email?.toLowerCase() === settings.teacherProfile?.email?.toLowerCase()
+        ? settings.teacherProfile?.signatureDataUrl
+        : '') ||
+      ''
+  ).trim();
+
+  if (personalUrl) {
+    return {
+      teacherSignatureDataUrl: personalUrl,
+      teacherSignatureSize: Number(
+        candidate?.signatureSize ?? settings.teacherProfile?.signatureSize ?? globalSig.signatureSize
+      ),
+      teacherSigOffsetX: Number(
+        candidate?.signatureOffsetX ??
+          settings.teacherProfile?.signatureOffsetX ??
+          globalSig.teacherSigOffsetX
+      ),
+      teacherSigOffsetY: Number(
+        candidate?.signatureOffsetY ??
+          settings.teacherProfile?.signatureOffsetY ??
+          globalSig.teacherSigOffsetY
+      ),
+      isPersonalSignature: true,
+    };
+  }
+
+  return {
+    teacherSignatureDataUrl: globalSig.teacherSignatureDataUrl,
+    teacherSignatureSize: globalSig.signatureSize,
+    teacherSigOffsetX: globalSig.teacherSigOffsetX,
+    teacherSigOffsetY: globalSig.teacherSigOffsetY,
+    isPersonalSignature: false,
   };
 }
 

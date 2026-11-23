@@ -40,7 +40,17 @@
         },
         "themeId": {
           "type": "string",
-          "enum": ["indigo", "emerald", "teal", "amber", "rose", "slate", "midnight"]
+          "enum": [
+            "neomorphic",
+            "neomorphic_dark",
+            "indigo",
+            "emerald",
+            "teal",
+            "amber",
+            "rose",
+            "slate",
+            "midnight"
+          ]
         },
         "reportFontFamily": {
           "type": "string",
@@ -76,6 +86,9 @@
           "type": "array"
         },
         "examTypes": {
+          "type": "array"
+        },
+        "learningObjectives": {
           "type": "array"
         },
         "examWeights": {
@@ -210,6 +223,19 @@
         },
         "assignedSubjects": {
           "type": "array"
+        },
+        "signatureDataUrl": {
+          "type": "string",
+          "maxLength": 250000
+        },
+        "signatureSize": {
+          "type": "number"
+        },
+        "signatureOffsetX": {
+          "type": "number"
+        },
+        "signatureOffsetY": {
+          "type": "number"
         },
         "active": {
           "type": "boolean"
@@ -409,6 +435,14 @@
           "type": "string",
           "maxLength": 300
         },
+        "learningObjective": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "materialUrl": {
+          "type": "string",
+          "maxLength": 600
+        },
         "activities": {
           "type": "string",
           "maxLength": 2000
@@ -538,6 +572,128 @@
         "updatedAt",
         "updatedByUid"
       ]
+    },
+    "TeachingScheduleItem": {
+      "title": "TeachingScheduleItem",
+      "description": "Weekly Mon-Sat teaching schedule slot for 1-click journal entry.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "day": {
+          "type": "string",
+          "enum": ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"]
+        },
+        "period": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "startTime": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "endTime": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "className": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "room": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "teacherId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "teacherName": {
+          "type": "string",
+          "maxLength": 150
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        }
+      },
+      "required": [
+        "id",
+        "day",
+        "period",
+        "className",
+        "subject",
+        "updatedAt",
+        "updatedByUid"
+      ]
+    },
+    "TeacherAgendaItem": {
+      "title": "TeacherAgendaItem",
+      "description": "Teacher work agenda and task notes synced across devices.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "date": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "done": {
+          "type": "boolean"
+        },
+        "teacherId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "teacherName": {
+          "type": "string",
+          "maxLength": 150
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        }
+      },
+      "required": [
+        "id",
+        "date",
+        "title",
+        "note",
+        "done",
+        "updatedAt",
+        "updatedByUid"
+      ]
     }
   },
   "firestore": {
@@ -594,6 +750,18 @@
         "$ref": "#/entities/GradeRecord"
       },
       "description": "Student assessment grades synced across teachers and admins."
+    },
+    "/schedules/{scheduleId}": {
+      "schema": {
+        "$ref": "#/entities/TeachingScheduleItem"
+      },
+      "description": "Weekly Mon-Sat teaching schedules."
+    },
+    "/agendas/{agendaId}": {
+      "schema": {
+        "$ref": "#/entities/TeacherAgendaItem"
+      },
+      "description": "Teacher personal and academic work agendas."
     }
   }
 }

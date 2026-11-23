@@ -96,6 +96,25 @@ service cloud.firestore {
         && get(memberDocPath()).data.userId == userId;
     }
 
+    function memberUserId() {
+      return isActiveMember() && exists(memberDocPath())
+        ? get(memberDocPath()).data.userId
+        : '';
+    }
+
+    function canPromoteStudents() {
+      return isAdmin() || (
+        isActiveMember() && memberRole() in ['wali_kelas', 'karyawan']
+      );
+    }
+
+    function isTeacherOwnedOrAdmin(rec) {
+      return isAdmin()
+        || !('teacherId' in rec)
+        || rec.teacherId == ''
+        || (memberUserId() != '' && rec.teacherId == memberUserId());
+    }
+
     function isValidRole(role) {
       return role in ['admin', 'guru', 'wali_kelas', 'kepala_sekolah', 'karyawan'];
     }
@@ -128,7 +147,7 @@ service cloud.firestore {
           'principalTitle', 'principalName', 'principalNip', 'themeId',
           'reportFontFamily', 'reportPaperSize', 'reportOrientation', 'lockReportFormat',
           'signatureStamp', 'webBrand', 'kopSurat',
-          'teacherProfile', 'classes', 'subjects', 'examTypes',
+          'teacherProfile', 'classes', 'subjects', 'examTypes', 'learningObjectives',
           'examWeights', 'useWeightedAverage', 'academicYears',
           'updatedAt', 'updatedByUid'
         ])
@@ -140,7 +159,7 @@ service cloud.firestore {
         && data.principalTitle is string && data.principalTitle.size() <= 120
         && data.principalName is string && data.principalName.size() <= 150
         && data.principalNip is string && data.principalNip.size() <= 60
-        && data.themeId in ['indigo', 'emerald', 'teal', 'amber', 'rose', 'slate', 'midnight']
+        && data.themeId in ['neomorphic', 'neomorphic_dark', 'indigo', 'emerald', 'teal', 'amber', 'rose', 'slate', 'midnight']
         && data.reportFontFamily in ['Times New Roman', 'Tahoma', 'Arial', 'Verdana', 'Calibri', 'Georgia']
         && data.reportPaperSize in ['A4', 'F4', 'Letter', 'Legal']
         && data.reportOrientation in ['portrait', 'landscape']
@@ -152,6 +171,7 @@ service cloud.firestore {
         && isValidStringList(data.classes, 200)
         && isValidStringList(data.subjects, 200)
         && isValidStringList(data.examTypes, 100)
+        && (!('learningObjectives' in data) || isValidStringList(data.learningObjectives, 200))
         && data.examWeights is map
         && data.useWeightedAverage is bool
         && isValidStringList(data.academicYears, 50)
@@ -188,6 +208,7 @@ service cloud.firestore {
         && data.keys().hasOnly([
           'id', 'name', 'nip', 'role', 'school', 'gender',
           'photoDataUrl', 'assignedClasses', 'assignedSubjects',
+          'signatureDataUrl', 'signatureSize', 'signatureOffsetX', 'signatureOffsetY',
           'active', 'createdAt', 'updatedAt'
         ])
         && data.id == userId
@@ -200,6 +221,10 @@ service cloud.firestore {
         && data.photoDataUrl is string && data.photoDataUrl.size() <= 350000
         && isValidStringList(data.assignedClasses, 200)
         && isValidStringList(data.assignedSubjects, 200)
+        && (!('signatureDataUrl' in data) || (data.signatureDataUrl is string && data.signatureDataUrl.size() <= 250000))
+        && (!('signatureSize' in data) || (data.signatureSize is number && data.signatureSize >= 40 && data.signatureSize <= 280))
+        && (!('signatureOffsetX' in data) || (data.signatureOffsetX is number && data.signatureOffsetX >= -300 && data.signatureOffsetX <= 300))
+        && (!('signatureOffsetY' in data) || (data.signatureOffsetY is number && data.signatureOffsetY >= -300 && data.signatureOffsetY <= 300))
         && data.active is bool
         && data.createdAt is timestamp
         && data.updatedAt == request.time;
@@ -265,6 +290,7 @@ service cloud.firestore {
         ])
         && data.keys().hasOnly([
           'id', 'date', 'period', 'className', 'subject', 'topic',
+          'learningObjective', 'materialUrl',
           'activities', 'attendance', 'teacherId', 'teacherName',
           'academicYear', 'semester', 'createdAt', 'updatedAt', 'updatedByUid'
         ])
@@ -275,6 +301,8 @@ service cloud.firestore {
         && data.className is string && data.className.size() >= 1 && data.className.size() <= 60
         && data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 120
         && data.topic is string && data.topic.size() <= 300
+        && (!('learningObjective' in data) || (data.learningObjective is string && data.learningObjective.size() <= 500))
+        && (!('materialUrl' in data) || (data.materialUrl is string && data.materialUrl.size() <= 600))
         && data.activities is string && data.activities.size() <= 2000
         && data.attendance is map && data.attendance.size() <= 100
         && data.teacherId is string && data.teacherId.size() <= 128
@@ -310,6 +338,51 @@ service cloud.firestore {
         && data.teacherName is string && data.teacherName.size() <= 150
         && data.academicYear is string && data.academicYear.size() <= 20
         && isValidSemester(data.semester)
+        && data.updatedAt == request.time
+        && data.updatedByUid == request.auth.uid;
+    }
+
+    function isValidSchedule(data, scheduleId) {
+      return data.keys().hasAll([
+          'id', 'day', 'period', 'startTime', 'endTime', 'className',
+          'subject', 'room', 'teacherId', 'teacherName', 'updatedAt', 'updatedByUid'
+        ])
+        && data.keys().hasOnly([
+          'id', 'day', 'period', 'startTime', 'endTime', 'className',
+          'subject', 'room', 'teacherId', 'teacherName', 'updatedAt', 'updatedByUid'
+        ])
+        && data.id == scheduleId
+        && isValidId(data.id)
+        && data.day in ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
+        && data.period is string && data.period.size() <= 40
+        && data.startTime is string && data.startTime.size() <= 20
+        && data.endTime is string && data.endTime.size() <= 20
+        && data.className is string && data.className.size() >= 1 && data.className.size() <= 60
+        && data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 120
+        && data.room is string && data.room.size() <= 80
+        && data.teacherId is string && data.teacherId.size() <= 128
+        && data.teacherName is string && data.teacherName.size() <= 150
+        && data.updatedAt == request.time
+        && data.updatedByUid == request.auth.uid;
+    }
+
+    function isValidAgenda(data, agendaId) {
+      return data.keys().hasAll([
+          'id', 'date', 'title', 'note', 'done',
+          'teacherId', 'teacherName', 'updatedAt', 'updatedByUid'
+        ])
+        && data.keys().hasOnly([
+          'id', 'date', 'title', 'note', 'done',
+          'teacherId', 'teacherName', 'updatedAt', 'updatedByUid'
+        ])
+        && data.id == agendaId
+        && isValidId(data.id)
+        && data.date is string && data.date.size() <= 20
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.note is string && data.note.size() <= 1000
+        && data.done is bool
+        && data.teacherId is string && data.teacherId.size() <= 128
+        && data.teacherName is string && data.teacherName.size() <= 150
         && data.updatedAt == request.time
         && data.updatedByUid == request.auth.uid;
     }
@@ -374,9 +447,15 @@ service cloud.firestore {
             incoming().role == existing().role
             && incoming().active == existing().active
             && incoming().id == existing().id
+            && (
+              existing().role in ['guru', 'wali_kelas']
+              || (incoming().assignedClasses.size() == 0 && incoming().assignedSubjects.size() == 0)
+            )
             && incoming().diff(existing()).affectedKeys().hasOnly([
               'name', 'nip', 'school', 'gender', 'photoDataUrl',
-              'assignedClasses', 'assignedSubjects', 'updatedAt'
+              'assignedClasses', 'assignedSubjects',
+              'signatureDataUrl', 'signatureSize', 'signatureOffsetX', 'signatureOffsetY',
+              'updatedAt'
             ])
             && isSelfAppUser(userId)
           )
@@ -402,10 +481,16 @@ service cloud.firestore {
     match /students/{studentId} {
       allow get: if isVerifiedUser() && isValidId(studentId) && isActiveMember();
       allow list: if isVerifiedUser() && isActiveMember() && resource.data.id is string;
-      allow create, update: if isVerifiedUser()
+      allow create: if isVerifiedUser()
         && isValidId(studentId)
         && isValidStudentPublic(incoming(), studentId)
-        && isStudentManager();
+        && isStudentManager()
+        && (canPromoteStudents() || incoming().status == 'aktif');
+      allow update: if isVerifiedUser()
+        && isValidId(studentId)
+        && isValidStudentPublic(incoming(), studentId)
+        && isStudentManager()
+        && (canPromoteStudents() || incoming().status == existing().status);
       allow delete: if isVerifiedUser() && isValidId(studentId) && isStudentManager();
     }
 
@@ -427,13 +512,19 @@ service cloud.firestore {
         && isValidId(journalId)
         && isValidJournal(incoming(), journalId)
         && incoming().createdAt == request.time
-        && isAcademicManager();
+        && isAcademicManager()
+        && (isAdmin() || incoming().teacherId == '' || (memberUserId() != '' && incoming().teacherId == memberUserId()));
       allow update: if isVerifiedUser()
         && isValidId(journalId)
         && isValidJournal(incoming(), journalId)
         && incoming().createdAt == existing().createdAt
-        && isAcademicManager();
-      allow delete: if isVerifiedUser() && isValidId(journalId) && isAcademicManager();
+        && isAcademicManager()
+        && isTeacherOwnedOrAdmin(existing())
+        && (isAdmin() || incoming().teacherId == existing().teacherId || (memberUserId() != '' && incoming().teacherId == memberUserId()));
+      allow delete: if isVerifiedUser()
+        && isValidId(journalId)
+        && isAcademicManager()
+        && isTeacherOwnedOrAdmin(existing());
     }
 
     match /grades/{gradeId} {
@@ -445,6 +536,46 @@ service cloud.firestore {
         && isAcademicManager()
         && existsAfter(/databases/$(database)/documents/students/$(incoming().studentId));
       allow delete: if isVerifiedUser() && isValidId(gradeId) && isAcademicManager();
+    }
+
+    match /schedules/{scheduleId} {
+      allow get: if isVerifiedUser() && isValidId(scheduleId) && isActiveMember();
+      allow list: if isVerifiedUser() && isActiveMember() && resource.data.id is string;
+      allow create: if isVerifiedUser()
+        && isValidId(scheduleId)
+        && isValidSchedule(incoming(), scheduleId)
+        && isAcademicManager()
+        && (isAdmin() || incoming().teacherId == '' || (memberUserId() != '' && incoming().teacherId == memberUserId()));
+      allow update: if isVerifiedUser()
+        && isValidId(scheduleId)
+        && isValidSchedule(incoming(), scheduleId)
+        && isAcademicManager()
+        && isTeacherOwnedOrAdmin(existing())
+        && (isAdmin() || incoming().teacherId == existing().teacherId || (memberUserId() != '' && incoming().teacherId == memberUserId()));
+      allow delete: if isVerifiedUser()
+        && isValidId(scheduleId)
+        && isAcademicManager()
+        && isTeacherOwnedOrAdmin(existing());
+    }
+
+    match /agendas/{agendaId} {
+      allow get: if isVerifiedUser() && isValidId(agendaId) && isActiveMember();
+      allow list: if isVerifiedUser() && isActiveMember() && resource.data.id is string;
+      allow create: if isVerifiedUser()
+        && isValidId(agendaId)
+        && isValidAgenda(incoming(), agendaId)
+        && isAcademicManager()
+        && (isAdmin() || incoming().teacherId == '' || (memberUserId() != '' && incoming().teacherId == memberUserId()));
+      allow update: if isVerifiedUser()
+        && isValidId(agendaId)
+        && isValidAgenda(incoming(), agendaId)
+        && isAcademicManager()
+        && isTeacherOwnedOrAdmin(existing())
+        && (isAdmin() || incoming().teacherId == existing().teacherId || (memberUserId() != '' && incoming().teacherId == memberUserId()));
+      allow delete: if isVerifiedUser()
+        && isValidId(agendaId)
+        && isAcademicManager()
+        && isTeacherOwnedOrAdmin(existing());
     }
   }
 }

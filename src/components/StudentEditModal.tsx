@@ -18,6 +18,7 @@ interface StudentEditModalProps {
   teacherSuggestions?: string[];
   defaultClassName?: string;
   defaultEnrollmentYear?: string;
+  canPromoteStudents?: boolean;
   onSave: (studentData: Student, isEdit: boolean) => void;
   onClose: () => void;
 }
@@ -31,6 +32,7 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
   teacherSuggestions = [],
   defaultClassName,
   defaultEnrollmentYear = '',
+  canPromoteStudents = true,
   onSave,
   onClose,
 }) => {
@@ -161,7 +163,7 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
         name: cleanName,
         gender,
         className,
-        status,
+        status: canPromoteStudents ? status : isEdit && student ? student.status || 'aktif' : 'aktif',
         enrollmentYear: enrollmentYear.trim() || undefined,
         birthPlace: cleanPlace,
         birthDate: cleanDate,
@@ -377,8 +379,13 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
               <label className="block text-xs font-semibold text-slate-700 mb-1">Status</label>
               <select
                 value={status}
+                disabled={!canPromoteStudents}
                 onChange={(e) => setStatus(e.target.value as StudentStatus)}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                className={`w-full px-3 py-2 text-sm rounded-lg border focus:outline-none focus:ring-2 focus:ring-indigo-600 ${
+                  canPromoteStudents
+                    ? 'border-slate-300 bg-white'
+                    : 'border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed'
+                }`}
               >
                 {(['aktif', 'lulus', 'pindah', 'keluar'] as StudentStatus[]).map((stKey) => (
                   <option key={stKey} value={stKey}>
@@ -386,6 +393,11 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
                   </option>
                 ))}
               </select>
+              {!canPromoteStudents && (
+                <p className="mt-1 text-[10px] text-slate-500 leading-tight">
+                  Perubahan status mutasi/kelulusan dikelola Wali Kelas, Staff TU, atau Admin.
+                </p>
+              )}
             </div>
           </div>
 

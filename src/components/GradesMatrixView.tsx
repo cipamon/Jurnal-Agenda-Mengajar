@@ -1,5 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Award, CheckCircle2, Download, FileSpreadsheet, Save, Trash2, Upload } from 'lucide-react';
+import {
+  Award,
+  CheckCircle2,
+  Download,
+  FileSpreadsheet,
+  Save,
+  Sparkles,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { GradeRecord, RowMarkerColor, Student, SystemSettings } from '../types';
 import { computeWeightedAverage, ROW_MARKER_META } from '../utils/helpers';
@@ -58,6 +67,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
   const [draftScores, setDraftScores] = useState<
     Record<string, { score: string; note: string; marker: RowMarkerColor }>
   >({});
+  const [bulkScoreInput, setBulkScoreInput] = useState<string>('');
   const [selectedInputIds, setSelectedInputIds] = useState<string[]>([]);
   const [showInputImport, setShowInputImport] = useState(false);
   const [inputPasteText, setInputPasteText] = useState('');
@@ -127,6 +137,187 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
       return next;
     });
     onNotify(`Nilai kosong atau di bawah KKM otomatis disesuaikan ke ${targetKkm}.`);
+  };
+
+  const handleBulkFillScores = () => {
+    const raw = bulkScoreInput.trim();
+    if (raw === '') {
+      onNotify('Masukkan nilai 0–100 pada kolom Isi Massal terlebih dahulu.');
+      return;
+    }
+    const num = Number(raw);
+    if (Number.isNaN(num) || num < 0 || num > 100) {
+      onNotify('Nilai Isi Massal harus berupa angka 0–100.');
+      return;
+    }
+    if (classStudents.length === 0) {
+      onNotify(`Belum ada siswa di kelas ${selectedClass}.`);
+      return;
+    }
+
+    const kkm = settings.kkm || 75;
+    const nowIso = new Date().toISOString();
+    const teacherNameVal = currentUserName || settings.teacherProfile.name;
+    const nextDraft = { ...draftScores };
+    const batch: GradeRecord[] = classStudents.map((st) => {
+      const prevRow = nextDraft[st.id] ?? { score: '', note: '', marker: 'neutral' };
+      const marker: RowMarkerColor = num >= 90 ? 'blue' : num >= kkm ? 'green' : 'yellow';
+      nextDraft[st.id] = {
+        score: String(num),
+        note: prevRow.note,
+        marker,
+      };
+      return {
+        id: makeGradeCompositeId(
+          settings.academicYear,
+          settings.semester,
+          st.id,
+          selectedSubject,
+          selectedExamType
+        ),
+        studentId: st.id,
+        className: selectedClass,
+        subject: selectedSubject,
+        examType: selectedExamType,
+        score: num,
+        note: prevRow.note.trim(),
+        marker,
+        teacherId: currentUserId,
+        teacherName: teacherNameVal,
+        academicYear: settings.academicYear,
+        semester: settings.semester,
+        updatedAt: nowIso,
+      };
+    });
+
+    setDraftScores(nextDraft);
+    onSaveGradesBatch(batch);
+    onNotify(
+      `Nilai ${num} diterapkan & disimpan ke ${classStudents.length} siswa kelas ${selectedClass} (${selectedExamType}).`
+    );
+  };
+
+  const handleAutoNotes = () => {
+    if (classStudents.length === 0) return;
+    const kkm = settings.kkm || 75;
+    const nowIso = new Date().toISOString();
+    const teacherNameVal = currentUserName || settings.teacherProfile.name;
+    const nextDraft = { ...draftScores };
+    const batch: GradeRecord[] = [];
+
+    classStudents.forEach((st) => {
+      const row = nextDraft[st.id] ?? { score: '', note: '', marker: 'neutral' };
+      const raw = row.score.trim();
+      if (raw === '') return;
+      const num = Number(raw);
+      if (Number.isNaN(num)) return;
+
+      let marker: RowMarkerColor = 'green';
+      let autoNote = 'Tuntas mencapai KKM.';
+      if (num >= 90) {
+        marker = 'blue';
+        autoNote = 'Sangat baik, melampaui KKM & siap pengayaan.';
+      } else if (num >= kkm + 10) {
+        marker = 'green';
+        autoNote = 'Baik dan konsisten melampaui KKM.';
+      } else if (num >= kkm) {
+        marker = 'green';
+        autoNote = 'Tuntas mencapai KKM.';
+      } else {
+        marker = 'yellow';
+        autoNote = 'Perlu bimbingan & remedial untuk mencapai KKM.';
+      }
+
+      nextDraft[st.id] = { ...row, marker, note: autoNote };
+      batch.push({
+        id: makeGradeCompositeId(
+          settings.academicYear,
+          settings.semester,
+          st.id,
+          selectedSubject,
+          selectedExamType
+        ),
+        studentId: st.id,
+        className: selectedClass,
+        subject: selectedSubject,
+        examType: selectedExamType,
+        score: Math.max(0, Math.min(100, num)),
+        note: autoNote,
+        marker,
+        teacherId: currentUserId,
+        teacherName: teacherNameVal,
+        academicYear: settings.academicYear,
+        semester: settings.semester,
+        updatedAt: nowIso,
+      });
+    });
+
+    if (batch.length === 0) {
+      onNotify('Isi nilai siswa terlebih dahulu sebelum menjalankan Auto Catatan Rapor.');
+      return;
+    }
+
+    setDraftScores(nextDraft);
+    onSaveGradesBatch(batch);
+    onNotify(`Auto Catatan Rapor berhasil diterapkan & disimpan untuk ${batch.length} siswa.`);
+  };
+
+  const handleG1KeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    rowIdx: number,
+    colIdx: number
+  ) => {
+    let nextRow = rowIdx;
+    let nextCol = colIdx;
+    if (e.key === 'Enter' || e.key === 'ArrowDown') {
+      nextRow = Math.min(classStudents.length - 1, rowIdx + 1);
+    } else if (e.key === 'ArrowUp') {
+      nextRow = Math.max(0, rowIdx - 1);
+    } else if (e.key === 'ArrowRight' && colIdx === 0) {
+      nextCol = 1;
+    } else if (e.key === 'ArrowLeft' && colIdx === 1) {
+      const inputEl = e.currentTarget;
+      if (inputEl.selectionStart !== 0 || inputEl.selectionEnd !== 0) return;
+      nextCol = 0;
+    } else {
+      return;
+    }
+    e.preventDefault();
+    const target = document.querySelector<HTMLInputElement>(
+      `input[data-g1-row="${nextRow}"][data-g1-col="${nextCol}"]`
+    );
+    if (target) {
+      target.focus();
+      target.select();
+    }
+  };
+
+  const handleG2KeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    rowIdx: number,
+    colIdx: number
+  ) => {
+    let nextRow = rowIdx;
+    let nextCol = colIdx;
+    if (e.key === 'Enter' || e.key === 'ArrowDown') {
+      nextRow = Math.min(matrixStudents.length - 1, rowIdx + 1);
+    } else if (e.key === 'ArrowUp') {
+      nextRow = Math.max(0, rowIdx - 1);
+    } else if (e.key === 'ArrowRight') {
+      nextCol = Math.min(settings.examTypes.length - 1, colIdx + 1);
+    } else if (e.key === 'ArrowLeft') {
+      nextCol = Math.max(0, colIdx - 1);
+    } else {
+      return;
+    }
+    e.preventDefault();
+    const target = document.querySelector<HTMLInputElement>(
+      `input[data-g2-row="${nextRow}"][data-g2-col="${nextCol}"]`
+    );
+    if (target) {
+      target.focus();
+      target.select();
+    }
   };
 
   const handleSaveInputGrades = () => {
@@ -839,6 +1030,33 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
                 <span>Hapus ({selectedInputIds.length})</span>
               </button>
             )}
+            <div className="col-span-2 sm:col-span-1 flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-1.5 py-1 min-h-[40px]">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={bulkScoreInput}
+                onChange={(e) => setBulkScoreInput(e.target.value)}
+                placeholder="Nilai"
+                aria-label="Nilai Isi Massal"
+                className="w-14 px-1.5 py-1 text-center text-xs font-bold tabular-nums rounded border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              />
+              <button
+                type="button"
+                onClick={handleBulkFillScores}
+                className="px-2.5 py-1 rounded-md bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+              >
+                Isi Massal
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={handleAutoNotes}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px]"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>Auto Catatan Rapor</span>
+            </button>
             <button
               type="button"
               onClick={handleAutoKKM}
@@ -1151,6 +1369,9 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
                           min={0}
                           max={100}
                           value={row.score}
+                          data-g1-row={idx}
+                          data-g1-col={0}
+                          onKeyDown={(e) => handleG1KeyDown(e, idx, 0)}
                           onChange={(e) => {
                             const val = e.target.value;
                             if (val !== '' && (Number(val) < 0 || Number(val) > 100)) return;
@@ -1167,6 +1388,9 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
                         <input
                           type="text"
                           value={row.note}
+                          data-g1-row={idx}
+                          data-g1-col={1}
+                          onKeyDown={(e) => handleG1KeyDown(e, idx, 1)}
                           onChange={(e) =>
                             setDraftScores((prev) => ({
                               ...prev,
@@ -1498,7 +1722,7 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
                           {st.name}
                         </button>
                       </td>
-                      {settings.examTypes.map((ex) => {
+                      {settings.examTypes.map((ex, colIdx) => {
                         const cellVal = getMatrixCellValue(st.id, ex);
                         const num = cellVal === '' ? null : Number(cellVal);
                         const isDirty = `${st.id}__${ex}` in matrixEdits;
@@ -1511,6 +1735,9 @@ export const GradesMatrixView: React.FC<GradesMatrixViewProps> = ({
                               value={cellVal}
                               readOnly={readOnly}
                               disabled={readOnly}
+                              data-g2-row={idx}
+                              data-g2-col={colIdx}
+                              onKeyDown={(e) => handleG2KeyDown(e, idx, colIdx)}
                               onChange={(e) => handleMatrixCellChange(st.id, ex, e.target.value)}
                               placeholder="-"
                               aria-label={`Nilai ${ex} untuk ${st.name}`}

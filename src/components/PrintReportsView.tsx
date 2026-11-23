@@ -6,8 +6,13 @@ import {
   FileText,
   Lock,
   Printer,
+  QrCode,
   RotateCcw,
+  Trash2,
+  Upload,
 } from 'lucide-react';
+import QRCode from 'qrcode';
+import * as XLSX from 'xlsx';
 import {
   AppUser,
   GradeRecord,
@@ -30,10 +35,13 @@ import {
   buildRemedialAnalysis,
   buildStudentRosterByClass,
   buildTeacherActivitySummary,
+  exportCustomImportedReportToPdf,
   exportReportToPdf,
   exportReportToSpreadsheet,
+  exportReportToWord,
   filterGradesForReport,
   filterJournalsForReport,
+  ImportedReportData,
   ReportFilterOptions,
   summarizeStudentAttendance,
 } from '../utils/exportReports';
@@ -48,6 +56,7 @@ import {
   normalizeSignatureStamp,
   PAPER_SIZE_OPTIONS,
   PRINT_FONT_OPTIONS,
+  resolveEffectiveTeacherSignature,
   USER_ROLE_LABELS,
 } from '../utils/helpers';
 
@@ -56,6 +65,7 @@ interface PrintReportsViewProps {
   journals: JournalEntry[];
   grades: GradeRecord[];
   users?: AppUser[];
+  activeUser?: AppUser;
   currentUserRole?: UserRole;
   initialReportType?: ReportType;
   initialTeacherFilter?: string;
@@ -69,6 +79,7 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
   journals,
   grades,
   users = [],
+  activeUser,
   currentUserRole = 'guru',
   initialReportType,
   initialTeacherFilter,
@@ -83,90 +94,127 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
   const adminPaperSize: PaperSize = settings.reportPaperSize || 'A4';
   const adminOrientation: PaperOrientation = settings.reportOrientation || 'landscape';
 
-  const ALL_REPORT_OPTIONS: {
-    id: SingleReportType;
-    label: string;
-    category: string;
-    desc: string;
-  }[] = [
-    {
-      id: 'jurnal',
-      label: 'Jurnal Mengajar',
-      category: 'Mengajar',
-      desc: 'Catatan materi, jam & kegiatan KBM',
-    },
-    {
-      id: 'kehadiran',
-      label: 'Kehadiran Mendatar',
-      category: 'Presensi',
-      desc: 'Matriks H/S/I/A/D per tanggal',
-    },
-    {
-      id: 'rekap_presensi',
-      label: 'Rekap Presensi Bulanan',
-      category: 'Presensi',
-      desc: 'Akumulasi & persentase hadir siswa',
-    },
-    {
-      id: 'ketidakhadiran',
-      label: 'Monitoring S/I/A/D',
-      category: 'Presensi',
-      desc: 'Rekap & kronologi tidak hadir',
-    },
-    {
-      id: 'nilai',
-      label: 'Rekap Nilai Mapel',
-      category: 'Akademik',
-      desc: 'Matriks skor ujian & status KKM',
-    },
-    {
-      id: 'remedial',
-      label: 'Ketuntasan & Remedial',
-      category: 'Akademik',
-      desc: 'Daya serap & daftar siswa < KKM',
-    },
-    {
-      id: 'leger_kelas',
-      label: 'Leger Gabungan Kelas',
-      category: 'Akademik',
-      desc: 'Nilai lintas mapel & peringkat',
-    },
-    {
-      id: 'daftar_siswa',
-      label: 'Daftar Peserta Didik',
-      category: 'Kesiswaan',
-      desc: 'Daftar induk siswa & wali kelas',
-    },
-    {
-      id: 'aktivitas_guru',
-      label: 'Aktivitas & Penilaian Guru',
-      category: 'Pimpinan',
-      desc: 'Ringkasan & riwayat kinerja guru',
-    },
-  ];
+  const canFilterAllTeachers = currentUserRole === 'admin' || currentUserRole === 'kepala_sekolah';
+  const isStaffTuRole = currentUserRole === 'karyawan';
+
+  const availableReportOptions = useMemo(() => {
+    const ALL: {
+      id: SingleReportType;
+      label: string;
+      category: string;
+      desc: string;
+    }[] = [
+      {
+        id: 'jurnal',
+        label: 'Jurnal Mengajar',
+        category: 'Mengajar',
+        desc: 'Catatan materi, jam & kegiatan KBM',
+      },
+      {
+        id: 'kehadiran',
+        label: 'Kehadiran Mendatar',
+        category: 'Presensi',
+        desc: 'Matriks H/S/I/A/D per tanggal',
+      },
+      {
+        id: 'rekap_presensi',
+        label: 'Rekap Presensi Bulanan',
+        category: 'Presensi',
+        desc: 'Akumulasi & persentase hadir siswa',
+      },
+      {
+        id: 'ketidakhadiran',
+        label: 'Monitoring S/I/A/D',
+        category: 'Presensi',
+        desc: 'Rekap & kronologi tidak hadir',
+      },
+      {
+        id: 'nilai',
+        label: 'Rekap Nilai Mapel',
+        category: 'Akademik',
+        desc: 'Matriks skor ujian & status KKM',
+      },
+      {
+        id: 'remedial',
+        label: 'Ketuntasan & Remedial',
+        category: 'Akademik',
+        desc: 'Daya serap & daftar siswa < KKM',
+      },
+      {
+        id: 'leger_kelas',
+        label: 'Leger Gabungan Kelas',
+        category: 'Akademik',
+        desc: 'Nilai lintas mapel & peringkat',
+      },
+      {
+        id: 'daftar_siswa',
+        label: 'Daftar Peserta Didik',
+        category: 'Kesiswaan',
+        desc: 'Daftar induk siswa & wali kelas',
+      },
+      {
+        id: 'aktivitas_guru',
+        label: 'Aktivitas & Penilaian Guru',
+        category: 'Pimpinan',
+        desc: 'Ringkasan & riwayat kinerja guru',
+      },
+    ];
+    return ALL.filter((item) => {
+      if (item.id === 'aktivitas_guru' && !canFilterAllTeachers) return false;
+      if (
+        isStaffTuRole &&
+        !['daftar_siswa', 'kehadiran', 'rekap_presensi', 'ketidakhadiran'].includes(item.id)
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [canFilterAllTeachers, isStaffTuRole]);
 
   const resolveInitialReports = (preset?: ReportType): SingleReportType[] => {
-    if (!preset || preset === 'semua') return ['jurnal', 'kehadiran', 'nilai'];
-    return [preset];
+    const allowedSet = new Set(availableReportOptions.map((o) => o.id));
+    if (!preset || preset === 'semua') {
+      const defaults: SingleReportType[] = isStaffTuRole
+        ? ['daftar_siswa', 'rekap_presensi']
+        : ['jurnal', 'kehadiran', 'nilai'];
+      return defaults.filter((id) => allowedSet.has(id));
+    }
+    if (allowedSet.has(preset)) return [preset];
+    return isStaffTuRole ? ['daftar_siswa', 'rekap_presensi'] : ['jurnal', 'kehadiran', 'nilai'];
   };
 
   const [selectedReports, setSelectedReports] = useState<SingleReportType[]>(() =>
     resolveInitialReports(initialReportType)
   );
+  const [reportDropdownOpen, setReportDropdownOpen] = useState(false);
+  const reportDropdownRef = useRef<HTMLDivElement | null>(null);
   const [selectedClasses, setSelectedClasses] = useState<string[]>([...settings.classes]);
   const [classDropdownOpen, setClassDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
   const [selectedSubject, setSelectedSubject] = useState<string>('ALL');
-  const [selectedTeacherId, setSelectedTeacherId] = useState<string>(initialTeacherFilter || 'ALL');
+  const [selectedTeacherId, setSelectedTeacherId] = useState<string>(
+    canFilterAllTeachers ? initialTeacherFilter || 'ALL' : 'ALL'
+  );
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
 
-  // Saklar Pratinjau Real-Time
+  // Saklar Pratinjau Real-Time & Pengesahan Independen
   const [showKopSurat, setShowKopSurat] = useState(true);
   const [showPrincipalSig, setShowPrincipalSig] = useState(true);
   const [showTeacherSig, setShowTeacherSig] = useState(true);
-  const [showStamp, setShowStamp] = useState<boolean>(sigStamp.showStampDefault);
+  const [showPrincipalSigImg, setShowPrincipalSigImg] = useState<boolean>(
+    sigStamp.showPrincipalSigImgDefault !== false
+  );
+  const [showTeacherSigImg, setShowTeacherSigImg] = useState<boolean>(
+    sigStamp.showTeacherSigImgDefault !== false
+  );
+  const [showStampImg, setShowStampImg] = useState<boolean>(sigStamp.showStampDefault);
+  const [documentNumber, setDocumentNumber] = useState('');
+  const [showQrVerification, setShowQrVerification] = useState(false);
+  const [qrPreviewDataUrl, setQrPreviewDataUrl] = useState<string>('');
+  const [importedReport, setImportedReport] = useState<ImportedReportData | null>(null);
+  const importFileRef = useRef<HTMLInputElement | null>(null);
   const [paperSize, setPaperSize] = useState<PaperSize>(adminPaperSize);
   const [orientation, setOrientation] = useState<PaperOrientation>(adminOrientation);
   const [fontFamily, setFontFamily] = useState<PrintFontFamily>(adminFontFamily);
@@ -177,13 +225,75 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
   const effectiveOrientation: PaperOrientation = isFormatLocked ? adminOrientation : orientation;
   const paperMeta = useMemo(() => getPaperSizeMeta(effectivePaperSize), [effectivePaperSize]);
 
+  const selectedTeacherUser = useMemo(() => {
+    if (selectedTeacherId && selectedTeacherId !== 'ALL') {
+      const byId = users.find((u) => u.id === selectedTeacherId);
+      if (byId) return byId;
+      if (selectedTeacherId.startsWith('name:')) {
+        const tName = selectedTeacherId.slice(5).trim().toLowerCase();
+        return users.find((u) => u.name.trim().toLowerCase() === tName);
+      }
+    }
+    return activeUser;
+  }, [selectedTeacherId, users, activeUser]);
+
+  const effectiveTeacherSig = useMemo(
+    () => resolveEffectiveTeacherSignature(settings, activeUser, selectedTeacherUser),
+    [settings, activeUser, selectedTeacherUser]
+  );
+
+  const signerTeacherName = selectedTeacherUser?.name || settings.teacherProfile.name;
+  const signerTeacherNip = selectedTeacherUser?.nip || settings.teacherProfile.nip;
+
+  useEffect(() => {
+    if (!showQrVerification) {
+      setQrPreviewDataUrl('');
+      return;
+    }
+    const payload = [
+      settings.kopSurat.line4 || settings.teacherProfile.school || 'Portal E-Guru',
+      documentNumber.trim() ? `No: ${documentNumber.trim()}` : 'Dokumen Resmi Portal E-Guru',
+      `TA ${settings.academicYear} (${settings.semester})`,
+      `Tanggal: ${formatTanggalID(getTodayIso())}`,
+      `Penandatangan: ${signerTeacherName}`,
+    ].join(' | ');
+    let cancelled = false;
+    QRCode.toDataURL(payload, { width: 180, margin: 1, errorCorrectionLevel: 'M' })
+      .then((url) => {
+        if (!cancelled) setQrPreviewDataUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setQrPreviewDataUrl('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showQrVerification, documentNumber, settings, signerTeacherName]);
+
+  useEffect(() => {
+    const allowedSet = new Set(availableReportOptions.map((o) => o.id));
+    setSelectedReports((prev) => {
+      const filtered = prev.filter((id) => allowedSet.has(id));
+      if (filtered.length === 0 && prev.length > 0) {
+        return isStaffTuRole ? ['daftar_siswa', 'rekap_presensi'] : ['jurnal', 'kehadiran', 'nilai'];
+      }
+      return filtered.length === prev.length ? prev : filtered;
+    });
+  }, [availableReportOptions, isStaffTuRole]);
+
+  useEffect(() => {
+    if (!canFilterAllTeachers && selectedTeacherId !== 'ALL') {
+      setSelectedTeacherId('ALL');
+    }
+  }, [canFilterAllTeachers, selectedTeacherId]);
+
   useEffect(() => {
     if (initialReportType || initialTeacherFilter) {
       if (initialReportType) setSelectedReports(resolveInitialReports(initialReportType));
-      if (initialTeacherFilter) setSelectedTeacherId(initialTeacherFilter);
+      if (initialTeacherFilter && canFilterAllTeachers) setSelectedTeacherId(initialTeacherFilter);
       onConsumePreset?.();
     }
-  }, [initialReportType, initialTeacherFilter, onConsumePreset]);
+  }, [initialReportType, initialTeacherFilter, canFilterAllTeachers, onConsumePreset]);
 
   useEffect(() => {
     setFontFamily(adminFontFamily);
@@ -191,15 +301,29 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
     setOrientation(adminOrientation);
   }, [adminFontFamily, adminPaperSize, adminOrientation, isFormatLocked]);
 
-  // Close multi-select dropdown when clicking outside
+  // Close multi-select dropdowns when clicking outside or pressing Escape
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
         setClassDropdownOpen(false);
+      }
+      if (reportDropdownRef.current && !reportDropdownRef.current.contains(target)) {
+        setReportDropdownOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setClassDropdownOpen(false);
+        setReportDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKeyDown);
+    };
   }, []);
 
   useEffect(() => {
@@ -277,18 +401,21 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
   };
 
   const selectMainPackage = () => {
-    setSelectedReports(['jurnal', 'kehadiran', 'nilai']);
+    setSelectedReports(
+      isStaffTuRole ? ['daftar_siswa', 'rekap_presensi'] : ['jurnal', 'kehadiran', 'nilai']
+    );
   };
 
   const selectAllReports = () => {
-    setSelectedReports(ALL_REPORT_OPTIONS.map((opt) => opt.id));
+    setSelectedReports(availableReportOptions.map((opt) => opt.id));
   };
 
   const clearAllReports = () => {
     setSelectedReports([]);
   };
 
-  const isReportSelected = (id: SingleReportType) => selectedReports.includes(id);
+  const isReportSelected = (id: SingleReportType) =>
+    availableReportOptions.some((o) => o.id === id) && selectedReports.includes(id);
 
   const reportOpts: ReportFilterOptions = useMemo(
     () => ({
@@ -302,7 +429,20 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
       showKopSurat,
       showPrincipalSig,
       showTeacherSig,
-      showStamp,
+      showStamp: showStampImg,
+      showPrincipalSigImg,
+      showTeacherSigImg,
+      showStampImg,
+      teacherSignatureOverride: {
+        dataUrl: effectiveTeacherSig.teacherSignatureDataUrl,
+        size: effectiveTeacherSig.teacherSignatureSize,
+        offsetX: effectiveTeacherSig.teacherSigOffsetX,
+        offsetY: effectiveTeacherSig.teacherSigOffsetY,
+        teacherName: signerTeacherName,
+        teacherNip: signerTeacherNip,
+      },
+      documentNumber,
+      showQrVerification,
       paperSize: effectivePaperSize,
       orientation: effectiveOrientation,
       fontFamily: effectiveFontFamily,
@@ -318,7 +458,14 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
       showKopSurat,
       showPrincipalSig,
       showTeacherSig,
-      showStamp,
+      showStampImg,
+      showPrincipalSigImg,
+      showTeacherSigImg,
+      effectiveTeacherSig,
+      signerTeacherName,
+      signerTeacherNip,
+      documentNumber,
+      showQrVerification,
       effectivePaperSize,
       effectiveOrientation,
       effectiveFontFamily,
@@ -381,8 +528,18 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
   );
 
   const handleDownloadExcel = (format: 'xlsx' | 'xls') => {
-    if (selectedReports.length === 0) {
+    if (selectedReports.length === 0 && !importedReport) {
       onNotify('Centang minimal satu jenis laporan terlebih dahulu.');
+      return;
+    }
+    if (importedReport) {
+      const ws = XLSX.utils.aoa_to_sheet([importedReport.headers, ...importedReport.rows]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Laporan Impor');
+      XLSX.writeFile(wb, `${importedReport.title.replace(/[^a-zA-Z0-9_-]/g, '_')}.${format}`, {
+        bookType: format === 'xls' ? 'biff8' : 'xlsx',
+      });
+      onNotify(`Dokumen impor berhasil diekspor ulang sebagai .${format.toUpperCase()}.`);
       return;
     }
     exportReportToSpreadsheet(format, students, journals, grades, settings, reportOpts);
@@ -392,16 +549,21 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
   };
 
   const handleDownloadPdf = async () => {
-    if (selectedReports.length === 0) {
+    if (selectedReports.length === 0 && !importedReport) {
       onNotify('Centang minimal satu jenis laporan terlebih dahulu.');
       return;
     }
     setExportingPdf(true);
     try {
-      await exportReportToPdf(students, journals, grades, settings, reportOpts);
-      onNotify(
-        `PDF Vektor (${selectedReports.length} jenis · ${paperMeta.id} · ${effectiveFontFamily}) berhasil dibuat dan diunduh.`
-      );
+      if (importedReport) {
+        await exportCustomImportedReportToPdf(importedReport, settings, reportOpts);
+        onNotify(`PDF Resmi Dokumen Impor (${paperMeta.id}) berhasil diunduh.`);
+      } else {
+        await exportReportToPdf(students, journals, grades, settings, reportOpts);
+        onNotify(
+          `PDF Vektor (${selectedReports.length} jenis · ${paperMeta.id} · ${effectiveFontFamily}) berhasil dibuat dan diunduh.`
+        );
+      }
     } catch {
       onNotify('Terjadi kendala saat membuat PDF. Silakan coba ulang.');
     } finally {
@@ -409,13 +571,67 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
     }
   };
 
+  const handleDownloadWord = () => {
+    if (selectedReports.length === 0 && !importedReport) {
+      onNotify('Centang minimal satu jenis laporan terlebih dahulu.');
+      return;
+    }
+    exportReportToWord(students, journals, grades, settings, reportOpts, importedReport);
+    onNotify('Dokumen Word (.doc) berkop & bertanda tangan berhasil diunduh.');
+  };
+
+  const handleImportSpreadsheetToOfficial = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const sheetName = wb.SheetNames[0];
+      const sheet = wb.Sheets[sheetName];
+      const aoa = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '' });
+      const nonEmptyRows = aoa.filter((r) => Array.isArray(r) && r.some((cell) => String(cell ?? '').trim() !== ''));
+      if (nonEmptyRows.length < 1) {
+        onNotify('File Excel/CSV kosong atau tidak memiliki header kolom.');
+        return;
+      }
+      const headers = nonEmptyRows[0].map((c, idx) => String(c ?? '').trim() || `Kolom ${idx + 1}`);
+      const rows = nonEmptyRows.slice(1).map((r) => headers.map((_, idx) => String(r[idx] ?? '').trim()));
+      const baseTitle = file.name.replace(/\.(xlsx|xls|csv)$/i, '').replace(/[_-]+/g, ' ').trim();
+      setImportedReport({
+        title: `LAPORAN RESMI — ${baseTitle || sheetName}`,
+        fileName: file.name,
+        headers,
+        rows,
+      });
+      onNotify(`Berhasil mengimpor "${file.name}" (${rows.length} baris) menjadi Dokumen Resmi Berkop.`);
+    } catch {
+      onNotify('Gagal membaca file Excel/CSV. Pastikan format valid.');
+    }
+  };
+
   const handlePrintDirect = () => {
-    if (selectedReports.length === 0) {
+    if (selectedReports.length === 0 && !importedReport) {
       onNotify('Centang minimal satu jenis laporan terlebih dahulu.');
       return;
     }
     window.print();
   };
+
+  const selectedReportLabels = useMemo(
+    () =>
+      availableReportOptions
+        .filter((opt) => selectedReports.includes(opt.id))
+        .map((opt) => opt.label),
+    [availableReportOptions, selectedReports]
+  );
+
+  const reportSummaryLabel =
+    selectedReports.length === 0
+      ? 'Belum ada jenis laporan dipilih'
+      : selectedReports.length === availableReportOptions.length
+        ? `Semua Jenis Laporan (${availableReportOptions.length})`
+        : `${selectedReports.length} Dipilih: ${selectedReportLabels.join(', ')}`;
 
   const classSummaryLabel =
     selectedClasses.length === 0
@@ -512,7 +728,7 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
   };
 
   const SignatureBlock = () => {
-    if (!showPrincipalSig && !showTeacherSig) return null;
+    if (!showPrincipalSig && !showTeacherSig && !qrPreviewDataUrl) return null;
     const stampOnTeacher =
       (sigStamp.stampTarget === 'teacher' && showTeacherSig) || !showPrincipalSig;
     const extraPadTop = Math.max(
@@ -530,9 +746,9 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
           paddingTop: 8 + extraPadTop,
           paddingBottom: extraPadBottom,
         }}
-        className="mt-8 grid grid-cols-2 gap-8 text-xs text-slate-950 overflow-visible"
+        className="mt-8 grid grid-cols-12 gap-4 text-xs text-slate-950 overflow-visible items-end"
       >
-        <div className="pl-4 overflow-visible">
+        <div className="col-span-5 pl-2 overflow-visible">
           {showPrincipalSig && (
             <div
               style={{
@@ -543,7 +759,7 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
               <p>Mengetahui,</p>
               <p>{settings.principalTitle}</p>
               <div className="relative h-[78px] w-full overflow-visible">
-                {!stampOnTeacher && showStamp && sigStamp.stampDataUrl && (
+                {!stampOnTeacher && showStampImg && sigStamp.stampDataUrl && (
                   <img
                     src={sigStamp.stampDataUrl}
                     alt="Stempel Sekolah"
@@ -559,7 +775,7 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
                     className="absolute z-10 object-contain opacity-85 mix-blend-multiply pointer-events-none select-none"
                   />
                 )}
-                {sigStamp.principalSignatureDataUrl && (
+                {showPrincipalSigImg && sigStamp.principalSignatureDataUrl && (
                   <img
                     src={sigStamp.principalSignatureDataUrl}
                     alt="TTD Kepala Sekolah"
@@ -581,7 +797,21 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
             </div>
           )}
         </div>
-        <div className="pl-8 sm:pl-16 overflow-visible">
+
+        <div className="col-span-2 flex flex-col items-center justify-center pb-1">
+          {showQrVerification && qrPreviewDataUrl && (
+            <>
+              <img
+                src={qrPreviewDataUrl}
+                alt="QR Verifikasi Digital"
+                className="w-16 h-16 object-contain border border-slate-200 p-0.5 bg-white"
+              />
+              <span className="text-[9px] text-slate-500 mt-0.5 text-center">Verifikasi Digital</span>
+            </>
+          )}
+        </div>
+
+        <div className="col-span-5 pl-4 sm:pl-8 overflow-visible">
           {showTeacherSig && (
             <div
               style={{
@@ -594,7 +824,7 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
               </p>
               <p>Guru Mata Pelajaran,</p>
               <div className="relative h-[78px] w-full overflow-visible">
-                {stampOnTeacher && showStamp && sigStamp.stampDataUrl && (
+                {stampOnTeacher && showStampImg && sigStamp.stampDataUrl && (
                   <img
                     src={sigStamp.stampDataUrl}
                     alt="Stempel Sekolah"
@@ -610,25 +840,25 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
                     className="absolute z-10 object-contain opacity-85 mix-blend-multiply pointer-events-none select-none"
                   />
                 )}
-                {sigStamp.teacherSignatureDataUrl && (
+                {showTeacherSigImg && effectiveTeacherSig.teacherSignatureDataUrl && (
                   <img
-                    src={sigStamp.teacherSignatureDataUrl}
+                    src={effectiveTeacherSig.teacherSignatureDataUrl}
                     alt="TTD Guru Mapel"
                     referrerPolicy="no-referrer"
                     style={{
                       left: '74px',
                       top: '50%',
-                      height: sigStamp.signatureSize,
+                      height: effectiveTeacherSig.teacherSignatureSize,
                       width: 'auto',
                       maxWidth: 'none',
-                      transform: `translate(calc(-50% + ${sigStamp.teacherSigOffsetX}px), calc(-50% + ${sigStamp.teacherSigOffsetY}px))`,
+                      transform: `translate(calc(-50% + ${effectiveTeacherSig.teacherSigOffsetX}px), calc(-50% + ${effectiveTeacherSig.teacherSigOffsetY}px))`,
                     }}
                     className="absolute z-20 object-contain pointer-events-none select-none"
                   />
                 )}
               </div>
-              <p className="font-bold underline">{settings.teacherProfile.name}</p>
-              <p>NIP. {settings.teacherProfile.nip}</p>
+              <p className="font-bold underline">{signerTeacherName}</p>
+              <p>NIP. {signerTeacherNip}</p>
             </div>
           )}
         </div>
@@ -658,105 +888,167 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
         </div>
 
         <div className="p-4 sm:p-6 space-y-5">
-          {/* Pilihan Multi-Select Jenis Laporan dengan Checkbox */}
-          <div className="space-y-3 pb-4 border-b border-slate-100">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          {/* Pilihan Multi-Select Dropdown Jenis Laporan dengan Checkbox */}
+          <div className="space-y-2.5 pb-4 border-b border-slate-100">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <h3 className="text-xs font-bold text-slate-800">
-                  Pilih Jenis Laporan Resmi (Bisa Centang Banyak)
+                  Pilih Jenis Laporan Resmi (Multi-Select)
                 </h3>
                 <p className="text-[11px] text-slate-500 tabular-nums">
-                  {selectedReports.length} dari {ALL_REPORT_OPTIONS.length} jenis laporan dicentang · Pratinjau, Cetak, PDF Vektor &amp; Excel multi-sheet
+                  {selectedReports.length} dari {availableReportOptions.length} jenis laporan dicentang · Pratinjau, Cetak, PDF Vektor &amp; Excel multi-sheet
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-1.5 shrink-0">
                 <button
                   type="button"
                   onClick={selectMainPackage}
-                  className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-[11px] font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer whitespace-nowrap min-h-[34px]"
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-[11px] font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer whitespace-nowrap min-h-[36px]"
                 >
-                  Paket Utama (3)
+                  {isStaffTuRole ? 'Paket Utama (2)' : 'Paket Utama (3)'}
                 </button>
                 <button
                   type="button"
                   onClick={selectAllReports}
-                  className="px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 cursor-pointer whitespace-nowrap min-h-[34px]"
+                  className="px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 cursor-pointer whitespace-nowrap min-h-[36px]"
                 >
-                  Pilih Semua (9)
+                  Pilih Semua ({availableReportOptions.length})
                 </button>
                 <button
                   type="button"
                   onClick={clearAllReports}
                   disabled={selectedReports.length === 0}
-                  className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 cursor-pointer whitespace-nowrap min-h-[34px]"
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 cursor-pointer whitespace-nowrap min-h-[36px]"
                 >
                   Kosongkan
                 </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-              {ALL_REPORT_OPTIONS.map((item) => {
-                const checked = isReportSelected(item.id);
-                return (
-                  <label
-                    key={item.id}
-                    className={`flex items-start gap-3 p-3 rounded-2xl border cursor-pointer transition-all min-h-[54px] select-none ${
-                      checked
-                        ? 'border-blue-500/70 bg-indigo-50/75 ring-1 ring-blue-500/20 shadow-[0_6px_16px_-6px_var(--eguru-glow-soft)]'
-                        : 'border-slate-200 bg-white/80 hover:border-slate-300 hover:bg-slate-50'
+            <div className="relative" ref={reportDropdownRef}>
+              <button
+                type="button"
+                aria-expanded={reportDropdownOpen}
+                aria-haspopup="listbox"
+                onClick={() => setReportDropdownOpen((o) => !o)}
+                className={`w-full flex items-center justify-between gap-3 px-3.5 py-2.5 min-h-[44px] text-xs rounded-xl border bg-white text-left transition-colors cursor-pointer ${
+                  reportDropdownOpen
+                    ? 'border-indigo-500 ring-2 ring-indigo-500/20 text-slate-900'
+                    : 'border-slate-300 text-slate-800 hover:bg-slate-50'
+                }`}
+              >
+                <span className="truncate font-semibold">{reportSummaryLabel}</span>
+                <span className="flex items-center gap-2 shrink-0 text-[11px] text-slate-500 tabular-nums">
+                  <span>
+                    {selectedReports.length}/{availableReportOptions.length}
+                  </span>
+                  <ChevronDown
+                    className={`w-4 h-4 text-slate-500 transition-transform duration-150 ${
+                      reportDropdownOpen ? 'rotate-180 text-indigo-600' : ''
                     }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleReportOption(item.id)}
-                      className="mt-0.5 w-4 h-4 rounded border-slate-300 accent-indigo-600 cursor-pointer shrink-0"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span
-                          className={`text-xs font-bold leading-snug truncate ${
-                            checked ? 'text-indigo-700' : 'text-slate-900'
+                  />
+                </span>
+              </button>
+
+              {reportDropdownOpen && (
+                <div className="absolute left-0 right-0 mt-1.5 z-40 bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden">
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-slate-50 border-b border-slate-100">
+                    <label className="flex items-center gap-2 text-xs font-bold text-indigo-700 cursor-pointer select-none min-h-[32px]">
+                      <input
+                        type="checkbox"
+                        checked={selectedReports.length === availableReportOptions.length}
+                        onChange={() =>
+                          selectedReports.length === availableReportOptions.length
+                            ? clearAllReports()
+                            : selectAllReports()
+                        }
+                        className="w-4 h-4 rounded border-slate-300 accent-indigo-600 cursor-pointer"
+                      />
+                      <span>Centang Semua ({availableReportOptions.length} Laporan)</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setReportDropdownOpen(false)}
+                      className="px-3 py-1 rounded-lg bg-slate-900 text-white text-[11px] font-semibold hover:bg-slate-800 cursor-pointer whitespace-nowrap"
+                    >
+                      Selesai
+                    </button>
+                  </div>
+
+                  <div className="p-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5 max-h-72 overflow-y-auto">
+                    {availableReportOptions.map((item) => {
+                      const checked = isReportSelected(item.id);
+                      return (
+                        <label
+                          key={item.id}
+                          className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors min-h-[48px] select-none ${
+                            checked
+                              ? 'border-indigo-400 bg-indigo-50/75 text-indigo-900'
+                              : 'border-slate-100 bg-white hover:border-slate-200 hover:bg-slate-50'
                           }`}
                         >
-                          {item.label}
-                        </span>
-                        <span className="text-[10px] font-medium text-slate-400 shrink-0">
-                          {item.category}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 mt-0.5 leading-snug truncate">
-                        {item.desc}
-                      </p>
-                    </div>
-                  </label>
-                );
-              })}
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleReportOption(item.id)}
+                            className="mt-0.5 w-4 h-4 rounded border-slate-300 accent-indigo-600 cursor-pointer shrink-0"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span
+                                className={`text-xs font-semibold leading-snug truncate ${
+                                  checked ? 'text-indigo-700' : 'text-slate-900'
+                                }`}
+                              >
+                                {item.label}
+                              </span>
+                              <span className="text-[10px] font-medium text-slate-400 shrink-0">
+                                {item.category}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 mt-0.5 leading-snug truncate">
+                              {item.desc}
+                            </p>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
+
+            {selectedReportLabels.length > 0 && (
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                <span className="font-semibold text-slate-700">Terpilih:</span>{' '}
+                {selectedReportLabels.join(' · ')}
+              </p>
+            )}
           </div>
 
           {/* Row 1: Filter Laporan */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className={`grid grid-cols-1 ${canFilterAllTeachers ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-4`}>
 
-            {/* Filter Guru Pengajar */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Filter Guru Pengajar {currentUserRole === 'admin' || currentUserRole === 'kepala_sekolah' ? '(Admin)' : ''}
-              </label>
-              <select
-                value={selectedTeacherId}
-                onChange={(e) => setSelectedTeacherId(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
-              >
-                <option value="ALL">Semua Guru Pengajar</option>
-                {teacherOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* Filter Guru Pengajar (Admin & Kepala Sekolah) */}
+            {canFilterAllTeachers && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  Filter Guru Pengajar ({currentUserRole === 'admin' ? 'Admin' : 'Pimpinan'})
+                </label>
+                <select
+                  value={selectedTeacherId}
+                  onChange={(e) => setSelectedTeacherId(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                >
+                  <option value="ALL">Semua Guru Pengajar</option>
+                  {teacherOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Multi-select Dropdown Kelas dengan Checkbox */}
             <div className="relative" ref={dropdownRef}>
@@ -963,7 +1255,7 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Reset Tanggal</span>
               </button>
-              {selectedTeacherId !== 'ALL' && (
+              {canFilterAllTeachers && selectedTeacherId !== 'ALL' && (
                 <button
                   type="button"
                   onClick={() => setSelectedTeacherId('ALL')}
@@ -975,9 +1267,66 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
             </div>
           </div>
 
-          {/* Row 3: Saklar Pratinjau Real-Time & Orientasi + 4 Tombol Output */}
-          <div className="pt-4 border-t border-slate-200 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-            <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-3 sm:gap-4 text-xs">
+          {/* Row 2B: Nomor Surat, QR Verifikasi Digital & Impor Excel ke Laporan Resmi */}
+          <div className="pt-3 border-t border-slate-100 grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+            <div className="md:col-span-5">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Nomor Surat / Dokumen Resmi (Opsional)
+              </label>
+              <input
+                type="text"
+                value={documentNumber}
+                onChange={(e) => setDocumentNumber(e.target.value)}
+                placeholder="Contoh: 421.3/084/SMAN1-BDG/2026"
+                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              />
+            </div>
+
+            <div className="md:col-span-3 flex items-center pb-1.5">
+              <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-800 cursor-pointer min-h-[34px]">
+                <input
+                  type="checkbox"
+                  checked={showQrVerification}
+                  onChange={(e) => setShowQrVerification(e.target.checked)}
+                  className="rounded border-slate-300 text-indigo-600"
+                />
+                <QrCode className="w-3.5 h-3.5 text-indigo-600" />
+                <span>QR Verifikasi Digital</span>
+              </label>
+            </div>
+
+            <div className="md:col-span-4 flex flex-wrap items-center justify-end gap-2">
+              <input
+                ref={importFileRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={handleImportSpreadsheetToOfficial}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => importFileRef.current?.click()}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-xs font-semibold text-indigo-700 cursor-pointer whitespace-nowrap min-h-[38px]"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Impor Excel/CSV → Laporan Berkop</span>
+              </button>
+              {importedReport && (
+                <button
+                  type="button"
+                  onClick={() => setImportedReport(null)}
+                  className="inline-flex items-center gap-1 px-2.5 py-2 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-xs font-semibold text-rose-700 cursor-pointer whitespace-nowrap min-h-[38px]"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Tutup Impor</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Row 3: Saklar Blok Pengesahan + 3 Kontrol Gambar Independen + Tombol Output */}
+          <div className="pt-4 border-t border-slate-200 flex flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
               <label className="inline-flex items-center gap-2 font-semibold text-slate-800 cursor-pointer min-h-[32px]">
                 <input
                   type="checkbox"
@@ -995,7 +1344,7 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
                   onChange={(e) => setShowPrincipalSig(e.target.checked)}
                   className="rounded border-slate-300 text-indigo-600"
                 />
-                <span>TTD Kepala Sekolah</span>
+                <span>Blok Kepsek</span>
               </label>
 
               <label className="inline-flex items-center gap-2 font-semibold text-slate-800 cursor-pointer min-h-[32px]">
@@ -1005,25 +1354,47 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
                   onChange={(e) => setShowTeacherSig(e.target.checked)}
                   className="rounded border-slate-300 text-indigo-600"
                 />
-                <span>TTD Guru Mapel</span>
+                <span>Blok Guru</span>
               </label>
 
-              <label className="inline-flex items-center gap-2 font-semibold text-slate-800 cursor-pointer min-h-[32px]">
+              <span className="text-slate-300 hidden sm:inline">|</span>
+
+              <label className="inline-flex items-center gap-2 font-semibold text-indigo-800 cursor-pointer min-h-[32px]">
                 <input
                   type="checkbox"
-                  checked={showStamp}
-                  onChange={(e) => setShowStamp(e.target.checked)}
+                  checked={showPrincipalSigImg}
+                  onChange={(e) => setShowPrincipalSigImg(e.target.checked)}
                   className="rounded border-slate-300 text-indigo-600"
                 />
-                <span>Stempel Sekolah</span>
+                <span>Gbr TTD Kepsek</span>
+              </label>
+
+              <label className="inline-flex items-center gap-2 font-semibold text-indigo-800 cursor-pointer min-h-[32px]">
+                <input
+                  type="checkbox"
+                  checked={showStampImg}
+                  onChange={(e) => setShowStampImg(e.target.checked)}
+                  className="rounded border-slate-300 text-indigo-600"
+                />
+                <span>Gbr Stempel Sekolah</span>
+              </label>
+
+              <label className="inline-flex items-center gap-2 font-semibold text-indigo-800 cursor-pointer min-h-[32px]">
+                <input
+                  type="checkbox"
+                  checked={showTeacherSigImg}
+                  onChange={(e) => setShowTeacherSigImg(e.target.checked)}
+                  className="rounded border-slate-300 text-indigo-600"
+                />
+                <span>Gbr TTD Guru Mapel</span>
               </label>
             </div>
 
-            <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 sm:gap-2.5 shrink-0">
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center justify-end gap-2 sm:gap-2.5 shrink-0">
               <button
                 type="button"
                 onClick={() => handleDownloadExcel('xlsx')}
-                disabled={selectedReports.length === 0}
+                disabled={selectedReports.length === 0 && !importedReport}
                 className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold cursor-pointer whitespace-nowrap min-h-[42px]"
               >
                 <FileSpreadsheet className="w-4 h-4" />
@@ -1033,7 +1404,7 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
               <button
                 type="button"
                 onClick={() => handleDownloadExcel('xls')}
-                disabled={selectedReports.length === 0}
+                disabled={selectedReports.length === 0 && !importedReport}
                 className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 disabled:opacity-50 text-white text-xs font-semibold cursor-pointer whitespace-nowrap min-h-[42px]"
               >
                 <FileDown className="w-4 h-4" />
@@ -1042,8 +1413,18 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
 
               <button
                 type="button"
+                onClick={handleDownloadWord}
+                disabled={selectedReports.length === 0 && !importedReport}
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-sky-700 hover:bg-sky-800 disabled:opacity-50 text-white text-xs font-semibold cursor-pointer whitespace-nowrap min-h-[42px]"
+              >
+                <FileText className="w-4 h-4" />
+                <span>Unduh Word (.doc)</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={handleDownloadPdf}
-                disabled={exportingPdf || selectedReports.length === 0}
+                disabled={exportingPdf || (selectedReports.length === 0 && !importedReport)}
                 className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-semibold cursor-pointer whitespace-nowrap min-h-[42px]"
               >
                 <FileText className="w-4 h-4" />
@@ -1053,7 +1434,7 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
               <button
                 type="button"
                 onClick={handlePrintDirect}
-                disabled={selectedReports.length === 0}
+                disabled={selectedReports.length === 0 && !importedReport}
                 className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold cursor-pointer whitespace-nowrap min-h-[42px]"
               >
                 <Printer className="w-4 h-4" />
@@ -1117,16 +1498,75 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
 
           return (
             <>
-              {selectedReports.length === 0 && (
-                <div className="py-16 px-6 text-center text-slate-600 space-y-2 border border-dashed border-slate-300 rounded-lg">
-                  <p className="text-sm font-bold text-slate-800">
-                    Belum ada jenis laporan yang dicentang
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    Centang satu atau beberapa jenis laporan pada panel di atas untuk melihat pratinjau, mencetak, atau mengunduh PDF/Excel.
-                  </p>
+              {importedReport ? (
+                <div className="mb-8 space-y-4">
+                  <KopSuratPreviewBlock />
+                  {documentNumber.trim() && (
+                    <p className="text-xs text-slate-900">
+                      Nomor Dokumen: <strong>{documentNumber.trim()}</strong>
+                    </p>
+                  )}
+                  <div className="text-center">
+                    <h3 className="text-sm font-bold uppercase tracking-wide text-slate-950">
+                      {importedReport.title}
+                    </h3>
+                    <p className="text-xs text-slate-700 mt-0.5">
+                      Sumber Berkas: {importedReport.fileName} · Tahun Ajaran {settings.academicYear} (
+                      {settings.semester})
+                    </p>
+                  </div>
+                  <table className="w-full border-collapse border border-slate-900 text-[10.5px] text-slate-950">
+                    <thead>
+                      <tr className="bg-slate-100">
+                        {importedReport.headers.map((h, i) => (
+                          <th key={i} className="border border-slate-900 px-2 py-1.5 text-center font-bold">
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importedReport.rows.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={importedReport.headers.length}
+                            className="border border-slate-900 py-5 text-center text-slate-500"
+                          >
+                            Tidak ada baris data dalam file impor.
+                          </td>
+                        </tr>
+                      ) : (
+                        importedReport.rows.map((row, rIdx) => (
+                          <tr key={rIdx}>
+                            {row.map((cell, cIdx) => (
+                              <td key={cIdx} className="border border-slate-900 px-2 py-1">
+                                {cell}
+                              </td>
+                            ))}
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                  <SignatureBlock />
                 </div>
-              )}
+              ) : (
+                <>
+                  {documentNumber.trim() && selectedReports.length > 0 && (
+                    <p className="text-xs text-slate-900 mb-2">
+                      Nomor Dokumen: <strong>{documentNumber.trim()}</strong>
+                    </p>
+                  )}
+                  {selectedReports.length === 0 && (
+                    <div className="py-16 px-6 text-center text-slate-600 space-y-2 border border-dashed border-slate-300 rounded-lg">
+                      <p className="text-sm font-bold text-slate-800">
+                        Belum ada jenis laporan yang dicentang
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Centang satu atau beberapa jenis laporan pada panel di atas untuk melihat pratinjau, mencetak, atau mengunduh PDF/Word/Excel.
+                      </p>
+                    </div>
+                  )}
 
         {/* BAGIAN KHUSUS ADMIN: RIWAYAT AKTIVITAS MENGAJAR & PENILAIAN GURU */}
         {isReportSelected('aktivitas_guru') && (
@@ -2189,6 +2629,8 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
               </div>
             ))
           ))}
+                </>
+              )}
             </>
           );
         })()}

@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import QRCode from 'qrcode';
 import * as XLSX from 'xlsx';
 import {
   AppUser,
@@ -26,9 +27,26 @@ import {
   getTodayIso,
   normalizeKopSurat,
   normalizeSignatureStamp,
+  PX_TO_MM,
   ROW_MARKER_META,
   USER_ROLE_LABELS,
 } from './helpers';
+
+export interface TeacherSignatureOverride {
+  dataUrl: string;
+  size?: number;
+  offsetX?: number;
+  offsetY?: number;
+  teacherName?: string;
+  teacherNip?: string;
+}
+
+export interface ImportedReportData {
+  title: string;
+  fileName: string;
+  headers: string[];
+  rows: string[][];
+}
 
 export interface ReportFilterOptions {
   reportType?: ReportType;
@@ -43,6 +61,12 @@ export interface ReportFilterOptions {
   showPrincipalSig: boolean;
   showTeacherSig: boolean;
   showStamp?: boolean;
+  showPrincipalSigImg?: boolean;
+  showTeacherSigImg?: boolean;
+  showStampImg?: boolean;
+  teacherSignatureOverride?: TeacherSignatureOverride;
+  documentNumber?: string;
+  showQrVerification?: boolean;
   paperSize?: PaperSize;
   orientation: PaperOrientation;
   fontFamily: PrintFontFamily;
@@ -1245,7 +1269,45 @@ function mapPrintFontToJsPdf(fontFamily: PrintFontFamily): 'times' | 'helvetica'
   return 'helvetica';
 }
 
-const pxToMm = (px: number): number => Math.round(px * 0.2645 * 10) / 10;
+const pxToMm = (px: number): number => Math.round(px * PX_TO_MM * 100) / 100;
+
+function computeAutoTableFontSize(colCount: number, printableWidthMm: number): number {
+  if (colCount <= 10) return 8;
+  const approxMmPerCol = printableWidthMm / Math.max(1, colCount);
+  if (approxMmPerCol >= 16) return 7.6;
+  if (approxMmPerCol >= 12) return 7.0;
+  if (approxMmPerCol >= 9) return 6.3;
+  if (approxMmPerCol >= 7) return 5.8;
+  return 5.2;
+}
+
+async function getPngAspectRatio(pngDataUrl: string | null): Promise<number> {
+  if (!pngDataUrl) return 2.2;
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+        resolve(img.naturalWidth / img.naturalHeight);
+      } else {
+        resolve(2.2);
+      }
+    };
+    img.onerror = () => resolve(2.2);
+    img.src = pngDataUrl;
+  });
+}
+
+async function createVerificationQrPng(payloadText: string): Promise<string | null> {
+  try {
+    return await QRCode.toDataURL(payloadText, {
+      width: 240,
+      margin: 1,
+      errorCorrectionLevel: 'M',
+    });
+  } catch {
+    return null;
+  }
+}
 
 export async function exportReportToPdf(
   students: Student[],
@@ -1267,8 +1329,26 @@ export async function exportReportToPdf(
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const marginX = 14;
+  const printableWidth = pageWidth - marginX * 2;
 
   const sigStamp = normalizeSignatureStamp(settings);
+  const showPrincipalImg = opts.showPrincipalSigImg ?? sigStamp.showPrincipalSigImgDefault !== false;
+  const showTeacherImg = opts.showTeacherSigImg ?? sigStamp.showTeacherSigImgDefault !== false;
+  const showStampImg = opts.showStampImg ?? opts.showStamp ?? sigStamp.showStampDefault;
+
+  const effectiveTeacherSigUrl =
+    opts.teacherSignatureOverride?.dataUrl || sigStamp.teacherSignatureDataUrl;
+  const effectiveTeacherSigPx = Math.max(
+    40,
+    Math.min(280, opts.teacherSignatureOverride?.size ?? sigStamp.signatureSize)
+  );
+  const effectiveTeacherOffX = opts.teacherSignatureOverride?.offsetX ?? sigStamp.teacherSigOffsetX;
+  const effectiveTeacherOffY = opts.teacherSignatureOverride?.offsetY ?? sigStamp.teacherSigOffsetY;
+  const effectiveTeacherName =
+    opts.teacherSignatureOverride?.teacherName || settings.teacherProfile.name;
+  const effectiveTeacherNip =
+    opts.teacherSignatureOverride?.teacherNip || settings.teacherProfile.nip;
+
   const leftPng = opts.showKopSurat
     ? await dataUrlToPngBase64(settings.kopSurat.leftLogoDataUrl)
     : null;
@@ -1276,17 +1356,32 @@ export async function exportReportToPdf(
     ? await dataUrlToPngBase64(settings.kopSurat.rightLogoDataUrl)
     : null;
   const principalSigPng =
-    opts.showPrincipalSig && sigStamp.principalSignatureDataUrl
+    opts.showPrincipalSig && showPrincipalImg && sigStamp.principalSignatureDataUrl
       ? await dataUrlToPngBase64(sigStamp.principalSignatureDataUrl, 480)
       : null;
   const teacherSigPng =
-    opts.showTeacherSig && sigStamp.teacherSignatureDataUrl
-      ? await dataUrlToPngBase64(sigStamp.teacherSignatureDataUrl, 480)
+    opts.showTeacherSig && showTeacherImg && effectiveTeacherSigUrl
+      ? await dataUrlToPngBase64(effectiveTeacherSigUrl, 480)
       : null;
   const stampPng =
-    opts.showStamp && sigStamp.stampDataUrl
+    showStampImg && sigStamp.stampDataUrl
       ? await dataUrlToPngBase64(sigStamp.stampDataUrl, 480)
       : null;
+
+  const [principalAspect, teacherAspect] = await Promise.all([
+    getPngAspectRatio(principalSigPng),
+    getPngAspectRatio(teacherSigPng),
+  ]);
+
+  const docNumberClean = (opts.documentNumber || '').trim();
+  const qrPayload = [
+    settings.kopSurat.line4 || settings.teacherProfile.school || 'Portal E-Guru',
+    docNumberClean ? `No: ${docNumberClean}` : 'Dokumen Resmi Portal E-Guru',
+    `TA ${settings.academicYear} (${settings.semester})`,
+    `Tanggal Cetak: ${formatTanggalID(getTodayIso())}`,
+    `Penandatangan: ${effectiveTeacherName}`,
+  ].join(' | ');
+  const qrPng = opts.showQrVerification ? await createVerificationQrPng(qrPayload) : null;
 
   const drawHeader = (): number => {
     let cursorY = 12;
@@ -1351,11 +1446,17 @@ export async function exportReportToPdf(
       cursorY += 6;
       doc.setFont(pdfFont, 'normal');
     }
+    if (docNumberClean) {
+      doc.setFont(pdfFont, 'normal');
+      doc.setFontSize(8.5);
+      doc.text(`Nomor Dokumen: ${docNumberClean}`, marginX, cursorY);
+      cursorY += 4.5;
+    }
     return cursorY;
   };
 
   const drawSignatures = (startY: number) => {
-    if (!opts.showPrincipalSig && !opts.showTeacherSig) return;
+    if (!opts.showPrincipalSig && !opts.showTeacherSig && !qrPng) return;
     const maxBlockDownMm = Math.max(
       0,
       pxToMm(sigStamp.principalBlockOffsetY),
@@ -1371,9 +1472,11 @@ export async function exportReportToPdf(
     doc.setFontSize(9.5);
 
     const todayStr = formatTanggalID(getTodayIso());
-    const sigMm = Math.round((sigStamp.signatureSize / 54) * 14 * 10) / 10;
-    const sigW = Math.round(sigMm * 2.2 * 10) / 10;
-    const stampMm = Math.round((sigStamp.stampSize / 74) * 20 * 10) / 10;
+    const pSigMm = pxToMm(sigStamp.signatureSize);
+    const pSigW = Math.round(pSigMm * principalAspect * 100) / 100;
+    const tSigMm = pxToMm(effectiveTeacherSigPx);
+    const tSigW = Math.round(tSigMm * teacherAspect * 100) / 100;
+    const stampMm = pxToMm(sigStamp.stampSize);
 
     const stampOnTeacher =
       (sigStamp.stampTarget === 'teacher' && opts.showTeacherSig) || !opts.showPrincipalSig;
@@ -1405,10 +1508,10 @@ export async function exportReportToPdf(
         doc.addImage(
           principalSigPng,
           'PNG',
-          sigCx - sigW / 2,
-          sigCy - sigMm / 2,
-          sigW,
-          sigMm
+          sigCx - pSigW / 2,
+          sigCy - pSigMm / 2,
+          pSigW,
+          pSigMm
         );
       }
       doc.setFont(pdfFont, 'bold');
@@ -1436,21 +1539,31 @@ export async function exportReportToPdf(
         );
       }
       if (teacherSigPng) {
-        const sigCx = rightX + 17 + pxToMm(sigStamp.teacherSigOffsetX);
-        const sigCy = tStageCenterY + pxToMm(sigStamp.teacherSigOffsetY);
+        const sigCx = rightX + 17 + pxToMm(effectiveTeacherOffX);
+        const sigCy = tStageCenterY + pxToMm(effectiveTeacherOffY);
         doc.addImage(
           teacherSigPng,
           'PNG',
-          sigCx - sigW / 2,
-          sigCy - sigMm / 2,
-          sigW,
-          sigMm
+          sigCx - tSigW / 2,
+          sigCy - tSigMm / 2,
+          tSigW,
+          tSigMm
         );
       }
       doc.setFont(pdfFont, 'bold');
-      doc.text(settings.teacherProfile.name, rightX, tY + 24);
+      doc.text(effectiveTeacherName, rightX, tY + 24);
       doc.setFont(pdfFont, 'normal');
-      doc.text(`NIP. ${settings.teacherProfile.nip}`, rightX, tY + 28.6);
+      doc.text(`NIP. ${effectiveTeacherNip}`, rightX, tY + 28.6);
+    }
+
+    if (qrPng) {
+      const qrSizeMm = 17;
+      const qrX = pageWidth / 2 - qrSizeMm / 2;
+      const qrY = Math.min(pageHeight - qrSizeMm - 8, y + 6);
+      doc.addImage(qrPng, 'PNG', qrX, qrY, qrSizeMm, qrSizeMm);
+      doc.setFont(pdfFont, 'normal');
+      doc.setFontSize(6.5);
+      doc.text('Verifikasi Digital', pageWidth / 2, qrY + qrSizeMm + 3, { align: 'center' });
     }
   };
 
@@ -1727,6 +1840,7 @@ export async function exportReportToPdf(
         ];
       });
 
+      const autoKehadiranFont = computeAutoTableFontSize(head[0].length, printableWidth);
       autoTable(doc, {
         startY: y,
         margin: { left: marginX, right: marginX },
@@ -1734,12 +1848,13 @@ export async function exportReportToPdf(
         body,
         styles: {
           font: pdfFont,
-          fontSize: 7.5,
-          cellPadding: 1.5,
+          fontSize: autoKehadiranFont,
+          cellPadding: autoKehadiranFont < 6.5 ? 0.9 : 1.4,
           halign: 'center',
           textColor: [15, 23, 42],
           lineColor: [203, 213, 225],
           lineWidth: 0.15,
+          overflow: 'linebreak',
         },
         headStyles: {
           fillColor: [15, 23, 42],
@@ -1747,7 +1862,7 @@ export async function exportReportToPdf(
           fontStyle: 'bold',
         },
         columnStyles: {
-          2: { halign: 'left', cellWidth: 40 },
+          2: { halign: 'left', cellWidth: head[0].length > 18 ? 30 : 40 },
         },
       });
 
@@ -2140,6 +2255,7 @@ export async function exportReportToPdf(
         r.statusLabel,
       ]);
 
+      const autoLegerFont = computeAutoTableFontSize(head[0].length, printableWidth);
       autoTable(doc, {
         startY: y,
         margin: { left: marginX, right: marginX },
@@ -2147,15 +2263,16 @@ export async function exportReportToPdf(
         body,
         styles: {
           font: pdfFont,
-          fontSize: 7.2,
-          cellPadding: 1.4,
+          fontSize: Math.min(7.5, autoLegerFont),
+          cellPadding: autoLegerFont < 6.5 ? 0.9 : 1.4,
           halign: 'center',
           textColor: [15, 23, 42],
           lineColor: [203, 213, 225],
           lineWidth: 0.15,
+          overflow: 'linebreak',
         },
         headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold' },
-        columnStyles: { 2: { halign: 'left', cellWidth: 38 } },
+        columnStyles: { 2: { halign: 'left', cellWidth: head[0].length > 14 ? 30 : 38 } },
       });
 
       const finalY =
@@ -2250,6 +2367,12 @@ export async function exportStudentIndividualPdf(
     showPrincipalSig?: boolean;
     showTeacherSig?: boolean;
     showStamp?: boolean;
+    showPrincipalSigImg?: boolean;
+    showTeacherSigImg?: boolean;
+    showStampImg?: boolean;
+    teacherSignatureOverride?: TeacherSignatureOverride;
+    documentNumber?: string;
+    showQrVerification?: boolean;
     fontFamily?: PrintFontFamily;
     paperSize?: PaperSize;
   }
@@ -2268,7 +2391,22 @@ export async function exportStudentIndividualPdf(
   const kopFont = mapPrintFontToJsPdf(normKop.fontFamily);
   const showPrincipalSig = opts?.showPrincipalSig ?? false;
   const showTeacherSig = opts?.showTeacherSig ?? true;
-  const showStamp = opts?.showStamp ?? sigStamp.showStampDefault;
+  const showStamp = opts?.showStampImg ?? opts?.showStamp ?? sigStamp.showStampDefault;
+  const showPrincipalImg = opts?.showPrincipalSigImg ?? sigStamp.showPrincipalSigImgDefault !== false;
+  const showTeacherImg = opts?.showTeacherSigImg ?? sigStamp.showTeacherSigImgDefault !== false;
+
+  const effectiveTeacherSigUrl =
+    opts?.teacherSignatureOverride?.dataUrl || sigStamp.teacherSignatureDataUrl;
+  const effectiveTeacherSigPx = Math.max(
+    40,
+    Math.min(280, opts?.teacherSignatureOverride?.size ?? sigStamp.signatureSize)
+  );
+  const effectiveTeacherOffX = opts?.teacherSignatureOverride?.offsetX ?? sigStamp.teacherSigOffsetX;
+  const effectiveTeacherOffY = opts?.teacherSignatureOverride?.offsetY ?? sigStamp.teacherSigOffsetY;
+  const effectiveTeacherName =
+    opts?.teacherSignatureOverride?.teacherName || settings.teacherProfile.name;
+  const effectiveTeacherNip =
+    opts?.teacherSignatureOverride?.teacherNip || settings.teacherProfile.nip;
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -2277,17 +2415,26 @@ export async function exportStudentIndividualPdf(
   const leftPng = await dataUrlToPngBase64(normKop.leftLogoDataUrl);
   const rightPng = await dataUrlToPngBase64(normKop.rightLogoDataUrl);
   const principalSigPng =
-    showPrincipalSig && sigStamp.principalSignatureDataUrl
+    showPrincipalSig && showPrincipalImg && sigStamp.principalSignatureDataUrl
       ? await dataUrlToPngBase64(sigStamp.principalSignatureDataUrl, 480)
       : null;
   const teacherSigPng =
-    showTeacherSig && sigStamp.teacherSignatureDataUrl
-      ? await dataUrlToPngBase64(sigStamp.teacherSignatureDataUrl, 480)
+    showTeacherSig && showTeacherImg && effectiveTeacherSigUrl
+      ? await dataUrlToPngBase64(effectiveTeacherSigUrl, 480)
       : null;
   const stampPng =
     showStamp && sigStamp.stampDataUrl
       ? await dataUrlToPngBase64(sigStamp.stampDataUrl, 480)
       : null;
+  const [principalAspect, teacherAspect] = await Promise.all([
+    getPngAspectRatio(principalSigPng),
+    getPngAspectRatio(teacherSigPng),
+  ]);
+  const qrPng = opts?.showQrVerification
+    ? await createVerificationQrPng(
+        `Profil Siswa: ${student.name} (${student.nis}) | Kelas ${student.className} | ${formatTanggalID(getTodayIso())}`
+      )
+    : null;
   let photoPng = await dataUrlToPngBase64(getStudentPhotoUrl(student), 240);
   if (!photoPng && student.photoDataUrl) {
     photoPng = await dataUrlToPngBase64(
@@ -2479,7 +2626,7 @@ export async function exportStudentIndividualPdf(
 
   const afterGradeY =
     (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y + 20;
-  if (showPrincipalSig || showTeacherSig) {
+  if (showPrincipalSig || showTeacherSig || qrPng) {
     const maxBlockDownMm = Math.max(
       0,
       pxToMm(sigStamp.principalBlockOffsetY),
@@ -2493,9 +2640,11 @@ export async function exportStudentIndividualPdf(
 
     doc.setFont(bodyFont, 'normal');
     doc.setFontSize(9.5);
-    const sigMm = Math.round((sigStamp.signatureSize / 54) * 14 * 10) / 10;
-    const sigW = Math.round(sigMm * 2.2 * 10) / 10;
-    const stampMm = Math.round((sigStamp.stampSize / 74) * 20 * 10) / 10;
+    const pSigMm = pxToMm(sigStamp.signatureSize);
+    const pSigW = Math.round(pSigMm * principalAspect * 100) / 100;
+    const tSigMm = pxToMm(effectiveTeacherSigPx);
+    const tSigW = Math.round(tSigMm * teacherAspect * 100) / 100;
+    const stampMm = pxToMm(sigStamp.stampSize);
     const stampOnTeacher =
       (sigStamp.stampTarget === 'teacher' && showTeacherSig) || !showPrincipalSig;
 
@@ -2526,10 +2675,10 @@ export async function exportStudentIndividualPdf(
         doc.addImage(
           principalSigPng,
           'PNG',
-          sigCx - sigW / 2,
-          sigCy - sigMm / 2,
-          sigW,
-          sigMm
+          sigCx - pSigW / 2,
+          sigCy - pSigMm / 2,
+          pSigW,
+          pSigMm
         );
       }
       doc.setFont(bodyFont, 'bold');
@@ -2557,24 +2706,575 @@ export async function exportStudentIndividualPdf(
         );
       }
       if (teacherSigPng) {
-        const sigCx = rightX + 17 + pxToMm(sigStamp.teacherSigOffsetX);
-        const sigCy = tStageCenterY + pxToMm(sigStamp.teacherSigOffsetY);
+        const sigCx = rightX + 17 + pxToMm(effectiveTeacherOffX);
+        const sigCy = tStageCenterY + pxToMm(effectiveTeacherOffY);
         doc.addImage(
           teacherSigPng,
           'PNG',
-          sigCx - sigW / 2,
-          sigCy - sigMm / 2,
-          sigW,
-          sigMm
+          sigCx - tSigW / 2,
+          sigCy - tSigMm / 2,
+          tSigW,
+          tSigMm
         );
       }
       doc.setFont(bodyFont, 'bold');
-      doc.text(settings.teacherProfile.name, rightX, tY + 24);
+      doc.text(effectiveTeacherName, rightX, tY + 24);
       doc.setFont(bodyFont, 'normal');
-      doc.text(`NIP. ${settings.teacherProfile.nip}`, rightX, tY + 28.6);
+      doc.text(`NIP. ${effectiveTeacherNip}`, rightX, tY + 28.6);
+    }
+
+    if (qrPng) {
+      const qrSizeMm = 17;
+      const qrX = pageWidth / 2 - qrSizeMm / 2;
+      const qrY = Math.min(pageHeight - qrSizeMm - 8, sigY + 6);
+      doc.addImage(qrPng, 'PNG', qrX, qrY, qrSizeMm, qrSizeMm);
     }
   }
 
   const safeName = student.name.replace(/[^a-zA-Z0-9_-]/g, '_');
   doc.save(`Profil_Siswa_${safeName}_${getTodayIso()}.pdf`);
+}
+
+// =========================================================================
+// CUSTOM IMPORTED EXCEL/CSV -> OFFICIAL PDF WITH KOP & SIGNATURES
+// =========================================================================
+export async function exportCustomImportedReportToPdf(
+  imported: ImportedReportData,
+  settings: SystemSettings,
+  opts: ReportFilterOptions
+) {
+  const paperMeta = getPaperSizeMeta(opts.paperSize || settings.reportPaperSize);
+  const doc = new jsPDF({
+    orientation: opts.orientation,
+    unit: 'mm',
+    format: paperMeta.jsPdfFormat,
+  });
+
+  const pdfFont = mapPrintFontToJsPdf(opts.fontFamily);
+  doc.setFont(pdfFont, 'normal');
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginX = 14;
+  const printableWidth = pageWidth - marginX * 2;
+  const sigStamp = normalizeSignatureStamp(settings);
+
+  const showPrincipalImg = opts.showPrincipalSigImg ?? sigStamp.showPrincipalSigImgDefault !== false;
+  const showTeacherImg = opts.showTeacherSigImg ?? sigStamp.showTeacherSigImgDefault !== false;
+  const showStampImg = opts.showStampImg ?? opts.showStamp ?? sigStamp.showStampDefault;
+
+  const effectiveTeacherSigUrl =
+    opts.teacherSignatureOverride?.dataUrl || sigStamp.teacherSignatureDataUrl;
+  const effectiveTeacherSigPx = Math.max(
+    40,
+    Math.min(280, opts.teacherSignatureOverride?.size ?? sigStamp.signatureSize)
+  );
+  const effectiveTeacherOffX = opts.teacherSignatureOverride?.offsetX ?? sigStamp.teacherSigOffsetX;
+  const effectiveTeacherOffY = opts.teacherSignatureOverride?.offsetY ?? sigStamp.teacherSigOffsetY;
+  const effectiveTeacherName =
+    opts.teacherSignatureOverride?.teacherName || settings.teacherProfile.name;
+  const effectiveTeacherNip =
+    opts.teacherSignatureOverride?.teacherNip || settings.teacherProfile.nip;
+
+  const [leftPng, rightPng, principalSigPng, teacherSigPng, stampPng] = await Promise.all([
+    opts.showKopSurat ? dataUrlToPngBase64(settings.kopSurat.leftLogoDataUrl) : Promise.resolve(null),
+    opts.showKopSurat ? dataUrlToPngBase64(settings.kopSurat.rightLogoDataUrl) : Promise.resolve(null),
+    opts.showPrincipalSig && showPrincipalImg && sigStamp.principalSignatureDataUrl
+      ? dataUrlToPngBase64(sigStamp.principalSignatureDataUrl, 480)
+      : Promise.resolve(null),
+    opts.showTeacherSig && showTeacherImg && effectiveTeacherSigUrl
+      ? dataUrlToPngBase64(effectiveTeacherSigUrl, 480)
+      : Promise.resolve(null),
+    showStampImg && sigStamp.stampDataUrl
+      ? dataUrlToPngBase64(sigStamp.stampDataUrl, 480)
+      : Promise.resolve(null),
+  ]);
+
+  const [principalAspect, teacherAspect] = await Promise.all([
+    getPngAspectRatio(principalSigPng),
+    getPngAspectRatio(teacherSigPng),
+  ]);
+
+  let y = 12;
+  if (opts.showKopSurat) {
+    const normKop = normalizeKopSurat(settings.kopSurat);
+    const kopFont = mapPrintFontToJsPdf(normKop.fontFamily);
+    const leftLogoMm = Math.round((normKop.leftLogoSize / 64) * 20 * 10) / 10;
+    const rightLogoMm = Math.round((normKop.rightLogoSize / 64) * 20 * 10) / 10;
+    const maxLogoMm = Math.max(leftLogoMm, rightLogoMm, 20);
+    if (leftPng) doc.addImage(leftPng, 'PNG', marginX + 2, y, leftLogoMm, leftLogoMm);
+    if (rightPng) {
+      doc.addImage(rightPng, 'PNG', pageWidth - marginX - rightLogoMm - 2, y, rightLogoMm, rightLogoMm);
+    }
+    const pxToPt = (px: number) => Math.round(px * 0.85 * 10) / 10;
+    const toJsPdfStyle = (st: KopSuratTextStyle) =>
+      st.bold && st.italic ? 'bolditalic' : st.bold ? 'bold' : st.italic ? 'italic' : 'normal';
+    const centerX = pageWidth / 2;
+    const drawLine = (text: string, yPos: number, sizePx: number, st: KopSuratTextStyle) => {
+      if (!text) return;
+      doc.setFont(kopFont, toJsPdfStyle(st));
+      doc.setFontSize(pxToPt(sizePx));
+      doc.text(text, centerX, yPos, { align: 'center' });
+    };
+    drawLine(normKop.line1, y + 3, normKop.lineSizes.line1, normKop.lineStyles.line1);
+    drawLine(normKop.line2, y + 7.8, normKop.lineSizes.line2, normKop.lineStyles.line2);
+    drawLine(normKop.line3, y + 12.2, normKop.lineSizes.line3, normKop.lineStyles.line3);
+    drawLine(normKop.line4, y + 17.2, normKop.lineSizes.line4, normKop.lineStyles.line4);
+    drawLine(normKop.line5, y + 21.4, normKop.lineSizes.line5, normKop.lineStyles.line5);
+    drawLine(normKop.line6, y + 25.0, normKop.lineSizes.line6, normKop.lineStyles.line6);
+    y += Math.max(27.5, maxLogoMm + 3);
+    doc.setLineWidth(0.8);
+    doc.line(marginX, y, pageWidth - marginX, y);
+    doc.setLineWidth(0.25);
+    doc.line(marginX, y + 1.1, pageWidth - marginX, y + 1.1);
+    y += 6;
+  }
+
+  doc.setFont(pdfFont, 'normal');
+  const docNumberClean = (opts.documentNumber || '').trim();
+  if (docNumberClean) {
+    doc.setFontSize(8.5);
+    doc.text(`Nomor Dokumen: ${docNumberClean}`, marginX, y);
+    y += 4.5;
+  }
+
+  doc.setFont(pdfFont, 'bold');
+  doc.setFontSize(11.5);
+  doc.text(imported.title.toUpperCase(), pageWidth / 2, y, { align: 'center' });
+  doc.setFont(pdfFont, 'normal');
+  doc.setFontSize(9);
+  doc.text(
+    `Sumber Berkas: ${imported.fileName}  |  TA ${settings.academicYear} (${settings.semester})`,
+    pageWidth / 2,
+    y + 4.8,
+    { align: 'center' }
+  );
+  y += 9;
+
+  const autoFont = computeAutoTableFontSize(imported.headers.length, printableWidth);
+  autoTable(doc, {
+    startY: y,
+    margin: { left: marginX, right: marginX },
+    head: [imported.headers],
+    body: imported.rows.length > 0 ? imported.rows : [imported.headers.map(() => '-')],
+    styles: {
+      font: pdfFont,
+      fontSize: autoFont,
+      cellPadding: autoFont < 6.5 ? 1.0 : 1.6,
+      textColor: [15, 23, 42],
+      lineColor: [203, 213, 225],
+      lineWidth: 0.15,
+      overflow: 'linebreak',
+    },
+    headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold' },
+  });
+
+  const finalY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y + 24;
+  let sigY = finalY + 8;
+  if (sigY + 38 > pageHeight - 10) {
+    doc.addPage();
+    sigY = 18;
+  }
+
+  const qrPng = opts.showQrVerification
+    ? await createVerificationQrPng(`${imported.title} | ${docNumberClean || imported.fileName} | ${formatTanggalID(getTodayIso())}`)
+    : null;
+
+  const pSigMm = pxToMm(sigStamp.signatureSize);
+  const pSigW = Math.round(pSigMm * principalAspect * 100) / 100;
+  const tSigMm = pxToMm(effectiveTeacherSigPx);
+  const tSigW = Math.round(tSigMm * teacherAspect * 100) / 100;
+  const stampMm = pxToMm(sigStamp.stampSize);
+  const stampOnTeacher =
+    (sigStamp.stampTarget === 'teacher' && opts.showTeacherSig) || !opts.showPrincipalSig;
+
+  doc.setFont(pdfFont, 'normal');
+  doc.setFontSize(9.5);
+  if (opts.showPrincipalSig) {
+    const leftX = Math.max(6, Math.min(pageWidth - 48, marginX + 8 + pxToMm(sigStamp.principalBlockOffsetX)));
+    const pY = Math.max(12, Math.min(pageHeight - 34, sigY + pxToMm(sigStamp.principalBlockOffsetY)));
+    const centerY = pY + 14.5;
+    doc.text('Mengetahui,', leftX, pY);
+    doc.text(settings.principalTitle, leftX, pY + 4.8);
+    if (stampPng && !stampOnTeacher) {
+      doc.addImage(
+        stampPng,
+        'PNG',
+        leftX + 2 + pxToMm(sigStamp.stampOffsetX) - stampMm / 2,
+        centerY + pxToMm(sigStamp.stampOffsetY) - stampMm / 2,
+        stampMm,
+        stampMm
+      );
+    }
+    if (principalSigPng) {
+      doc.addImage(
+        principalSigPng,
+        'PNG',
+        leftX + 17 + pxToMm(sigStamp.principalSigOffsetX) - pSigW / 2,
+        centerY + pxToMm(sigStamp.principalSigOffsetY) - pSigMm / 2,
+        pSigW,
+        pSigMm
+      );
+    }
+    doc.setFont(pdfFont, 'bold');
+    doc.text(settings.principalName, leftX, pY + 24);
+    doc.setFont(pdfFont, 'normal');
+    doc.text(`NIP. ${settings.principalNip}`, leftX, pY + 28.6);
+  }
+
+  if (opts.showTeacherSig) {
+    const rightX = Math.max(6, Math.min(pageWidth - 48, pageWidth - marginX - 68 + pxToMm(sigStamp.teacherBlockOffsetX)));
+    const tY = Math.max(12, Math.min(pageHeight - 34, sigY + pxToMm(sigStamp.teacherBlockOffsetY)));
+    const centerY = tY + 14.5;
+    doc.text(`${settings.signatureCity}, ${formatTanggalID(getTodayIso())}`, rightX, tY);
+    doc.text('Guru Mata Pelajaran,', rightX, tY + 4.8);
+    if (stampPng && stampOnTeacher) {
+      doc.addImage(
+        stampPng,
+        'PNG',
+        rightX + pxToMm(sigStamp.stampOffsetX) - stampMm / 2,
+        centerY + pxToMm(sigStamp.stampOffsetY) - stampMm / 2,
+        stampMm,
+        stampMm
+      );
+    }
+    if (teacherSigPng) {
+      doc.addImage(
+        teacherSigPng,
+        'PNG',
+        rightX + 17 + pxToMm(effectiveTeacherOffX) - tSigW / 2,
+        centerY + pxToMm(effectiveTeacherOffY) - tSigMm / 2,
+        tSigW,
+        tSigMm
+      );
+    }
+    doc.setFont(pdfFont, 'bold');
+    doc.text(effectiveTeacherName, rightX, tY + 24);
+    doc.setFont(pdfFont, 'normal');
+    doc.text(`NIP. ${effectiveTeacherNip}`, rightX, tY + 28.6);
+  }
+
+  if (qrPng) {
+    const qrSizeMm = 17;
+    doc.addImage(qrPng, 'PNG', pageWidth / 2 - qrSizeMm / 2, Math.min(pageHeight - 25, sigY + 6), qrSizeMm, qrSizeMm);
+  }
+
+  const slug = imported.title.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'Dokumen_Impor';
+  doc.save(`Laporan_Resmi_${slug}_${getTodayIso()}.pdf`);
+}
+
+// =========================================================================
+// WORD (.DOC) EXPORT — SAFE HTML ESCAPING
+// =========================================================================
+function escapeHtml(raw: unknown): string {
+  return String(raw ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+export function exportReportToWord(
+  students: Student[],
+  journals: JournalEntry[],
+  grades: GradeRecord[],
+  settings: SystemSettings,
+  opts: ReportFilterOptions,
+  importedReport?: ImportedReportData | null
+) {
+  const normKop = normalizeKopSurat(settings.kopSurat);
+  const sigStamp = normalizeSignatureStamp(settings);
+  const effectiveTeacherName =
+    opts.teacherSignatureOverride?.teacherName || settings.teacherProfile.name;
+  const effectiveTeacherNip =
+    opts.teacherSignatureOverride?.teacherNip || settings.teacherProfile.nip;
+  const docNumberClean = (opts.documentNumber || '').trim();
+
+  const sections: string[] = [];
+
+  const renderTableHtml = (title: string, subtitle: string, headers: string[], rows: (string | number)[][]) => `
+    <div style="margin-bottom:22px;">
+      <h3 style="text-align:center;margin:8px 0 2px 0;font-size:13pt;">${escapeHtml(title)}</h3>
+      <p style="text-align:center;margin:0 0 10px 0;font-size:9.5pt;color:#334155;">${escapeHtml(subtitle)}</p>
+      <table style="width:100%;border-collapse:collapse;font-size:9pt;">
+        <thead>
+          <tr style="background:#f1f5f9;">
+            ${headers.map((h) => `<th style="border:1px solid #0f172a;padding:5px 6px;text-align:center;">${escapeHtml(h)}</th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${
+            rows.length === 0
+              ? `<tr><td colspan="${headers.length}" style="border:1px solid #0f172a;padding:10px;text-align:center;">Tidak ada data</td></tr>`
+              : rows
+                  .map(
+                    (row) =>
+                      `<tr>${row
+                        .map((cell) => `<td style="border:1px solid #0f172a;padding:4px 6px;">${escapeHtml(cell)}</td>`)
+                        .join('')}</tr>`
+                  )
+                  .join('')
+          }
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  if (importedReport) {
+    sections.push(
+      renderTableHtml(
+        importedReport.title,
+        `Sumber Berkas: ${importedReport.fileName} · TA ${settings.academicYear} (${settings.semester})`,
+        importedReport.headers,
+        importedReport.rows
+      )
+    );
+  } else {
+    const filteredJournals = filterJournalsForReport(journals, opts);
+    const selectedReports = resolveSelectedReportTypes(opts, true);
+    const hasReport = (id: SingleReportType) => selectedReports.includes(id);
+
+    if (hasReport('jurnal')) {
+      sections.push(
+        renderTableHtml(
+          'LAPORAN JURNAL KEGIATAN MENGAJAR GURU',
+          `TA ${settings.academicYear} · Semester ${settings.semester}`,
+          ['No', 'Tanggal', 'Jam', 'Guru', 'Kelas', 'Mapel', 'Materi Pokok', 'Kegiatan'],
+          filteredJournals.map((j, idx) => [
+            idx + 1,
+            formatTanggalID(j.date),
+            j.period,
+            j.teacherName || effectiveTeacherName,
+            j.className,
+            j.subject,
+            j.topic,
+            j.activities,
+          ])
+        )
+      );
+    }
+
+    if (hasReport('kehadiran')) {
+      const matrices = buildAttendanceMatrices(students, filteredJournals, opts.selectedClasses);
+      matrices.forEach((m) => {
+        sections.push(
+          renderTableHtml(
+            `LEGER KEHADIRAN SISWA — KELAS ${m.className}`,
+            `TA ${settings.academicYear} · Semester ${settings.semester} · Pertemuan: ${m.journals.length}`,
+            ['No', 'NIS', 'Nama Siswa', 'L/P', ...m.journals.map((j) => formatTanggalShort(j.date)), 'H', 'S', 'I', 'A', 'D', '%'],
+            m.students.map((st, idx) => {
+              const sum = summarizeStudentAttendance(st.id, m.journals);
+              return [
+                idx + 1,
+                st.nis,
+                st.name,
+                st.gender,
+                ...m.journals.map((j) => j.attendance[st.id]?.status || '-'),
+                sum.H,
+                sum.S,
+                sum.I,
+                sum.A,
+                sum.D,
+                `${sum.pct}%`,
+              ];
+            })
+          )
+        );
+      });
+    }
+
+    if (hasReport('nilai')) {
+      const matrices = buildGradeMatrices(students, grades, settings, opts);
+      matrices.forEach((m) => {
+        sections.push(
+          renderTableHtml(
+            `REKAPITULASI NILAI — KELAS ${m.className}`,
+            `Mapel: ${m.subject} · KKM: ${settings.kkm}`,
+            ['No', 'NIS', 'Nama Siswa', 'L/P', ...m.examTypes, 'Rata-rata', 'Ket'],
+            m.students.map((st, idx) => {
+              const avg = m.avgMap[st.id];
+              return [
+                idx + 1,
+                st.nis,
+                st.name,
+                st.gender,
+                ...m.examTypes.map((ex) => m.scoreMap[st.id]?.[ex] ?? '-'),
+                avg ?? '-',
+                avg !== null ? (avg >= settings.kkm ? 'Tuntas' : 'Remedial') : '-',
+              ];
+            })
+          )
+        );
+      });
+    }
+
+    if (hasReport('rekap_presensi')) {
+      const recaps = buildAttendanceRecapByClass(students, filteredJournals, opts.selectedClasses);
+      recaps.forEach((r) => {
+        sections.push(
+          renderTableHtml(
+            `REKAP PRESENSI — KELAS ${r.className}`,
+            `TA ${settings.academicYear} · Rata-rata Hadir ${r.avgPresencePct}%`,
+            ['No', 'NIS', 'Nama Siswa', 'L/P', 'Pertemuan', 'H', 'S', 'I', 'A', 'D', '%', 'Status'],
+            r.rows.map((item, idx) => [
+              idx + 1,
+              item.student.nis,
+              item.student.name,
+              item.student.gender,
+              item.totalMeetings,
+              item.H,
+              item.S,
+              item.I,
+              item.A,
+              item.D,
+              `${item.pct}%`,
+              item.statusLabel,
+            ])
+          )
+        );
+      });
+    }
+
+    if (hasReport('ketidakhadiran')) {
+      const abs = buildAbsenceLog(students, filteredJournals);
+      sections.push(
+        renderTableHtml(
+          'MONITORING KETIDAKHADIRAN SISWA (S / I / A / D)',
+          `Sakit: ${abs.counts.S} · Izin: ${abs.counts.I} · Alpha: ${abs.counts.A} · Dispen: ${abs.counts.D}`,
+          ['No', 'NIS', 'Nama Siswa', 'Kelas', 'Sakit', 'Izin', 'Alpha', 'Dispen', 'Total'],
+          abs.summary.map((s, idx) => [idx + 1, s.nis, s.name, s.className, s.S, s.I, s.A, s.D, s.total])
+        )
+      );
+    }
+
+    if (hasReport('remedial')) {
+      const blocks = buildRemedialAnalysis(students, grades, settings, opts);
+      sections.push(
+        renderTableHtml(
+          'ANALISIS KETUNTASAN & PROGRAM REMEDIAL',
+          `KKM: ${settings.kkm} · TA ${settings.academicYear}`,
+          ['No', 'Kelas', 'Mapel', 'Siswa', 'Dinilai', 'Tuntas', 'Remedial', 'Daya Serap', 'Rata-rata'],
+          blocks.map((b, idx) => [
+            idx + 1,
+            b.className,
+            b.subject,
+            b.totalStudents,
+            b.assessedCount,
+            b.tuntasCount,
+            b.remedialCount,
+            `${b.passRatePct}%`,
+            b.classAvg ?? '-',
+          ])
+        )
+      );
+    }
+
+    if (hasReport('leger_kelas')) {
+      const ledgers = buildClassMultiSubjectLedger(students, grades, settings, opts);
+      ledgers.forEach((l) => {
+        sections.push(
+          renderTableHtml(
+            `LEGER GABUNGAN MAPEL — KELAS ${l.className}`,
+            `TA ${settings.academicYear} · Semester ${settings.semester}`,
+            ['No', 'NIS', 'Nama Siswa', ...l.subjects, 'Jumlah', 'Rata-rata', 'Rank', 'Status'],
+            l.rows.map((r, idx) => [
+              idx + 1,
+              r.student.nis,
+              r.student.name,
+              ...l.subjects.map((s) => r.subjectAvgMap[s] ?? '-'),
+              r.totalScore ?? '-',
+              r.overallAvg ?? '-',
+              r.rank ?? '-',
+              r.statusLabel,
+            ])
+          )
+        );
+      });
+    }
+
+    if (hasReport('daftar_siswa')) {
+      const blocks = buildStudentRosterByClass(students, opts.selectedClasses);
+      blocks.forEach((b) => {
+        sections.push(
+          renderTableHtml(
+            `DAFTAR PESERTA DIDIK — KELAS ${b.className}`,
+            `Wali Kelas: ${b.homeroomTeacher} · Total ${b.totalCount} Siswa`,
+            ['No', 'Absen', 'NIS', 'NISN', 'Nama Lengkap', 'L/P', 'TTL', 'Status'],
+            b.students.map((item, idx) => [
+              idx + 1,
+              item.student.absenNo || '-',
+              item.student.nis,
+              item.student.nisn || '-',
+              item.student.name,
+              item.student.gender,
+              item.ttlDisplay,
+              item.statusText,
+            ])
+          )
+        );
+      });
+    }
+  }
+
+  const kopHtml = opts.showKopSurat
+    ? `
+      <div style="text-align:center;border-bottom:3px double #0f172a;padding-bottom:8px;margin-bottom:14px;">
+        <div style="font-weight:bold;font-size:11pt;">${escapeHtml(normKop.line1)}</div>
+        <div style="font-weight:bold;font-size:12pt;">${escapeHtml(normKop.line2)}</div>
+        <div style="font-size:10pt;">${escapeHtml(normKop.line3)}</div>
+        <div style="font-weight:bold;font-size:13pt;">${escapeHtml(normKop.line4)}</div>
+        <div style="font-size:9pt;">${escapeHtml(normKop.line5)}</div>
+        <div style="font-size:9pt;">${escapeHtml(normKop.line6)}</div>
+      </div>`
+    : '';
+
+  const docNumHtml = docNumberClean
+    ? `<p style="font-size:9.5pt;margin:0 0 8px 0;">Nomor Dokumen: <strong>${escapeHtml(docNumberClean)}</strong></p>`
+    : '';
+
+  const sigHtml =
+    opts.showPrincipalSig || opts.showTeacherSig
+      ? `
+      <table style="width:100%;margin-top:26px;border:none;font-size:10pt;">
+        <tr>
+          <td style="width:50%;vertical-align:top;padding-left:20px;">
+            ${
+              opts.showPrincipalSig
+                ? `Mengetahui,<br/>${escapeHtml(settings.principalTitle)}<br/><br/><br/><br/><u><strong>${escapeHtml(settings.principalName)}</strong></u><br/>NIP. ${escapeHtml(settings.principalNip)}`
+                : ''
+            }
+          </td>
+          <td style="width:50%;vertical-align:top;padding-left:40px;">
+            ${
+              opts.showTeacherSig
+                ? `${escapeHtml(settings.signatureCity)}, ${escapeHtml(formatTanggalID(getTodayIso()))}<br/>Guru Mata Pelajaran,<br/><br/><br/><br/><u><strong>${escapeHtml(effectiveTeacherName)}</strong></u><br/>NIP. ${escapeHtml(effectiveTeacherNip)}`
+                : ''
+            }
+          </td>
+        </tr>
+      </table>`
+      : '';
+
+  const htmlDoc = `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"><title>Laporan Resmi Portal E-Guru</title></head>
+<body style="font-family:${escapeHtml(opts.fontFamily || 'Times New Roman')}, serif;color:#0f172a;">
+${kopHtml}
+${docNumHtml}
+${sections.join('\n') || '<p>Tidak ada konten laporan.</p>'}
+${sigHtml}
+</body>
+</html>`;
+
+  const blob = new Blob(['\ufeff', htmlDoc], { type: 'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = importedReport
+    ? `Laporan_Resmi_${importedReport.title.replace(/[^a-zA-Z0-9_-]/g, '_')}_${getTodayIso()}.doc`
+    : `Laporan_Resmi_EGuru_${getTodayIso()}.doc`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }

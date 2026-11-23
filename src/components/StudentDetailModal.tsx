@@ -1,8 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  CategoryScale,
+  Chart as ChartJS,
+  Legend,
+  LinearScale,
+  LineElement,
+  PointElement,
+  Tooltip,
+} from 'chart.js';
+import { Line } from 'react-chartjs-2';
+import {
   BookOpen,
   Calendar,
   ClipboardCheck,
+  ExternalLink,
   FileEdit,
   FileSpreadsheet,
   FileText,
@@ -15,6 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import {
+  AppUser,
   GradeRecord,
   JournalEntry,
   KopSuratTextStyle,
@@ -34,15 +46,19 @@ import {
   normalizeKopSurat,
   normalizeSignatureStamp,
   PRINT_FONT_OPTIONS,
+  resolveEffectiveTeacherSignature,
   ROW_MARKER_META,
   STUDENT_STATUS_LABELS,
 } from '../utils/helpers';
+
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
 
 interface StudentDetailModalProps {
   student: Student | null;
   journals: JournalEntry[];
   grades: GradeRecord[];
   settings: SystemSettings;
+  activeUser?: AppUser;
   canEditStudent?: boolean;
   onEditStudent?: (student: Student) => void;
   onViewClass?: (className: string) => void;
@@ -65,6 +81,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   journals,
   grades,
   settings,
+  activeUser,
   canEditStudent = true,
   onEditStudent,
   onViewClass,
@@ -73,6 +90,10 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   onClose,
 }) => {
   const sigStamp = useMemo(() => normalizeSignatureStamp(settings), [settings]);
+  const effectiveTeacherSig = useMemo(
+    () => resolveEffectiveTeacherSignature(settings, activeUser),
+    [settings, activeUser]
+  );
   const isFormatLocked = settings.lockReportFormat ?? true;
   const paperMeta = useMemo(
     () => getPaperSizeMeta(settings.reportPaperSize),
@@ -85,21 +106,36 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   const [exportingPdf, setExportingPdf] = useState(false);
   const [showPrincipalSig, setShowPrincipalSig] = useState(false);
   const [showTeacherSig, setShowTeacherSig] = useState(true);
-  const [showStamp, setShowStamp] = useState<boolean>(sigStamp.showStampDefault);
+  const [showPrincipalSigImg, setShowPrincipalSigImg] = useState<boolean>(
+    sigStamp.showPrincipalSigImgDefault !== false
+  );
+  const [showTeacherSigImg, setShowTeacherSigImg] = useState<boolean>(
+    sigStamp.showTeacherSigImgDefault !== false
+  );
+  const [showStampImg, setShowStampImg] = useState<boolean>(sigStamp.showStampDefault);
   const [printFont, setPrintFont] = useState<PrintFontFamily>(adminFont);
   const effectiveFont: PrintFontFamily = isFormatLocked ? adminFont : printFont;
 
   useEffect(() => {
     if (!student) return;
     setActiveTab('aktivitas');
-    setShowStamp(sigStamp.showStampDefault);
+    setShowPrincipalSigImg(sigStamp.showPrincipalSigImgDefault !== false);
+    setShowTeacherSigImg(sigStamp.showTeacherSigImgDefault !== false);
+    setShowStampImg(sigStamp.showStampDefault);
     setPrintFont(adminFont);
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [student, onClose, sigStamp.showStampDefault, adminFont]);
+  }, [
+    student,
+    onClose,
+    sigStamp.showPrincipalSigImgDefault,
+    sigStamp.showTeacherSigImgDefault,
+    sigStamp.showStampDefault,
+    adminFont,
+  ]);
 
   const studentJournals = useMemo(() => {
     if (!student) return [];
@@ -146,11 +182,74 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
     return { H, S, I, A, D, pct, avgScore };
   }, [student, studentJournals, studentGrades]);
 
+  const gradeChartData = useMemo(() => {
+    if (!student) return null;
+    const examLabels = settings.examTypes.length > 0 ? settings.examTypes : ['UH 1', 'PTS', 'PAS'];
+    const studentPoints: (number | null)[] = [];
+    const classAvgPoints: (number | null)[] = [];
+
+    examLabels.forEach((ex) => {
+      const stuScores = studentGrades
+        .filter((g) => g.examType === ex && g.score !== null)
+        .map((g) => g.score as number);
+      studentPoints.push(
+        stuScores.length > 0
+          ? Math.round((stuScores.reduce((a, b) => a + b, 0) / stuScores.length) * 10) / 10
+          : null
+      );
+
+      const clsScores = grades
+        .filter(
+          (g) => g.className === student.className && g.examType === ex && g.score !== null
+        )
+        .map((g) => g.score as number);
+      classAvgPoints.push(
+        clsScores.length > 0
+          ? Math.round((clsScores.reduce((a, b) => a + b, 0) / clsScores.length) * 10) / 10
+          : null
+      );
+    });
+
+    const hasAnyPoint = studentPoints.some((v) => v !== null) || classAvgPoints.some((v) => v !== null);
+    if (!hasAnyPoint) return null;
+
+    return {
+      labels: examLabels,
+      datasets: [
+        {
+          label: `Nilai ${student.name}`,
+          data: studentPoints,
+          borderColor: '#4f46e5',
+          backgroundColor: 'rgba(79, 70, 229, 0.18)',
+          borderWidth: 2.5,
+          pointRadius: 4,
+          pointBackgroundColor: '#4f46e5',
+          tension: 0.25,
+          spanGaps: true,
+        },
+        {
+          label: `Rata-rata Kelas ${student.className}`,
+          data: classAvgPoints,
+          borderColor: '#10b981',
+          backgroundColor: 'rgba(16, 185, 129, 0.12)',
+          borderDash: [5, 5],
+          borderWidth: 2,
+          pointRadius: 3.5,
+          pointBackgroundColor: '#10b981',
+          tension: 0.25,
+          spanGaps: true,
+        },
+      ],
+    };
+  }, [student, settings.examTypes, studentGrades, grades]);
+
   if (!student) return null;
 
   const photoSrc = getStudentPhotoUrl(student);
   const fallbackPhotoSrc = getStudentPhotoUrl({ photoDataUrl: '', gender: student.gender });
   const normKop = normalizeKopSurat(settings.kopSurat);
+  const effectiveTeacherName = activeUser?.name || settings.teacherProfile.name;
+  const effectiveTeacherNip = activeUser?.nip || settings.teacherProfile.nip;
 
   const handleDownloadPdf = async () => {
     setExportingPdf(true);
@@ -158,7 +257,24 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
       await exportStudentIndividualPdf(student, journals, grades, settings, {
         showPrincipalSig,
         showTeacherSig,
-        showStamp,
+        showStamp: showStampImg,
+        showStampImg,
+        showPrincipalSigImg,
+        showTeacherSigImg,
+        teacherSignatureOverride: effectiveTeacherSig.teacherSignatureDataUrl
+          ? {
+              dataUrl: effectiveTeacherSig.teacherSignatureDataUrl,
+              size: effectiveTeacherSig.teacherSignatureSize,
+              offsetX: effectiveTeacherSig.teacherSigOffsetX,
+              offsetY: effectiveTeacherSig.teacherSigOffsetY,
+              teacherName: effectiveTeacherName,
+              teacherNip: effectiveTeacherNip,
+            }
+          : {
+              dataUrl: '',
+              teacherName: effectiveTeacherName,
+              teacherNip: effectiveTeacherNip,
+            },
         fontFamily: effectiveFont,
         paperSize: paperMeta.id,
       });
@@ -437,6 +553,24 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
 
                         <p className="mt-2 text-xs text-slate-600 leading-relaxed">{j.activities}</p>
 
+                        {j.learningObjective && (
+                          <p className="mt-1.5 text-[11px] font-medium text-indigo-700">
+                            TP: {j.learningObjective}
+                          </p>
+                        )}
+
+                        {j.materialUrl && /^https?:\/\//i.test(j.materialUrl) && (
+                          <a
+                            href={j.materialUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:underline"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            <span>Buka Bahan Ajar / Modul</span>
+                          </a>
+                        )}
+
                         {item.note && (
                           <p className="mt-2 text-xs text-slate-700 bg-slate-100 px-3 py-1.5 rounded-md">
                             <span className="font-semibold">Catatan Guru:</span> {item.note}
@@ -452,49 +586,81 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                 Belum ada nilai ujian yang diinput untuk siswa ini.
               </div>
             ) : (
-              <div className="border border-slate-200 rounded-xl overflow-x-auto eguru-scroll">
-                <table className="w-full min-w-[540px] text-left border-collapse">
-                  <thead className="bg-slate-900 text-white text-xs">
-                    <tr>
-                      <th className="py-2.5 px-4 font-semibold">Mata Pelajaran</th>
-                      <th className="py-2.5 px-3 font-semibold">Jenis Ujian</th>
-                      <th className="py-2.5 px-3 font-semibold text-right">Nilai</th>
-                      <th className="py-2.5 px-3 font-semibold">Status Pembinaan</th>
-                      <th className="py-2.5 px-4 font-semibold">Catatan Guru</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 text-xs">
-                    {studentGrades.map((g) => {
-                      const mk = ROW_MARKER_META[g.marker || 'neutral'];
-                      return (
-                        <tr key={g.id} className={mk.rowBgClass}>
-                          <td className="py-2.5 px-4 font-semibold text-slate-900">
-                            {onViewSubject ? (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  onClose();
-                                  onViewSubject(g.subject);
-                                }}
-                                className="font-semibold text-indigo-700 hover:underline cursor-pointer text-left"
-                              >
-                                {g.subject}
-                              </button>
-                            ) : (
-                              g.subject
-                            )}
-                          </td>
-                          <td className="py-2.5 px-3 text-slate-700">{g.examType}</td>
-                          <td className="py-2.5 px-3 text-right font-bold tabular-nums text-slate-900">
-                            {g.score}
-                          </td>
-                          <td className={`py-2.5 px-3 font-semibold ${mk.textClass}`}>{mk.label}</td>
-                          <td className="py-2.5 px-4 text-slate-600">{g.note || '-'}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div className="space-y-4">
+                {gradeChartData && (
+                  <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900">
+                          Grafik Perkembangan Nilai Siswa vs Rata-rata Kelas
+                        </h4>
+                        <p className="text-[11px] text-slate-500">
+                          Perbandingan capaian {student.name} terhadap rata-rata kelas {student.className} (KKM {settings.kkm})
+                        </p>
+                      </div>
+                    </div>
+                    <div className="h-52">
+                      <Line
+                        data={gradeChartData}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: {
+                            legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+                          },
+                          scales: {
+                            y: { beginAtZero: true, max: 100 },
+                          },
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="border border-slate-200 rounded-xl overflow-x-auto eguru-scroll">
+                  <table className="w-full min-w-[540px] text-left border-collapse">
+                    <thead className="bg-slate-900 text-white text-xs">
+                      <tr>
+                        <th className="py-2.5 px-4 font-semibold">Mata Pelajaran</th>
+                        <th className="py-2.5 px-3 font-semibold">Jenis Ujian</th>
+                        <th className="py-2.5 px-3 font-semibold text-right">Nilai</th>
+                        <th className="py-2.5 px-3 font-semibold">Status Pembinaan</th>
+                        <th className="py-2.5 px-4 font-semibold">Catatan Guru</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 text-xs">
+                      {studentGrades.map((g) => {
+                        const mk = ROW_MARKER_META[g.marker || 'neutral'];
+                        return (
+                          <tr key={g.id} className={mk.rowBgClass}>
+                            <td className="py-2.5 px-4 font-semibold text-slate-900">
+                              {onViewSubject ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    onClose();
+                                    onViewSubject(g.subject);
+                                  }}
+                                  className="font-semibold text-indigo-700 hover:underline cursor-pointer text-left"
+                                >
+                                  {g.subject}
+                                </button>
+                              ) : (
+                                g.subject
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-700">{g.examType}</td>
+                            <td className="py-2.5 px-3 text-right font-bold tabular-nums text-slate-900">
+                              {g.score}
+                            </td>
+                            <td className={`py-2.5 px-3 font-semibold ${mk.textClass}`}>{mk.label}</td>
+                            <td className="py-2.5 px-4 text-slate-600">{g.note || '-'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
@@ -535,7 +701,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                   onChange={(e) => setShowTeacherSig(e.target.checked)}
                   className="rounded border-slate-300 text-indigo-600"
                 />
-                <span>TTD Guru</span>
+                <span>Blok Guru</span>
               </label>
               <label className="inline-flex items-center gap-1.5 font-medium cursor-pointer py-1">
                 <input
@@ -544,16 +710,34 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                   onChange={(e) => setShowPrincipalSig(e.target.checked)}
                   className="rounded border-slate-300 text-indigo-600"
                 />
-                <span>TTD Kepsek</span>
+                <span>Blok Kepsek</span>
               </label>
               <label className="inline-flex items-center gap-1.5 font-medium cursor-pointer py-1">
                 <input
                   type="checkbox"
-                  checked={showStamp}
-                  onChange={(e) => setShowStamp(e.target.checked)}
+                  checked={showTeacherSigImg}
+                  onChange={(e) => setShowTeacherSigImg(e.target.checked)}
                   className="rounded border-slate-300 text-indigo-600"
                 />
-                <span>Stempel</span>
+                <span>Gbr TTD Guru</span>
+              </label>
+              <label className="inline-flex items-center gap-1.5 font-medium cursor-pointer py-1">
+                <input
+                  type="checkbox"
+                  checked={showPrincipalSigImg}
+                  onChange={(e) => setShowPrincipalSigImg(e.target.checked)}
+                  className="rounded border-slate-300 text-indigo-600"
+                />
+                <span>Gbr TTD Kepsek</span>
+              </label>
+              <label className="inline-flex items-center gap-1.5 font-medium cursor-pointer py-1">
+                <input
+                  type="checkbox"
+                  checked={showStampImg}
+                  onChange={(e) => setShowStampImg(e.target.checked)}
+                  className="rounded border-slate-300 text-indigo-600"
+                />
+                <span>Gbr Stempel</span>
               </label>
             </div>
 
@@ -874,7 +1058,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                     <p>Mengetahui,</p>
                     <p>{settings.principalTitle}</p>
                     <div className="relative h-[78px] w-full overflow-visible">
-                      {!stampOnTeacher && showStamp && sigStamp.stampDataUrl && (
+                      {!stampOnTeacher && showStampImg && sigStamp.stampDataUrl && (
                         <img
                           src={sigStamp.stampDataUrl}
                           alt="Stempel Sekolah"
@@ -890,7 +1074,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                           className="absolute z-10 object-contain opacity-85 mix-blend-multiply pointer-events-none select-none"
                         />
                       )}
-                      {sigStamp.principalSignatureDataUrl && (
+                      {showPrincipalSigImg && sigStamp.principalSignatureDataUrl && (
                         <img
                           src={sigStamp.principalSignatureDataUrl}
                           alt="TTD Kepala Sekolah"
@@ -925,7 +1109,7 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                     </p>
                     <p>Guru Mata Pelajaran,</p>
                     <div className="relative h-[78px] w-full overflow-visible">
-                      {stampOnTeacher && showStamp && sigStamp.stampDataUrl && (
+                      {stampOnTeacher && showStampImg && sigStamp.stampDataUrl && (
                         <img
                           src={sigStamp.stampDataUrl}
                           alt="Stempel Sekolah"
@@ -941,25 +1125,25 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
                           className="absolute z-10 object-contain opacity-85 mix-blend-multiply pointer-events-none select-none"
                         />
                       )}
-                      {sigStamp.teacherSignatureDataUrl && (
+                      {showTeacherSigImg && effectiveTeacherSig.teacherSignatureDataUrl && (
                         <img
-                          src={sigStamp.teacherSignatureDataUrl}
+                          src={effectiveTeacherSig.teacherSignatureDataUrl}
                           alt="TTD Guru Mapel"
                           referrerPolicy="no-referrer"
                           style={{
                             left: '74px',
                             top: '50%',
-                            height: sigStamp.signatureSize,
+                            height: effectiveTeacherSig.teacherSignatureSize,
                             width: 'auto',
                             maxWidth: 'none',
-                            transform: `translate(calc(-50% + ${sigStamp.teacherSigOffsetX}px), calc(-50% + ${sigStamp.teacherSigOffsetY}px))`,
+                            transform: `translate(calc(-50% + ${effectiveTeacherSig.teacherSigOffsetX}px), calc(-50% + ${effectiveTeacherSig.teacherSigOffsetY}px))`,
                           }}
                           className="absolute z-20 object-contain pointer-events-none select-none"
                         />
                       )}
                     </div>
-                    <p className="font-bold underline">{settings.teacherProfile.name}</p>
-                    <p>NIP. {settings.teacherProfile.nip}</p>
+                    <p className="font-bold underline">{effectiveTeacherName}</p>
+                    <p>NIP. {effectiveTeacherNip}</p>
                   </div>
                 )}
               </div>

@@ -3,12 +3,18 @@ import {
   CheckCheck,
   Copy,
   Download,
+  ExternalLink,
   FileEdit,
   FileSpreadsheet,
+  FileText,
+  History,
+  Link2,
   Plus,
+  Printer,
   RotateCcw,
   Save,
   Search,
+  Target,
   Trash2,
   Upload,
 } from 'lucide-react';
@@ -20,6 +26,7 @@ import {
   StudentAttendanceItem,
   SystemSettings,
 } from '../types';
+import { exportReportToPdf, exportReportToWord } from '../utils/exportReports';
 import {
   ATTENDANCE_META,
   formatTanggalID,
@@ -27,6 +34,13 @@ import {
   generateId,
   getTodayIso,
 } from '../utils/helpers';
+
+export interface JournalPresetDraft {
+  date?: string;
+  period?: string;
+  className?: string;
+  subject?: string;
+}
 
 interface JournalAttendanceViewProps {
   students: Student[];
@@ -36,6 +50,8 @@ interface JournalAttendanceViewProps {
   currentUserName?: string;
   readOnly?: boolean;
   draftJournal: { mode: 'create' | 'edit' | 'duplicate'; entry: JournalEntry } | null;
+  presetDraft?: JournalPresetDraft | null;
+  onConsumePresetDraft?: () => void;
   onClearDraft: () => void;
   onSaveJournal: (entry: JournalEntry, isEdit: boolean) => void;
   onImportJournals?: (entries: JournalEntry[]) => void;
@@ -57,6 +73,8 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
   currentUserName,
   readOnly = false,
   draftJournal,
+  presetDraft,
+  onConsumePresetDraft,
   onClearDraft,
   onSaveJournal,
   onImportJournals,
@@ -76,6 +94,8 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
   const [className, setClassName] = useState<string>('');
   const [subject, setSubject] = useState<string>(''); // Mandatory placeholder initially
   const [topic, setTopic] = useState<string>('');
+  const [learningObjective, setLearningObjective] = useState<string>('');
+  const [materialUrl, setMaterialUrl] = useState<string>('');
   const [activities, setActivities] = useState<string>('');
   const [attendanceMap, setAttendanceMap] = useState<Record<string, StudentAttendanceItem>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -107,6 +127,8 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
     setClassName(entry.className);
     setSubject(entry.subject);
     setTopic(mode === 'duplicate' ? `${entry.topic} (Salinan)` : entry.topic);
+    setLearningObjective(entry.learningObjective || '');
+    setMaterialUrl(entry.materialUrl || '');
     setActivities(entry.activities);
 
     const clsList = students.filter((s) => s.className === entry.className);
@@ -122,6 +144,31 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [draftJournal, students, onClearDraft]);
 
+  useEffect(() => {
+    if (!presetDraft) return;
+    setEditingId(null);
+    setDate(presetDraft.date || getTodayIso());
+    setPeriod(presetDraft.period || '1 - 2');
+    const targetCls = presetDraft.className || '';
+    setClassName(targetCls);
+    setSubject(presetDraft.subject || '');
+    setTopic('');
+    setLearningObjective('');
+    setMaterialUrl('');
+    setActivities('');
+    if (targetCls) {
+      const clsList = students.filter((s) => s.className === targetCls);
+      const nextMap: Record<string, StudentAttendanceItem> = {};
+      clsList.forEach((st) => {
+        nextMap[st.id] = { status: 'H', note: '' };
+      });
+      setAttendanceMap(nextMap);
+    }
+    setFormError(null);
+    onConsumePresetDraft?.();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [presetDraft, students, onConsumePresetDraft]);
+
   const handleSetAllPresent = () => {
     const next: Record<string, StudentAttendanceItem> = {};
     classStudents.forEach((st) => {
@@ -134,6 +181,31 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
     onNotify(`Seluruh ${classStudents.length} siswa kelas ${className} diset Hadir (H).`);
   };
 
+  const handleCopyLastAttendance = () => {
+    if (!className) {
+      onNotify('Pilih kelas terlebih dahulu untuk menyalin presensi terakhir.');
+      return;
+    }
+    const sorted = [...journals]
+      .filter((j) => j.className === className && j.id !== editingId)
+      .sort((a, b) => b.date.localeCompare(a.date));
+    const preferred = subject ? sorted.find((j) => j.subject === subject) : undefined;
+    const latest = preferred || sorted[0];
+    if (!latest) {
+      onNotify(`Belum ada riwayat presensi sebelumnya untuk kelas ${className}.`);
+      return;
+    }
+    const next: Record<string, StudentAttendanceItem> = {};
+    classStudents.forEach((st) => {
+      const prevItem = latest.attendance[st.id];
+      next[st.id] = prevItem ? { status: prevItem.status, note: prevItem.note || '' } : { status: 'H', note: '' };
+    });
+    setAttendanceMap(next);
+    onNotify(
+      `Presensi pertemuan ${formatTanggalID(latest.date)} (${latest.subject}) berhasil disalin.`
+    );
+  };
+
   const handleResetForm = () => {
     setEditingId(null);
     setDate(getTodayIso());
@@ -141,6 +213,8 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
     setClassName('');
     setSubject('');
     setTopic('');
+    setLearningObjective('');
+    setMaterialUrl('');
     setActivities('');
     setAttendanceMap({});
     setFormError(null);
@@ -194,6 +268,13 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
 
     const nowIso = new Date().toISOString();
 
+    const safeMaterialUrl = (() => {
+      const trimmed = materialUrl.trim();
+      if (!trimmed) return undefined;
+      if (/^https?:\/\//i.test(trimmed)) return trimmed;
+      return `https://${trimmed}`;
+    })();
+
     const entry: JournalEntry = {
       id: editingId || generateId('jrn'),
       date,
@@ -201,6 +282,8 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
       className,
       subject,
       topic: topic.trim(),
+      learningObjective: learningObjective.trim() || undefined,
+      materialUrl: safeMaterialUrl,
       activities: activities.trim() || '-',
       attendance: finalAttendance,
       teacherId: existing?.teacherId || currentUserId,
@@ -429,6 +512,8 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
     setClassName(entry.className);
     setSubject(entry.subject);
     setTopic(mode === 'duplicate' ? `${entry.topic} (Salinan)` : entry.topic);
+    setLearningObjective(entry.learningObjective || '');
+    setMaterialUrl(entry.materialUrl || '');
     setActivities(entry.activities);
 
     const clsList = students.filter((s) => s.className === entry.className);
@@ -543,6 +628,118 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
   };
 
   const pendingEditsCount = Object.keys(ledgerEdits).length;
+
+  const handleLedgerCellKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    rowIdx: number,
+    colIdx: number
+  ) => {
+    let nextRow = rowIdx;
+    let nextCol = colIdx;
+    if (e.key === 'ArrowDown' || e.key === 'Enter') {
+      nextRow = Math.min(ledgerStudents.length - 1, rowIdx + 1);
+    } else if (e.key === 'ArrowUp') {
+      nextRow = Math.max(0, rowIdx - 1);
+    } else if (e.key === 'ArrowRight') {
+      nextCol = Math.min(ledgerJournals.length - 1, colIdx + 1);
+    } else if (e.key === 'ArrowLeft') {
+      nextCol = Math.max(0, colIdx - 1);
+    } else {
+      return;
+    }
+    e.preventDefault();
+    const el = document.querySelector<HTMLInputElement>(
+      `input[data-att-row="${nextRow}"][data-att-col="${nextCol}"]`
+    );
+    if (el) {
+      el.focus();
+      el.select();
+    }
+  };
+
+  const handleQuickExportJournalsPdf = async () => {
+    const source =
+      selectedIds.length > 0
+        ? filteredJournals.filter((j) => selectedIds.includes(j.id))
+        : filteredJournals;
+    try {
+      await exportReportToPdf(students, source, [], settings, {
+        reportTypes: ['jurnal'],
+        selectedClasses: filterClass !== 'ALL' ? [filterClass] : settings.classes,
+        selectedSubject: 'ALL',
+        startDate: '',
+        endDate: '',
+        showKopSurat: true,
+        showPrincipalSig: false,
+        showTeacherSig: true,
+        showStampImg: settings.signatureStamp?.showStampDefault ?? true,
+        paperSize: settings.reportPaperSize || 'A4',
+        orientation: settings.reportOrientation || 'landscape',
+        fontFamily: settings.reportFontFamily || settings.kopSurat.fontFamily || 'Times New Roman',
+      });
+      onNotify(`PDF Riwayat Jurnal (${source.length} entri) berhasil diunduh.`);
+    } catch {
+      onNotify('Gagal mengekspor PDF Riwayat Jurnal.');
+    }
+  };
+
+  const handleQuickExportJournalsWord = () => {
+    const source =
+      selectedIds.length > 0
+        ? filteredJournals.filter((j) => selectedIds.includes(j.id))
+        : filteredJournals;
+    exportReportToWord(students, source, [], settings, {
+      reportTypes: ['jurnal'],
+      selectedClasses: filterClass !== 'ALL' ? [filterClass] : settings.classes,
+      selectedSubject: 'ALL',
+      startDate: '',
+      endDate: '',
+      showKopSurat: true,
+      showPrincipalSig: false,
+      showTeacherSig: true,
+      orientation: settings.reportOrientation || 'landscape',
+      fontFamily: settings.reportFontFamily || settings.kopSurat.fontFamily || 'Times New Roman',
+    });
+    onNotify(`Dokumen Word (.doc) Riwayat Jurnal (${source.length} entri) berhasil diunduh.`);
+  };
+
+  const handleQuickExportLedgerPdf = async () => {
+    try {
+      await exportReportToPdf(students, ledgerJournals, [], settings, {
+        reportTypes: ['kehadiran'],
+        selectedClasses: ledgerClass ? [ledgerClass] : settings.classes,
+        selectedSubject: ledgerSubject,
+        startDate: '',
+        endDate: '',
+        showKopSurat: true,
+        showPrincipalSig: false,
+        showTeacherSig: true,
+        showStampImg: settings.signatureStamp?.showStampDefault ?? true,
+        paperSize: settings.reportPaperSize || 'A4',
+        orientation: 'landscape',
+        fontFamily: settings.reportFontFamily || settings.kopSurat.fontFamily || 'Times New Roman',
+      });
+      onNotify(`PDF Leger Kehadiran kelas ${ledgerClass} berhasil diunduh.`);
+    } catch {
+      onNotify('Gagal mengekspor PDF Leger Kehadiran.');
+    }
+  };
+
+  const handleQuickExportLedgerWord = () => {
+    exportReportToWord(students, ledgerJournals, [], settings, {
+      reportTypes: ['kehadiran'],
+      selectedClasses: ledgerClass ? [ledgerClass] : settings.classes,
+      selectedSubject: ledgerSubject,
+      startDate: '',
+      endDate: '',
+      showKopSurat: true,
+      showPrincipalSig: false,
+      showTeacherSig: true,
+      orientation: 'landscape',
+      fontFamily: settings.reportFontFamily || settings.kopSurat.fontFamily || 'Times New Roman',
+    });
+    onNotify(`Dokumen Word (.doc) Leger Kehadiran kelas ${ledgerClass} berhasil diunduh.`);
+  };
 
   return (
     <div className="space-y-8">
@@ -673,6 +870,61 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
             </div>
           </div>
 
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                  <Target className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Tujuan Pembelajaran (TP / ATP) — Opsional</span>
+                </label>
+                {(settings.learningObjectives?.length || 0) > 0 && (
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) setLearningObjective(e.target.value);
+                    }}
+                    className="px-2 py-1 text-[11px] rounded-md border border-slate-300 bg-white text-slate-700 max-w-[200px]"
+                    title="Pilih dari Bank TP/ATP Pengaturan"
+                  >
+                    <option value="">+ Pilih Bank TP</option>
+                    {(settings.learningObjectives || []).map((tp) => (
+                      <option key={tp} value={tp}>
+                        {tp}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <input
+                type="text"
+                value={learningObjective}
+                onChange={(e) => setLearningObjective(e.target.value)}
+                list="tp-bank-suggestions"
+                placeholder="Ketik atau pilih Tujuan Pembelajaran / ATP..."
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              />
+              <datalist id="tp-bank-suggestions">
+                {(settings.learningObjectives || []).map((tp) => (
+                  <option key={tp} value={tp} />
+                ))}
+              </datalist>
+            </div>
+
+            <div>
+              <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 mb-1.5">
+                <Link2 className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Tautan Bahan Ajar / Modul / LKPD — Opsional</span>
+              </label>
+              <input
+                type="url"
+                value={materialUrl}
+                onChange={(e) => setMaterialUrl(e.target.value)}
+                placeholder="https://drive.google.com/... atau link Canva/Modul Ajar"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              />
+            </div>
+          </div>
+
           {/* Daftar Presensi Siswa Saat Kelas Dipilih */}
           {className ? (
             <div className="border border-slate-200 rounded-xl overflow-hidden">
@@ -689,14 +941,25 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
                   <span className="tabular-nums font-medium text-violet-700">D: {attendanceCounts.D}</span>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleSetAllPresent}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
-                >
-                  <CheckCheck className="w-3.5 h-3.5" />
-                  <span>Set Semua Hadir (H)</span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopyLastAttendance}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                    title="Salin status kehadiran dari pertemuan sebelumnya di kelas ini"
+                  >
+                    <History className="w-3.5 h-3.5" />
+                    <span>Salin Presensi Terakhir</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSetAllPresent}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    <CheckCheck className="w-3.5 h-3.5" />
+                    <span>Set Semua Hadir (H)</span>
+                  </button>
+                </div>
               </div>
 
               {classStudents.length === 0 ? (
@@ -971,11 +1234,38 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
                 </span>
               </button>
 
+              <button
+                type="button"
+                onClick={handleQuickExportJournalsPdf}
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px] sm:min-h-0"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>PDF</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleQuickExportJournalsWord}
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px] sm:min-h-0"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Word (.doc)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px] sm:min-h-0"
+              >
+                <Printer className="w-3.5 h-3.5 text-slate-600" />
+                <span>Cetak</span>
+              </button>
+
               {!readOnly && selectedIds.length > 0 && (
                 <button
                   type="button"
                   onClick={handleBulkDelete}
-                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px] sm:min-h-0"
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px] sm:min-h-0"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>Hapus ({selectedIds.length})</span>
@@ -1135,11 +1425,29 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
 
                       <div className="pl-6.5 space-y-1">
                         <p className="text-xs sm:text-sm font-bold text-slate-900">{j.topic}</p>
+                        {j.learningObjective && (
+                          <p className="text-[11px] font-medium text-indigo-700">
+                            TP: {j.learningObjective}
+                          </p>
+                        )}
                         <p className="text-xs text-slate-600 line-clamp-2">{j.activities}</p>
-                        <p className="text-[11px] text-slate-400">
-                          Oleh: {j.teacherName || settings.teacherProfile.name} ·{' '}
-                          {j.academicYear || settings.academicYear} ({j.semester || settings.semester})
-                        </p>
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                          <span>
+                            Oleh: {j.teacherName || settings.teacherProfile.name} ·{' '}
+                            {j.academicYear || settings.academicYear} ({j.semester || settings.semester})
+                          </span>
+                          {j.materialUrl && /^https?:\/\//i.test(j.materialUrl) && (
+                            <a
+                              href={j.materialUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-indigo-600 hover:underline font-semibold"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              <span>Bahan Ajar</span>
+                            </a>
+                          )}
+                        </div>
                       </div>
 
                       {!readOnly && (
@@ -1262,10 +1570,28 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
                       </td>
                       <td className="py-3 px-3 min-w-[240px]">
                         <div className="text-xs font-semibold text-slate-900">{j.topic}</div>
+                        {j.learningObjective && (
+                          <div className="text-[11px] font-medium text-indigo-700 mt-0.5">
+                            TP: {j.learningObjective}
+                          </div>
+                        )}
                         <div className="text-xs text-slate-600 mt-0.5 line-clamp-2">{j.activities}</div>
-                        <div className="text-[11px] text-slate-400 mt-1">
-                          Oleh: {j.teacherName || settings.teacherProfile.name} ·{' '}
-                          {j.academicYear || settings.academicYear} ({j.semester || settings.semester})
+                        <div className="text-[11px] text-slate-400 mt-1 flex flex-wrap items-center gap-2">
+                          <span>
+                            Oleh: {j.teacherName || settings.teacherProfile.name} ·{' '}
+                            {j.academicYear || settings.academicYear} ({j.semester || settings.semester})
+                          </span>
+                          {j.materialUrl && /^https?:\/\//i.test(j.materialUrl) && (
+                            <a
+                              href={j.materialUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-indigo-600 hover:underline font-semibold"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              <span>Bahan Ajar</span>
+                            </a>
+                          )}
                         </div>
                       </td>
                       <td className="py-3 px-3 whitespace-nowrap text-center text-xs font-mono tabular-nums text-slate-700">
@@ -1355,6 +1681,33 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
               ))}
             </select>
 
+            <button
+              type="button"
+              onClick={handleQuickExportLedgerPdf}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px] sm:min-h-0"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>PDF</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleQuickExportLedgerWord}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px] sm:min-h-0"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Word (.doc)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 min-h-[40px] sm:min-h-0"
+            >
+              <Printer className="w-3.5 h-3.5 text-slate-600" />
+              <span>Cetak</span>
+            </button>
+
             {!readOnly && (
               <button
                 type="button"
@@ -1441,7 +1794,7 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
                           {st.name}
                         </button>
                       </td>
-                      {ledgerJournals.map((j) => {
+                      {ledgerJournals.map((j, colIdx) => {
                         const code = getCellStatus(j, st.id);
                         const meta = ATTENDANCE_META[code];
                         const isDirty = Boolean(ledgerEdits[`${j.id}__${st.id}`]);
@@ -1453,6 +1806,9 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
                               maxLength={2}
                               readOnly={readOnly}
                               disabled={readOnly}
+                              data-att-row={idx}
+                              data-att-col={colIdx}
+                              onKeyDown={(e) => handleLedgerCellKeyDown(e, idx, colIdx)}
                               onChange={(e) => handleLedgerCellChange(j.id, st.id, e.target.value)}
                               aria-label={`Kehadiran ${st.name} tanggal ${j.date}`}
                               className={`w-10 h-8 sm:h-7 text-center font-bold rounded border focus:outline-none focus:ring-2 focus:ring-indigo-600 uppercase disabled:cursor-default ${

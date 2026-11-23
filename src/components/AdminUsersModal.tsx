@@ -1,7 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   BookOpen,
+  Check,
+  Copy,
   Download,
+  Eye,
+  EyeOff,
   FileEdit,
   FileSpreadsheet,
   GraduationCap,
@@ -11,6 +16,7 @@ import {
   Plus,
   RotateCcw,
   ShieldCheck,
+  Sparkles,
   Trash2,
   Upload,
   UserCheck,
@@ -21,6 +27,28 @@ import * as XLSX from 'xlsx';
 import { AppUser, UserRole } from '../types';
 import { getUserPhotoUrl } from '../utils/defaultAvatars';
 import { generateId, USER_ROLE_LABELS } from '../utils/helpers';
+
+function generateUserPassword(length = 10): string {
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower = 'abcdefghijkmnopqrstuvwxyz';
+  const digits = '23456789';
+  const symbols = '!@#$%';
+  const all = upper + lower + digits + symbols;
+  const pick = (pool: string) => {
+    const arr = new Uint32Array(1);
+    window.crypto.getRandomValues(arr);
+    return pool[arr[0] % pool.length];
+  };
+  const chars = [pick(upper), pick(lower), pick(digits), pick(symbols)];
+  while (chars.length < length) chars.push(pick(all));
+  for (let i = chars.length - 1; i > 0; i--) {
+    const arr = new Uint32Array(1);
+    window.crypto.getRandomValues(arr);
+    const j = arr[0] % (i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join('');
+}
 
 interface AdminUsersModalProps {
   isOpen: boolean;
@@ -63,6 +91,8 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
   const [userNip, setUserNip] = useState('');
   const [userEmail, setUserEmail] = useState('');
   const [userPassword, setUserPassword] = useState('');
+  const [showUserPassword, setShowUserPassword] = useState(false);
+  const [copiedUserCreds, setCopiedUserCreds] = useState(false);
   const [userRole, setUserRole] = useState<UserRole>('guru');
   const [userGender, setUserGender] = useState<'L' | 'P'>('L');
   const [userSchool, setUserSchool] = useState(defaultSchool);
@@ -74,6 +104,9 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
   const [showUserImport, setShowUserImport] = useState(false);
   const [userPasteText, setUserPasteText] = useState('');
   const userFileRef = useRef<HTMLInputElement | null>(null);
+
+  const [bulkInitialPass, setBulkInitialPass] = useState('');
+  const [showBulkPass, setShowBulkPass] = useState(true);
 
   const [adminUnlockEmail, setAdminUnlockEmail] = useState('admin');
   const [adminUnlockPass, setAdminUnlockPass] = useState('');
@@ -109,6 +142,8 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
     setUserNip('');
     setUserEmail('');
     setUserPassword('');
+    setShowUserPassword(false);
+    setCopiedUserCreds(false);
     setUserRole('guru');
     setUserGender('L');
     setUserSchool(defaultSchool);
@@ -227,6 +262,8 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
     setUserNip(u.nip);
     setUserEmail(u.email);
     setUserPassword('');
+    setShowUserPassword(false);
+    setCopiedUserCreds(false);
     setUserRole(u.role);
     setUserGender(u.gender);
     setUserSchool(u.school);
@@ -234,6 +271,52 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
     setUserAssignedClasses(u.assignedClasses ? [...u.assignedClasses] : []);
     setUserAssignedSubjects(u.assignedSubjects ? [...u.assignedSubjects] : []);
     setUserActive(u.active);
+  };
+
+  const unconfiguredUsers = isServerMode ? users.filter((u) => u.hasPassword === false) : [];
+
+  const handleCopySingleUserCreds = async () => {
+    const loginId =
+      userUsername.trim().toLowerCase() ||
+      userEmail.trim().split('@')[0]?.toLowerCase() ||
+      userEmail.trim();
+    if (!loginId || !userPassword.trim()) return;
+    const text = `Portal E-Guru (${USER_ROLE_LABELS[userRole]})\nNama: ${userName.trim() || '-'}\nUsername: ${loginId}\nEmail: ${userEmail.trim() || '-'}\nPassword: ${userPassword.trim()}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedUserCreds(true);
+      window.setTimeout(() => setCopiedUserCreds(false), 2500);
+      onNotify('Kredensial akun disalin ke clipboard.');
+    } catch {
+      onNotify('Tidak dapat mengakses clipboard browser.');
+    }
+  };
+
+  const handleApplyBulkInitialPassword = () => {
+    const cleanPass = bulkInitialPass.trim();
+    if (cleanPass.length < 6) {
+      onNotify('Password awal minimal 6 karakter.');
+      return;
+    }
+    if (unconfiguredUsers.length === 0) return;
+    const targetIds = new Set(unconfiguredUsers.map((u) => u.id));
+    const next = users.map((u) => (targetIds.has(u.id) ? { ...u, password: cleanPass } : u));
+    onUpdateUsers(next);
+    const summary = unconfiguredUsers
+      .map(
+        (u, idx) =>
+          `${idx + 1}. ${u.username || u.email.split('@')[0]} (${USER_ROLE_LABELS[u.role]}) | ${u.email} | Password: ${cleanPass}`
+      )
+      .join('\n');
+    try {
+      void navigator.clipboard.writeText(`=== KREDENSIAL AKUN PORTAL E-GURU ===\n${summary}`);
+    } catch {
+      // ignore clipboard errors
+    }
+    onNotify(
+      `${unconfiguredUsers.length} akun berhasil diaktifkan dengan password baru (daftar kredensial disalin ke clipboard).`
+    );
+    setBulkInitialPass('');
   };
 
   const handleToggleUserActive = (u: AppUser) => {
@@ -391,6 +474,7 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
   ) => {
     const existingEmails = new Set(users.map((u) => u.email.toLowerCase()));
     const added: AppUser[] = [];
+    let skippedShortPass = 0;
     const nowIso = new Date().toISOString();
 
     rawRows.forEach((r) => {
@@ -398,35 +482,54 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
       const cleanEmail = String(r.email || '').trim();
       if (!cleanName || !cleanEmail || cleanEmail.toLowerCase().includes('email login')) return;
       if (existingEmails.has(cleanEmail.toLowerCase())) return;
+      const cleanPass = String(r.password || '').trim();
+      if (cleanPass.length > 0 && cleanPass.length < 6) {
+        skippedShortPass++;
+        return;
+      }
       existingEmails.add(cleanEmail.toLowerCase());
       const parsedRole = normalizeImportedRole(r.role || 'guru');
+      const isTeaching = parsedRole === 'guru' || parsedRole === 'wali_kelas';
       added.push({
         id: generateId('usr'),
         username: cleanEmail.split('@')[0]?.toLowerCase().replace(/[^a-z0-9._-]/g, ''),
         name: cleanName,
         nip: String(r.nip || '-').trim() || '-',
         email: cleanEmail,
-        password: String(r.password || '').trim(),
+        password: cleanPass,
         role: parsedRole,
         gender: String(r.gender || 'L').trim().toUpperCase().startsWith('P') ? 'P' : 'L',
         school: String(r.school || defaultSchool).trim() || defaultSchool,
         photoDataUrl: String(r.photoDataUrl || '').trim(),
-        assignedClasses: splitMultiList(r.assignedClasses),
-        assignedSubjects: splitMultiList(r.assignedSubjects),
+        assignedClasses: isTeaching ? splitMultiList(r.assignedClasses) : [],
+        assignedSubjects: isTeaching ? splitMultiList(r.assignedSubjects) : [],
         active: true,
         createdAt: nowIso,
       });
     });
 
     if (added.length === 0) {
-      onNotify('Tidak ada akun pengguna baru yang valid atau email sudah terdaftar.');
+      onNotify(
+        skippedShortPass > 0
+          ? `${skippedShortPass} baris dilewati karena password kurang dari 6 karakter.`
+          : 'Tidak ada akun pengguna baru yang valid atau email sudah terdaftar.'
+      );
       return;
     }
 
     onUpdateUsers([...users, ...added]);
     setUserPasteText('');
     setShowUserImport(false);
-    onNotify(`Berhasil mengimpor ${added.length} akun pengguna baru.`);
+    const noPassCount = added.filter((a) => !a.password).length;
+    onNotify(
+      `Berhasil mengimpor ${added.length} akun pengguna baru.${
+        skippedShortPass > 0 ? ` (${skippedShortPass} baris password < 6 karakter dilewati).` : ''
+      }${
+        isServerMode && noPassCount > 0
+          ? ` ${noPassCount} akun belum memiliki password — tetapkan password di form/banner.`
+          : ''
+      }`
+    );
   };
 
   const handleImportUsersPaste = () => {
@@ -610,6 +713,70 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
             </div>
           ) : (
             <>
+              {isServerMode && unconfiguredUsers.length > 0 && (
+                <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/90 space-y-3">
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                    <div className="space-y-0.5 text-xs">
+                      <p className="font-bold text-slate-900">
+                        {unconfiguredUsers.length} Akun Belum Memiliki Password Login Server
+                      </p>
+                      <p className="text-slate-600">
+                        Akun:{' '}
+                        <span className="font-mono font-semibold text-slate-800">
+                          {unconfiguredUsers
+                            .map((u) => u.username || u.email.split('@')[0])
+                            .join(', ')}
+                        </span>
+                        . Tetapkan password awal sekarang agar akun dapat langsung login.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <div className="relative flex-1 flex items-center rounded-lg border border-amber-300 bg-white overflow-hidden">
+                      <input
+                        type={showBulkPass ? 'text' : 'password'}
+                        value={bulkInitialPass}
+                        onChange={(e) => setBulkInitialPass(e.target.value)}
+                        placeholder="Password awal (min. 6 karakter)"
+                        className="w-full px-3 py-2 text-xs font-mono focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowBulkPass((v) => !v)}
+                        className="px-2 text-slate-500 hover:text-slate-800 cursor-pointer"
+                        aria-label="Tampilkan atau sembunyikan password"
+                      >
+                        {showBulkPass ? (
+                          <EyeOff className="w-3.5 h-3.5" />
+                        ) : (
+                          <Eye className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBulkInitialPass(generateUserPassword(10));
+                        setShowBulkPass(true);
+                      }}
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-amber-300 bg-white hover:bg-amber-100 text-xs font-semibold text-amber-900 cursor-pointer whitespace-nowrap"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Buat Otomatis</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleApplyBulkInitialPassword}
+                      className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+                    >
+                      <KeyRound className="w-3.5 h-3.5" />
+                      <span>Aktifkan ({unconfiguredUsers.length} Akun)</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Form Tambah / Edit User */}
               <form
                 onSubmit={handleSaveUser}
@@ -684,26 +851,72 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      {editingUserId
-                        ? 'Password Baru (Opsional)'
-                        : isCloudMode
-                          ? 'Password Server (Opsional)'
-                          : 'Password Login (min. 6)'}
-                    </label>
-                    <input
-                      type="password"
-                      value={userPassword}
-                      onChange={(e) => setUserPassword(e.target.value)}
-                      placeholder={
-                        editingUserId
-                          ? 'Kosongkan jika tetap'
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <label className="block text-xs font-semibold text-slate-700">
+                        {editingUserId
+                          ? 'Password Baru'
                           : isCloudMode
-                            ? 'Opsional untuk Google'
-                            : 'Minimal 6 karakter'
-                      }
-                      className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
-                    />
+                            ? 'Password Server'
+                            : 'Password Login'}
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUserPassword(generateUserPassword(10));
+                          setShowUserPassword(true);
+                          setCopiedUserCreds(false);
+                        }}
+                        className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        <span>Otomatis</span>
+                      </button>
+                    </div>
+                    <div className="flex items-center rounded-lg border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-indigo-600 overflow-hidden">
+                      <input
+                        type={showUserPassword ? 'text' : 'password'}
+                        value={userPassword}
+                        onChange={(e) => {
+                          setUserPassword(e.target.value);
+                          setCopiedUserCreds(false);
+                        }}
+                        placeholder={
+                          editingUserId
+                            ? 'Kosongkan jika tetap'
+                            : isCloudMode
+                              ? 'Opsional Google'
+                              : 'Min. 6 karakter'
+                        }
+                        className="w-full px-2.5 py-2 text-xs font-mono focus:outline-none"
+                      />
+                      {userPassword.trim() && (
+                        <button
+                          type="button"
+                          onClick={handleCopySingleUserCreds}
+                          className="px-1.5 text-slate-500 hover:text-indigo-600 cursor-pointer"
+                          title="Salin kredensial akun ini"
+                          aria-label="Salin kredensial akun"
+                        >
+                          {copiedUserCreds ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setShowUserPassword((v) => !v)}
+                        className="px-2 text-slate-500 hover:text-slate-800 cursor-pointer"
+                        aria-label="Tampilkan atau sembunyikan password"
+                      >
+                        {showUserPassword ? (
+                          <EyeOff className="w-3.5 h-3.5" />
+                        ) : (
+                          <Eye className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1143,10 +1356,23 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                     </div>
 
                     <div className="pl-1 space-y-1 text-[11px] text-slate-600">
-                      <p className="font-mono text-slate-700 break-all">
-                        {u.email}
-                        {u.username ? ` · @${u.username}` : ''}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="font-mono text-slate-700 break-all">
+                          {u.email}
+                          {u.username ? ` · @${u.username}` : ''}
+                        </span>
+                        {isServerMode && (
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
+                              u.hasPassword === false
+                                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            }`}
+                          >
+                            {u.hasPassword === false ? 'Sandi Belum Diatur' : 'Sandi Aktif'}
+                          </span>
+                        )}
+                      </div>
                       {isTeaching ? (
                         <div className="space-y-0.5">
                           <p>
@@ -1291,23 +1517,36 @@ export const AdminUsersModal: React.FC<AdminUsersModalProps> = ({
                           )}
                         </td>
                         <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                          {currentUserRole === 'admin' ? (
-                            <button
-                              type="button"
-                              onClick={() => handleToggleUserActive(u)}
-                              className={`px-2 py-0.5 rounded border text-[11px] font-semibold cursor-pointer ${
-                                u.active
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                  : 'bg-slate-100 text-slate-500 border-slate-200'
-                              }`}
-                            >
-                              {u.active ? 'Aktif' : 'Nonaktif'}
-                            </button>
-                          ) : (
-                            <span className={u.active ? 'text-emerald-700 font-semibold' : 'text-slate-400'}>
-                              {u.active ? 'Aktif' : 'Nonaktif'}
-                            </span>
-                          )}
+                          <div className="inline-flex flex-col items-center gap-1">
+                            {currentUserRole === 'admin' ? (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleUserActive(u)}
+                                className={`px-2 py-0.5 rounded border text-[11px] font-semibold cursor-pointer ${
+                                  u.active
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    : 'bg-slate-100 text-slate-500 border-slate-200'
+                                }`}
+                              >
+                                {u.active ? 'Aktif' : 'Nonaktif'}
+                              </button>
+                            ) : (
+                              <span className={u.active ? 'text-emerald-700 font-semibold' : 'text-slate-400'}>
+                                {u.active ? 'Aktif' : 'Nonaktif'}
+                              </span>
+                            )}
+                            {isServerMode && (
+                              <span
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
+                                  u.hasPassword === false
+                                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                    : 'bg-sky-50 text-sky-700 border-sky-200'
+                                }`}
+                              >
+                                {u.hasPassword === false ? 'Belum Diatur' : 'Sandi Aktif'}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         {currentUserRole === 'admin' && (
                           <td className="py-2.5 px-4 text-right whitespace-nowrap">

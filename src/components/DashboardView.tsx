@@ -9,7 +9,16 @@ import {
   Tooltip,
 } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
-import { Copy, FileEdit, FileSpreadsheet, PlusCircle, Printer, Users } from 'lucide-react';
+import {
+  AlertTriangle,
+  Copy,
+  FileEdit,
+  FileSpreadsheet,
+  PlusCircle,
+  Printer,
+  ShieldCheck,
+  Users,
+} from 'lucide-react';
 import { GradeRecord, JournalEntry, MenuId, Student, SystemSettings, UserRole } from '../types';
 import { getUserPhotoUrl } from '../utils/defaultAvatars';
 import { formatTanggalID, ROLE_PERMISSIONS } from '../utils/helpers';
@@ -30,6 +39,7 @@ interface DashboardViewProps {
   onOpenProfileModal?: () => void;
   onEditJournal: (journal: JournalEntry) => void;
   onDuplicateJournal: (journal: JournalEntry) => void;
+  onViewStudent?: (student: Student) => void;
   onViewClass?: (className: string) => void;
   onViewSubject?: (subject: string) => void;
 }
@@ -48,6 +58,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenProfileModal,
   onEditJournal,
   onDuplicateJournal,
+  onViewStudent,
   onViewClass,
   onViewSubject,
 }) => {
@@ -131,6 +142,81 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const latestJournals = useMemo(() => {
     return [...journals].sort((a, b) => b.date.localeCompare(a.date));
   }, [journals]);
+
+  const atRiskStudents = useMemo(() => {
+    const kkm = settings.kkm || 75;
+    const journalsByClass = new Map<string, JournalEntry[]>();
+    journals.forEach((j) => {
+      const list = journalsByClass.get(j.className) || [];
+      list.push(j);
+      journalsByClass.set(j.className, list);
+    });
+
+    const gradesByStudent = new Map<string, number[]>();
+    grades.forEach((g) => {
+      if (g.score !== null && !Number.isNaN(g.score)) {
+        const list = gradesByStudent.get(g.studentId) || [];
+        list.push(g.score);
+        gradesByStudent.set(g.studentId, list);
+      }
+    });
+
+    const flagged: Array<{
+      student: Student;
+      attPct: number | null;
+      alphaCount: number;
+      avgGrade: number | null;
+      reasons: string[];
+      severity: number;
+    }> = [];
+
+    students.forEach((st) => {
+      const clsJournals = journalsByClass.get(st.className) || [];
+      let hdCount = 0;
+      let alphaCount = 0;
+      clsJournals.forEach((j) => {
+        const status = j.attendance[st.id]?.status ?? 'H';
+        if (status === 'H' || status === 'D') hdCount++;
+        if (status === 'A') alphaCount++;
+      });
+
+      const attPct =
+        clsJournals.length > 0 ? Math.round((hdCount / clsJournals.length) * 100) : null;
+      const stuScores = gradesByStudent.get(st.id) || [];
+      const avgGrade =
+        stuScores.length > 0
+          ? Math.round((stuScores.reduce((a, b) => a + b, 0) / stuScores.length) * 10) / 10
+          : null;
+
+      const reasons: string[] = [];
+      let severity = 0;
+      if (attPct !== null && attPct < 85) {
+        reasons.push(`Kehadiran ${attPct}% (<85%)`);
+        severity += 2;
+      }
+      if (alphaCount >= 3) {
+        reasons.push(`Alpha ${alphaCount}×`);
+        severity += 3;
+      }
+      if (avgGrade !== null && avgGrade < kkm) {
+        reasons.push(`Rata-rata ${avgGrade} (< KKM ${kkm})`);
+        severity += 2;
+      }
+
+      if (reasons.length > 0) {
+        flagged.push({
+          student: st,
+          attPct,
+          alphaCount,
+          avgGrade,
+          reasons,
+          severity,
+        });
+      }
+    });
+
+    return flagged.sort((a, b) => b.severity - a.severity || a.student.name.localeCompare(b.student.name));
+  }, [students, journals, grades, settings.kkm]);
 
   const doughnutData = {
     labels: ['Hadir (H)', 'Sakit (S)', 'Izin (I)', 'Alpha (A)', 'Dispen (D)'],
@@ -261,7 +347,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 className="flex items-center justify-center gap-2 min-h-[42px] px-4 py-2.5 rounded-full sm:rounded-2xl bg-white text-blue-700 hover:bg-blue-50 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap shrink-0 shadow-[0_8px_20px_rgba(15,23,42,0.22)]"
               >
                 <Users className="w-4 h-4 shrink-0" />
-                <span>Kelola Siswa</span>
+                <span>{rolePerms.canManageStudents ? 'Kelola Siswa' : 'Lihat Data Siswa'}</span>
               </button>
             )}
             {rolePerms.allowedMenus.includes('laporan') && (
@@ -388,6 +474,85 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             />
           </div>
         </div>
+      </section>
+
+      {/* Early Warning System: Deteksi Dini Siswa Rawan */}
+      <section className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div
+              className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                atRiskStudents.length > 0
+                  ? 'bg-amber-100 text-amber-700'
+                  : 'bg-emerald-100 text-emerald-700'
+              }`}
+            >
+              {atRiskStudents.length > 0 ? (
+                <AlertTriangle className="w-4 h-4" />
+              ) : (
+                <ShieldCheck className="w-4 h-4" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-slate-900">
+                Deteksi Dini Siswa Rawan (Early Warning System)
+              </h3>
+              <p className="text-xs text-slate-500">
+                Memantau siswa dengan kehadiran &lt; 85%, Alpha &ge; 3, atau rata-rata nilai &lt; KKM {settings.kkm || 75}
+              </p>
+            </div>
+          </div>
+          <span
+            className={`px-2.5 py-1 rounded-lg text-xs font-bold tabular-nums shrink-0 ${
+              atRiskStudents.length > 0
+                ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+            }`}
+          >
+            {atRiskStudents.length > 0
+              ? `${atRiskStudents.length} Siswa Perlu Perhatian`
+              : 'Semua Siswa Aman'}
+          </span>
+        </div>
+
+        {atRiskStudents.length === 0 ? (
+          <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5">
+            Belum ada siswa yang terindikasi rawan kehadiran maupun capaian di bawah KKM saat ini.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-[280px] overflow-y-auto eguru-scroll pr-0.5">
+            {atRiskStudents.map((item) => (
+              <button
+                key={item.student.id}
+                type="button"
+                onClick={() => onViewStudent?.(item.student)}
+                className="text-left p-3 rounded-xl border border-amber-200 bg-amber-50/60 hover:bg-amber-100/70 transition-colors cursor-pointer space-y-1.5"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-slate-900 truncate">{item.student.name}</p>
+                    <p className="text-[11px] text-slate-500 font-mono tabular-nums">
+                      {item.student.className} · NIS {item.student.nis}
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 shrink-0">
+                    Perhatian
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {item.reasons.map((r) => (
+                    <span
+                      key={r}
+                      className="px-2 py-0.5 rounded bg-white border border-amber-200 text-[11px] font-semibold text-amber-900 tabular-nums"
+                    >
+                      {r}
+                    </span>
+                  ))}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Bottom Tables: Rekap Kelas + Kegiatan Mengajar Terbaru */}

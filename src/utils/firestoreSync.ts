@@ -15,11 +15,14 @@ import {
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import {
   AppUser,
+  DayOfWeek,
   GradeRecord,
   JournalEntry,
   PortalDatabase,
   Student,
   SystemSettings,
+  TeacherAgendaItem,
+  TeachingScheduleItem,
   UserRole,
 } from '../types';
 import { createSeedDatabase } from './seedData';
@@ -309,6 +312,9 @@ function buildSettingsPayload(slimSettings: SystemSettings, uid: string) {
     classes: (slimSettings.classes || []).slice(0, 200),
     subjects: (slimSettings.subjects || []).slice(0, 200),
     examTypes: (slimSettings.examTypes || []).slice(0, 100),
+    learningObjectives: (slimSettings.learningObjectives || [])
+      .map((item) => String(item || '').slice(0, 160))
+      .slice(0, 200),
     examWeights: stripUndefinedDeep(slimSettings.examWeights || {}),
     useWeightedAverage: Boolean(slimSettings.useWeightedAverage),
     academicYears: (slimSettings.academicYears || []).slice(0, 50),
@@ -351,6 +357,7 @@ async function buildStudentPayloads(student: Student) {
 async function buildAppUserPayloads(user: AppUser, existingCreatedAt?: Timestamp | null) {
   const id = sanitizeDocId(user.id, 'usr');
   const safePhoto = await shrinkDataUrlIfNeeded(user.photoDataUrl || '', 340000);
+  const safeSignature = await shrinkDataUrlIfNeeded(user.signatureDataUrl || '', 240000);
   const emailTrimmed = String(user.email || '').trim().slice(0, 200);
   const emailLower = emailTrimmed.toLowerCase();
 
@@ -364,6 +371,10 @@ async function buildAppUserPayloads(user: AppUser, existingCreatedAt?: Timestamp
     photoDataUrl: safePhoto,
     assignedClasses: (user.assignedClasses || []).slice(0, 200),
     assignedSubjects: (user.assignedSubjects || []).slice(0, 200),
+    signatureDataUrl: safeSignature,
+    signatureSize: Math.max(40, Math.min(280, Number(user.signatureSize ?? 54))),
+    signatureOffsetX: Math.max(-300, Math.min(300, Number(user.signatureOffsetX ?? 0))),
+    signatureOffsetY: Math.max(-300, Math.min(300, Number(user.signatureOffsetY ?? 0))),
     active: Boolean(user.active),
     createdAt: existingCreatedAt || serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -402,6 +413,8 @@ function buildJournalPayload(
       className: String(entry.className || 'X').slice(0, 60),
       subject: String(entry.subject || 'Umum').slice(0, 120),
       topic: String(entry.topic || '').slice(0, 300),
+      learningObjective: String(entry.learningObjective || '').slice(0, 500),
+      materialUrl: String(entry.materialUrl || '').slice(0, 600),
       activities: String(entry.activities || '').slice(0, 2000),
       attendance: entry.attendance || {},
       teacherId: String(entry.teacherId || '').slice(0, 128),
@@ -438,6 +451,48 @@ function buildGradePayload(record: GradeRecord, uid: string) {
       teacherName: String(record.teacherName || '').slice(0, 150),
       academicYear: String(record.academicYear || '').slice(0, 20),
       semester: record.semester === 'Genap' ? 'Genap' : 'Ganjil',
+      updatedAt: serverTimestamp(),
+      updatedByUid: uid,
+    },
+  };
+}
+
+const VALID_DAYS = new Set<DayOfWeek>(['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']);
+
+function buildSchedulePayload(item: TeachingScheduleItem, uid: string) {
+  const id = sanitizeDocId(item.id, 'sch');
+  const day = VALID_DAYS.has(item.day) ? item.day : 'Senin';
+  return {
+    id,
+    payload: {
+      id,
+      day,
+      period: String(item.period || '1 - 2').slice(0, 40),
+      startTime: String(item.startTime || '').slice(0, 20),
+      endTime: String(item.endTime || '').slice(0, 20),
+      className: String(item.className || 'X').slice(0, 60),
+      subject: String(item.subject || 'Umum').slice(0, 120),
+      room: String(item.room || '').slice(0, 80),
+      teacherId: String(item.teacherId || '').slice(0, 128),
+      teacherName: String(item.teacherName || '').slice(0, 150),
+      updatedAt: serverTimestamp(),
+      updatedByUid: uid,
+    },
+  };
+}
+
+function buildAgendaPayload(item: TeacherAgendaItem, uid: string) {
+  const id = sanitizeDocId(item.id, 'agd');
+  return {
+    id,
+    payload: {
+      id,
+      date: String(item.date || '').slice(0, 20),
+      title: String(item.title || 'Agenda').slice(0, 200),
+      note: String(item.note || '').slice(0, 1000),
+      done: Boolean(item.done),
+      teacherId: String(item.teacherId || '').slice(0, 128),
+      teacherName: String(item.teacherName || '').slice(0, 150),
       updatedAt: serverTimestamp(),
       updatedByUid: uid,
     },
@@ -678,6 +733,19 @@ export async function fsInitializeDatabaseOnce(
     });
   }
 
+  for (const s of sourceDb.schedules || []) {
+    const sp = buildSchedulePayload(s, uid);
+    phase2Ops.push((batch) => {
+      batch.set(doc(db, 'schedules', sp.id), sp.payload);
+    });
+  }
+  for (const a of sourceDb.agendas || []) {
+    const ap = buildAgendaPayload(a, uid);
+    phase2Ops.push((batch) => {
+      batch.set(doc(db, 'agendas', ap.id), ap.payload);
+    });
+  }
+
   if (phase2Ops.length > 0) {
     await commitOperationsInChunks(phase2Ops, 350, OperationType.WRITE, 'initial-migration-phase2');
   }
@@ -699,6 +767,8 @@ export function subscribeToSchoolWorkspace(opts: {
   let hasContacts = false;
   let hasJournals = false;
   let hasGrades = false;
+  let hasSchedules = false;
+  let hasAgendas = false;
   let hasUsers = false;
   let hasPrivates = false;
 
@@ -707,6 +777,8 @@ export function subscribeToSchoolWorkspace(opts: {
   const studentContactsMap = new Map<string, { email: string; address: string; phone: string }>();
   let journalsList: JournalEntry[] = [];
   let gradesList: GradeRecord[] = [];
+  let schedulesList: TeachingScheduleItem[] = [];
+  let agendasList: TeacherAgendaItem[] = [];
   const usersPublicMap = new Map<string, AppUser>();
   const userPrivatesMap = new Map<string, { email: string }>();
 
@@ -718,6 +790,8 @@ export function subscribeToSchoolWorkspace(opts: {
       !hasContacts ||
       !hasJournals ||
       !hasGrades ||
+      !hasSchedules ||
+      !hasAgendas ||
       !hasUsers ||
       !hasPrivates
     ) {
@@ -755,6 +829,8 @@ export function subscribeToSchoolWorkspace(opts: {
       students,
       journals: journalsList,
       grades: gradesList,
+      schedules: schedulesList,
+      agendas: agendasList,
       users,
     };
 
@@ -848,6 +924,8 @@ export function subscribeToSchoolWorkspace(opts: {
             className: String(raw.className || ''),
             subject: String(raw.subject || ''),
             topic: String(raw.topic || ''),
+            learningObjective: String(raw.learningObjective || ''),
+            materialUrl: String(raw.materialUrl || ''),
             activities: String(raw.activities || ''),
             attendance: (raw.attendance as JournalEntry['attendance']) || {},
             teacherId: String(raw.teacherId || ''),
@@ -900,6 +978,62 @@ export function subscribeToSchoolWorkspace(opts: {
 
   unsubs.push(
     onSnapshot(
+      collection(db, 'schedules'),
+      (snap) => {
+        const next: TeachingScheduleItem[] = [];
+        snap.forEach((d) => {
+          const raw = d.data() as Record<string, unknown>;
+          next.push({
+            id: String(raw.id || d.id),
+            day: (VALID_DAYS.has(raw.day as DayOfWeek) ? raw.day : 'Senin') as DayOfWeek,
+            period: String(raw.period || ''),
+            startTime: String(raw.startTime || ''),
+            endTime: String(raw.endTime || ''),
+            className: String(raw.className || ''),
+            subject: String(raw.subject || ''),
+            room: String(raw.room || ''),
+            teacherId: String(raw.teacherId || ''),
+            teacherName: String(raw.teacherName || ''),
+            updatedAt: tsToIso(raw.updatedAt),
+          });
+        });
+        schedulesList = next;
+        hasSchedules = true;
+        emitMerged();
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, 'schedules')
+    )
+  );
+
+  unsubs.push(
+    onSnapshot(
+      collection(db, 'agendas'),
+      (snap) => {
+        const next: TeacherAgendaItem[] = [];
+        snap.forEach((d) => {
+          const raw = d.data() as Record<string, unknown>;
+          next.push({
+            id: String(raw.id || d.id),
+            date: String(raw.date || ''),
+            title: String(raw.title || ''),
+            note: String(raw.note || ''),
+            done: Boolean(raw.done),
+            teacherId: String(raw.teacherId || ''),
+            teacherName: String(raw.teacherName || ''),
+            updatedAt: tsToIso(raw.updatedAt),
+          });
+        });
+        next.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+        agendasList = next;
+        hasAgendas = true;
+        emitMerged();
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, 'agendas')
+    )
+  );
+
+  unsubs.push(
+    onSnapshot(
       collection(db, 'appUsers'),
       (snap) => {
         userCreatedAtMap.clear();
@@ -921,6 +1055,13 @@ export function subscribeToSchoolWorkspace(opts: {
             photoDataUrl: String(raw.photoDataUrl || ''),
             assignedClasses: Array.isArray(raw.assignedClasses) ? (raw.assignedClasses as string[]) : [],
             assignedSubjects: Array.isArray(raw.assignedSubjects) ? (raw.assignedSubjects as string[]) : [],
+            signatureDataUrl: String(raw.signatureDataUrl || ''),
+            signatureSize:
+              typeof raw.signatureSize === 'number' ? raw.signatureSize : undefined,
+            signatureOffsetX:
+              typeof raw.signatureOffsetX === 'number' ? raw.signatureOffsetX : undefined,
+            signatureOffsetY:
+              typeof raw.signatureOffsetY === 'number' ? raw.signatureOffsetY : undefined,
             active: raw.active !== false,
             createdAt: tsToIso(raw.createdAt),
           });
@@ -1100,6 +1241,56 @@ export async function fsDeleteGrades(ids: string[]): Promise<void> {
   await commitOperationsInChunks(ops, 350, OperationType.DELETE, 'grades');
 }
 
+export async function fsSaveSchedule(item: TeachingScheduleItem): Promise<void> {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+  const sp = buildSchedulePayload(item, uid);
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'schedules', sp.id), sp.payload);
+  try {
+    await batch.commit();
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `schedules/${sp.id}`);
+  }
+}
+
+export async function fsDeleteSchedule(rawId: string): Promise<void> {
+  if (!auth.currentUser?.uid || !rawId) return;
+  const id = sanitizeDocId(rawId, 'sch');
+  const batch = writeBatch(db);
+  batch.delete(doc(db, 'schedules', id));
+  try {
+    await batch.commit();
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `schedules/${id}`);
+  }
+}
+
+export async function fsSaveAgenda(item: TeacherAgendaItem): Promise<void> {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+  const ap = buildAgendaPayload(item, uid);
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'agendas', ap.id), ap.payload);
+  try {
+    await batch.commit();
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `agendas/${ap.id}`);
+  }
+}
+
+export async function fsDeleteAgenda(rawId: string): Promise<void> {
+  if (!auth.currentUser?.uid || !rawId) return;
+  const id = sanitizeDocId(rawId, 'agd');
+  const batch = writeBatch(db);
+  batch.delete(doc(db, 'agendas', id));
+  try {
+    await batch.commit();
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `agendas/${id}`);
+  }
+}
+
 export async function fsSyncUsersAdmin(prevUsers: AppUser[], nextUsers: AppUser[]): Promise<void> {
   if (!auth.currentUser?.uid) return;
   const ops: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
@@ -1145,6 +1336,7 @@ export async function fsUpdateSelfProfile(userId: string, updated: AppUser): Pro
   if (!auth.currentUser?.uid) return;
   const id = sanitizeDocId(userId, 'usr');
   const safePhoto = await shrinkDataUrlIfNeeded(updated.photoDataUrl || '', 340000);
+  const safeSignature = await shrinkDataUrlIfNeeded(updated.signatureDataUrl || '', 240000);
   const batch = writeBatch(db);
   batch.update(doc(db, 'appUsers', id), {
     name: String(updated.name || '').slice(0, 150),
@@ -1154,6 +1346,10 @@ export async function fsUpdateSelfProfile(userId: string, updated: AppUser): Pro
     photoDataUrl: safePhoto,
     assignedClasses: (updated.assignedClasses || []).slice(0, 200),
     assignedSubjects: (updated.assignedSubjects || []).slice(0, 200),
+    signatureDataUrl: safeSignature,
+    signatureSize: Math.max(40, Math.min(280, Number(updated.signatureSize ?? 54))),
+    signatureOffsetX: Math.max(-300, Math.min(300, Number(updated.signatureOffsetX ?? 0))),
+    signatureOffsetY: Math.max(-300, Math.min(300, Number(updated.signatureOffsetY ?? 0))),
     updatedAt: serverTimestamp(),
   });
   try {
@@ -1167,8 +1363,8 @@ export async function fsReplaceEntireDatabase(restored: PortalDatabase): Promise
   const uid = auth.currentUser?.uid;
   if (!uid) return;
 
-  // Clear obsolete docs in students/studentContacts/journals/grades/appUsers cleanly before writing restored state
-  const collectionsToPrune = ['grades', 'journals', 'studentContacts', 'students'] as const;
+  // Clear obsolete docs in students/studentContacts/journals/grades/schedules/agendas cleanly before writing restored state
+  const collectionsToPrune = ['grades', 'journals', 'schedules', 'agendas', 'studentContacts', 'students'] as const;
   const deleteOps: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
 
   for (const colName of collectionsToPrune) {

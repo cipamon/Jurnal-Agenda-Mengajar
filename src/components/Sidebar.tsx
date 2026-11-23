@@ -37,6 +37,7 @@ interface SidebarProps {
 
 const MENU_ITEMS: { id: MenuId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'dashboard', label: 'Dashboard Analitik', icon: BarChart3 },
+  { id: 'jadwal', label: 'Jadwal & Agenda Guru', icon: CalendarClock },
   { id: 'pegawai', label: 'Data Guru & Karyawan', icon: Briefcase },
   { id: 'jurnal', label: 'Jurnal & Absensi', icon: ClipboardCheck },
   { id: 'nilai', label: 'Input & Matriks Nilai', icon: FileSpreadsheet },
@@ -104,7 +105,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
           <div className="min-w-0">
             <p className="text-sm font-bold text-white truncate tracking-tight">{webBrand.appName}</p>
-            <p className="text-xs text-slate-300/80 truncate">{teacherProfile.school}</p>
+            <p className="text-xs text-slate-300/80 truncate">
+              {webBrand.schoolName || teacherProfile.school}
+            </p>
           </div>
         </div>
         <button

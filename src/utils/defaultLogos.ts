@@ -71,6 +71,7 @@ export const DEFAULT_TEACHER_TTD =
   <path d="M44 68 C94 62, 146 60, 188 64" fill="none" stroke="#1e293b" stroke-width="1.8" stroke-linecap="round"/>
 </svg>`);
 
+import { getApiAuthToken } from './apiClient';
 import { normalizePhotoUrl } from './defaultAvatars';
 
 export async function dataUrlToPngBase64(dataUrl: string, targetSize = 180): Promise<string | null> {
@@ -129,7 +130,30 @@ export async function dataUrlToPngBase64(dataUrl: string, targetSize = 180): Pro
         }
       }
     } catch {
-      // External host disallows CORS canvas extraction
+      // External host disallows CORS canvas extraction; try server proxy below if authenticated
+    }
+
+    const token = getApiAuthToken();
+    if (token && srcUrl.startsWith('https://')) {
+      try {
+        const proxyResp = await fetch(
+          `/api/proxy-image?url=${encodeURIComponent(srcUrl)}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'X-Requested-With': 'PortalEGuru',
+            },
+          }
+        );
+        if (proxyResp.ok) {
+          const json = (await proxyResp.json()) as { ok?: boolean; dataUrl?: string };
+          if (json.ok && json.dataUrl) {
+            return await renderImgToPng(json.dataUrl, false);
+          }
+        }
+      } catch {
+        // Ignore proxy fallback error
+      }
     }
   }
 

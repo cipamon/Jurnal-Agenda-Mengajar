@@ -10,9 +10,13 @@ import { AdminUsersModal } from './components/AdminUsersModal';
 import { ClassDetailModal } from './components/ClassDetailModal';
 import { DashboardView } from './components/DashboardView';
 import { GradesMatrixView } from './components/GradesMatrixView';
-import { JournalAttendanceView } from './components/JournalAttendanceView';
+import {
+  JournalAttendanceView,
+  JournalPresetDraft,
+} from './components/JournalAttendanceView';
 import { LoginView } from './components/LoginView';
 import { PrintReportsView } from './components/PrintReportsView';
+import { ScheduleAgendaView } from './components/ScheduleAgendaView';
 import { SettingsView } from './components/SettingsView';
 import { Sidebar } from './components/Sidebar';
 import { StaffTeachersView } from './components/StaffTeachersView';
@@ -33,11 +37,14 @@ import {
   SessionState,
   Student,
   SystemSettings,
+  TeacherAgendaItem,
+  TeachingScheduleItem,
   ThemeId,
   UserRole,
 } from './types';
 import {
   getScopedPortalData,
+  getTodayIso,
   normalizeWebBrand,
   ROLE_PERMISSIONS,
   THEME_PRESETS,
@@ -46,13 +53,17 @@ import {
 import { auth, googleProvider } from './firebase';
 import {
   BOOTSTRAPPED_ADMIN_EMAIL,
+  fsDeleteAgenda,
   fsDeleteGrades,
   fsDeleteJournals,
+  fsDeleteSchedule,
   fsDeleteStudents,
   fsReplaceEntireDatabase,
+  fsSaveAgenda,
   fsSaveGradesBatch,
   fsSaveJournal,
   fsSaveJournalsBatch,
+  fsSaveSchedule,
   fsSaveSettings,
   fsSaveStudent,
   fsSaveStudentsBatch,
@@ -68,13 +79,16 @@ import {
   apiLoginServer,
   apiResetDemoWorkspace,
   apiRestoreWorkspace,
+  apiSaveAgendas,
   apiSaveGrades,
   apiSaveJournals,
   apiSaveOwnProfile,
+  apiSaveSchedules,
   apiSaveSettings,
   apiSaveStudents,
   apiSaveUsers,
   setApiAuthToken,
+  setOnUnauthorizedHandler,
 } from './utils/apiClient';
 import {
   clearSession,
@@ -112,6 +126,7 @@ export default function App() {
     mode: 'create' | 'edit' | 'duplicate';
     entry: JournalEntry;
   } | null>(null);
+  const [scheduleJournalPreset, setScheduleJournalPreset] = useState<JournalPresetDraft | null>(null);
   const [selectedStudentModal, setSelectedStudentModal] = useState<Student | null>(null);
   const [studentFormModal, setStudentFormModal] = useState<{
     mode: 'create' | 'edit';
@@ -161,6 +176,19 @@ export default function App() {
   useEffect(() => {
     dbRef.current = db;
   }, [db]);
+
+  useEffect(() => {
+    setOnUnauthorizedHandler(() => {
+      setCloudVerified(false);
+      setCloudUsersSynced(false);
+      clearSession();
+      setSession(null);
+      setCloudAuthError('Sesi server telah berakhir. Silakan masuk kembali.');
+    });
+    return () => {
+      setOnUnauthorizedHandler(null);
+    };
+  }, []);
 
   // Initial hydration from IndexedDB / LocalStorage + Firebase Auth session listener
   useEffect(() => {
@@ -437,6 +465,7 @@ export default function App() {
     username: string;
     password: string;
     email?: string;
+    staffPassword?: string;
     academicYear: string;
     semester: 'Ganjil' | 'Genap';
   }): Promise<string | null> => {
@@ -454,20 +483,11 @@ export default function App() {
         username: payload.username,
         password: payload.password,
         email: payload.email,
+        staffPassword: payload.staffPassword,
+        academicYear: payload.academicYear,
+        semester: payload.semester,
       });
-      let workspaceDb = await apiFetchWorkspace();
-      if (
-        workspaceDb.settings.academicYear !== payload.academicYear ||
-        workspaceDb.settings.semester !== payload.semester
-      ) {
-        const updatedSettings: SystemSettings = {
-          ...workspaceDb.settings,
-          academicYear: payload.academicYear,
-          semester: payload.semester,
-        };
-        const savedSettings = await apiSaveSettings(updatedSettings);
-        workspaceDb = { ...workspaceDb, settings: savedSettings };
-      }
+      const workspaceDb = await apiFetchWorkspace();
       dbRef.current = workspaceDb;
       setDb(workspaceDb);
       void saveDatabase(workspaceDb);
@@ -483,8 +503,12 @@ export default function App() {
       };
       setSession(nextSession);
       setActiveMenu('pengaturan');
+      const staffNote =
+        authRes.activatedStaffCount && authRes.activatedStaffCount > 0
+          ? ` dan ${authRes.activatedStaffCount} akun role lainnya siap digunakan.`
+          : '.';
       notify(
-        `Akun Admin (${authRes.user.username}) berhasil diaktifkan & terkunci aman di server.`
+        `Akun Admin (${authRes.user.username}) berhasil diaktifkan di server${staffNote}`
       );
       return null;
     } catch (err) {
@@ -570,6 +594,8 @@ export default function App() {
         }
         if (permsNow.canManageJournals) {
           await apiSaveJournals(db.journals);
+          await apiSaveSchedules(db.schedules || []);
+          await apiSaveAgendas(db.agendas || []);
         }
         if (permsNow.canManageGrades) {
           await apiSaveGrades(db.grades);
@@ -596,17 +622,65 @@ export default function App() {
     }
   };
 
+  const resolveActiveAuth = () => {
+    const currentDb = dbRef.current ?? db;
+    const users = currentDb?.users ?? [];
+    const matched = session
+      ? users.find(
+          (u) =>
+            (session.userId && u.id === session.userId) ||
+            u.email.toLowerCase() === session.email.toLowerCase()
+        )
+      : undefined;
+    const role: UserRole = matched?.role || session?.role || 'guru';
+    const perms = ROLE_PERMISSIONS[role];
+    const scopedData = currentDb ? getScopedPortalData(currentDb, matched, role, periodScope) : null;
+    const isClassInScope = (cls: string) =>
+      role === 'admin' || !scopedData?.hasClassRestriction || scopedData.allowedClasses.includes(cls);
+    const isSubjectInScope = (subj: string) =>
+      role === 'admin' || !scopedData?.hasSubjectRestriction || scopedData.allowedSubjects.includes(subj);
+    const isOwnerOrAdmin = (teacherId?: string) =>
+      role === 'admin' || !teacherId || !matched?.id || teacherId === matched.id;
+    return {
+      user: matched,
+      role,
+      perms,
+      scopedData,
+      isClassInScope,
+      isSubjectInScope,
+      isOwnerOrAdmin,
+    };
+  };
+
   // Journal handlers
   const handleSaveJournal = (entry: JournalEntry, isEdit: boolean) => {
+    const { perms, isClassInScope, isSubjectInScope, isOwnerOrAdmin, user } = resolveActiveAuth();
+    if (!perms.canManageJournals) {
+      notify('Akses ditolak: peran Anda tidak diizinkan mengubah jurnal mengajar.');
+      return;
+    }
+    if (!isClassInScope(entry.className) || !isSubjectInScope(entry.subject)) {
+      notify('Akses ditolak: kelas atau mata pelajaran berada di luar tanggung jawab Anda.');
+      return;
+    }
+    const existing = (dbRef.current?.journals || []).find((j) => j.id === entry.id);
+    if (existing && !isOwnerOrAdmin(existing.teacherId)) {
+      notify('Akses ditolak: Anda hanya dapat mengubah jurnal mengajar milik Anda sendiri.');
+      return;
+    }
+    const normalizedEntry: JournalEntry = {
+      ...entry,
+      teacherId: existing?.teacherId || entry.teacherId || user?.id,
+    };
     const nextDb = updateDatabase((prev) => {
-      const exists = prev.journals.some((j) => j.id === entry.id);
+      const exists = prev.journals.some((j) => j.id === normalizedEntry.id);
       const journals = exists
-        ? prev.journals.map((j) => (j.id === entry.id ? entry : j))
-        : [entry, ...prev.journals];
+        ? prev.journals.map((j) => (j.id === normalizedEntry.id ? normalizedEntry : j))
+        : [normalizedEntry, ...prev.journals];
       return { ...prev, journals };
     });
     if (isCloudActive) {
-      trackRemoteSave(fsSaveJournal(entry), 'Gagal menyimpan jurnal ke Firebase');
+      trackRemoteSave(fsSaveJournal(normalizedEntry), 'Gagal menyimpan jurnal ke Firebase');
     } else if (isServerActive) {
       trackRemoteSave(apiSaveJournals(nextDb.journals), 'Gagal menyimpan jurnal ke server');
     }
@@ -614,49 +688,80 @@ export default function App() {
   };
 
   const handleDeleteJournals = (ids: string[]) => {
+    const { perms, isClassInScope, isSubjectInScope, isOwnerOrAdmin } = resolveActiveAuth();
+    if (!perms.canManageJournals) {
+      notify('Akses ditolak: peran Anda tidak diizinkan menghapus jurnal.');
+      return;
+    }
+    const currentJournals = dbRef.current?.journals || [];
+    const allowedIds = ids.filter((id) => {
+      const target = currentJournals.find((j) => j.id === id);
+      if (!target) return false;
+      return isClassInScope(target.className) && isSubjectInScope(target.subject) && isOwnerOrAdmin(target.teacherId);
+    });
+    if (allowedIds.length === 0) {
+      notify('Akses ditolak: tidak ada jurnal milik Anda dalam cakupan yang dapat dihapus.');
+      return;
+    }
+    const delSet = new Set(allowedIds);
     const nextDb = updateDatabase((prev) => ({
       ...prev,
-      journals: prev.journals.filter((j) => !ids.includes(j.id)),
+      journals: prev.journals.filter((j) => !delSet.has(j.id)),
     }));
     if (isCloudActive) {
-      trackRemoteSave(fsDeleteJournals(ids), 'Gagal menghapus jurnal di Firebase');
+      trackRemoteSave(fsDeleteJournals(allowedIds), 'Gagal menghapus jurnal di Firebase');
     } else if (isServerActive) {
       trackRemoteSave(apiSaveJournals(nextDb.journals), 'Gagal menghapus jurnal di server');
     }
-    notify(`${ids.length} jurnal berhasil dihapus.`);
+    notify(`${allowedIds.length} jurnal berhasil dihapus.`);
   };
 
   const handleImportJournals = (entries: JournalEntry[]) => {
+    const { role, perms, user, isClassInScope, isSubjectInScope } = resolveActiveAuth();
+    if (!perms.canManageJournals) {
+      notify('Akses ditolak: peran Anda tidak diizinkan mengimpor jurnal.');
+      return;
+    }
+    const scopedEntries = entries
+      .filter((e) => isClassInScope(e.className) && isSubjectInScope(e.subject))
+      .map((e) => ({ ...e, teacherId: e.teacherId || user?.id }));
+    if (scopedEntries.length === 0) {
+      notify('Tidak ada baris jurnal yang sesuai dengan kelas & mata pelajaran ampu Anda.');
+      return;
+    }
     let nextSettingsToSync: SystemSettings | null = null;
     const nextDb = updateDatabase((prev) => {
-      const extraClasses = new Set(prev.settings.classes);
-      const extraSubjects = new Set(prev.settings.subjects);
-      entries.forEach((e) => {
-        if (e.className) extraClasses.add(e.className);
-        if (e.subject) extraSubjects.add(e.subject);
-      });
-      const updatedSettings: SystemSettings = {
-        ...prev.settings,
-        classes: Array.from(extraClasses),
-        subjects: Array.from(extraSubjects),
-      };
-      if (
-        updatedSettings.classes.length !== prev.settings.classes.length ||
-        updatedSettings.subjects.length !== prev.settings.subjects.length
-      ) {
-        nextSettingsToSync = updatedSettings;
+      let updatedSettings = prev.settings;
+      if (role === 'admin') {
+        const extraClasses = new Set(prev.settings.classes);
+        const extraSubjects = new Set(prev.settings.subjects);
+        scopedEntries.forEach((e) => {
+          if (e.className) extraClasses.add(e.className);
+          if (e.subject) extraSubjects.add(e.subject);
+        });
+        updatedSettings = {
+          ...prev.settings,
+          classes: Array.from(extraClasses),
+          subjects: Array.from(extraSubjects),
+        };
+        if (
+          updatedSettings.classes.length !== prev.settings.classes.length ||
+          updatedSettings.subjects.length !== prev.settings.subjects.length
+        ) {
+          nextSettingsToSync = updatedSettings;
+        }
       }
       return {
         ...prev,
-        journals: [...entries, ...prev.journals],
+        journals: [...scopedEntries, ...prev.journals],
         settings: updatedSettings,
       };
     });
     if (isCloudActive) {
       trackRemoteSave(
         Promise.all([
-          fsSaveJournalsBatch(entries),
-          nextSettingsToSync && session?.role === 'admin'
+          fsSaveJournalsBatch(scopedEntries),
+          nextSettingsToSync && role === 'admin'
             ? fsSaveSettings(nextSettingsToSync)
             : Promise.resolve(),
         ]),
@@ -666,36 +771,66 @@ export default function App() {
       trackRemoteSave(
         Promise.all([
           apiSaveJournals(nextDb.journals),
-          nextSettingsToSync && session?.role === 'admin'
+          nextSettingsToSync && role === 'admin'
             ? apiSaveSettings(nextSettingsToSync)
             : Promise.resolve(),
         ]),
         'Gagal menyimpan impor jurnal ke server'
       );
     }
-    notify(`Berhasil mengimpor ${entries.length} jurnal mengajar.`);
+    notify(`Berhasil mengimpor ${scopedEntries.length} jurnal mengajar.`);
   };
 
   const handleBulkUpdateLedger = (updatedJournals: JournalEntry[]) => {
-    const mapById = new Map(updatedJournals.map((j) => [j.id, j]));
+    const { perms, isClassInScope, isSubjectInScope, isOwnerOrAdmin } = resolveActiveAuth();
+    if (!perms.canManageJournals) {
+      notify('Akses ditolak: peran Anda tidak diizinkan mengubah leger presensi.');
+      return;
+    }
+    const existingMap = new Map((dbRef.current?.journals || []).map((j) => [j.id, j]));
+    const permittedUpdates = updatedJournals.filter((j) => {
+      const existing = existingMap.get(j.id);
+      return (
+        isClassInScope(j.className) &&
+        isSubjectInScope(j.subject) &&
+        isOwnerOrAdmin(existing?.teacherId ?? j.teacherId)
+      );
+    });
+    if (permittedUpdates.length === 0) {
+      notify('Akses ditolak: Anda hanya dapat memperbarui presensi pada pertemuan milik Anda sendiri.');
+      return;
+    }
+    const mapById = new Map(permittedUpdates.map((j) => [j.id, j]));
     const nextDb = updateDatabase((prev) => ({
       ...prev,
       journals: prev.journals.map((j) => mapById.get(j.id) || j),
     }));
     if (isCloudActive) {
-      trackRemoteSave(fsSaveJournalsBatch(updatedJournals), 'Gagal menyimpan leger ke Firebase');
+      trackRemoteSave(fsSaveJournalsBatch(permittedUpdates), 'Gagal menyimpan leger ke Firebase');
     } else if (isServerActive) {
       trackRemoteSave(apiSaveJournals(nextDb.journals), 'Gagal menyimpan leger ke server');
     }
-    notify(`Perubahan leger kehadiran (${updatedJournals.length} pertemuan) berhasil disimpan.`);
+    notify(`Perubahan leger kehadiran (${permittedUpdates.length} pertemuan) berhasil disimpan.`);
   };
 
   // Grade handlers
   const handleSaveGradesBatch = (records: GradeRecord[]) => {
+    const { perms, user, isClassInScope, isSubjectInScope } = resolveActiveAuth();
+    if (!perms.canManageGrades) {
+      notify('Akses ditolak: peran Anda tidak diizinkan mengubah nilai siswa.');
+      return;
+    }
+    const scopedRecords = records
+      .filter((r) => isClassInScope(r.className) && isSubjectInScope(r.subject))
+      .map((r) => ({ ...r, teacherId: r.teacherId || user?.id }));
+    if (scopedRecords.length === 0) {
+      notify('Akses ditolak: kelas atau mata pelajaran nilai di luar tanggung jawab Anda.');
+      return;
+    }
     const resolvedBatch: GradeRecord[] = [];
     const nextDb = updateDatabase((prev) => {
       const nextGrades = [...prev.grades];
-      records.forEach((rec) => {
+      scopedRecords.forEach((rec) => {
         const recYear = rec.academicYear || prev.settings.academicYear;
         const recSem = rec.semester || prev.settings.semester;
         const idx = nextGrades.findIndex(
@@ -723,50 +858,238 @@ export default function App() {
     } else if (isServerActive) {
       trackRemoteSave(apiSaveGrades(nextDb.grades), 'Gagal menyimpan nilai ke server');
     }
-    notify(`Berhasil menyimpan ${records.length} data nilai siswa.`);
+    notify(`Berhasil menyimpan ${scopedRecords.length} data nilai siswa.`);
   };
 
   const handleDeleteGrades = (ids: string[]) => {
-    const delSet = new Set(ids);
+    const { perms, isClassInScope, isSubjectInScope } = resolveActiveAuth();
+    if (!perms.canManageGrades) {
+      notify('Akses ditolak: peran Anda tidak diizinkan menghapus nilai siswa.');
+      return;
+    }
+    const currentGrades = dbRef.current?.grades || [];
+    const allowedIds = ids.filter((id) => {
+      const g = currentGrades.find((rec) => rec.id === id);
+      return g ? isClassInScope(g.className) && isSubjectInScope(g.subject) : false;
+    });
+    if (allowedIds.length === 0) {
+      notify('Tidak ada data nilai dalam cakupan yang dapat dihapus.');
+      return;
+    }
+    const delSet = new Set(allowedIds);
     const nextDb = updateDatabase((prev) => ({
       ...prev,
       grades: prev.grades.filter((g) => !delSet.has(g.id)),
     }));
     if (isCloudActive) {
-      trackRemoteSave(fsDeleteGrades(ids), 'Gagal menghapus nilai di Firebase');
+      trackRemoteSave(fsDeleteGrades(allowedIds), 'Gagal menghapus nilai di Firebase');
     } else if (isServerActive) {
       trackRemoteSave(apiSaveGrades(nextDb.grades), 'Gagal menghapus nilai di server');
     }
-    notify(`${ids.length} catatan nilai berhasil dihapus.`);
+    notify(`${allowedIds.length} catatan nilai berhasil dihapus.`);
+  };
+
+  // Schedule & Agenda handlers
+  const handleSaveSchedule = (item: TeachingScheduleItem, isEdit: boolean) => {
+    const { perms, user, isClassInScope, isSubjectInScope, isOwnerOrAdmin } = resolveActiveAuth();
+    if (!perms.canManageJournals) {
+      notify('Akses ditolak: peran Anda tidak diizinkan mengubah jadwal mengajar.');
+      return;
+    }
+    if (!isClassInScope(item.className) || !isSubjectInScope(item.subject)) {
+      notify('Akses ditolak: kelas atau mata pelajaran jadwal di luar tanggung jawab Anda.');
+      return;
+    }
+    const existing = (dbRef.current?.schedules || []).find((s) => s.id === item.id);
+    if (existing && !isOwnerOrAdmin(existing.teacherId)) {
+      notify('Akses ditolak: Anda hanya dapat mengubah slot jadwal milik Anda sendiri.');
+      return;
+    }
+    const normalizedItem: TeachingScheduleItem = {
+      ...item,
+      teacherId: existing?.teacherId || item.teacherId || user?.id,
+    };
+    const nextDb = updateDatabase((prev) => {
+      const list = prev.schedules || [];
+      const exists = list.some((s) => s.id === normalizedItem.id);
+      const schedules = exists
+        ? list.map((s) => (s.id === normalizedItem.id ? normalizedItem : s))
+        : [...list, normalizedItem];
+      return { ...prev, schedules };
+    });
+    if (isCloudActive) {
+      trackRemoteSave(fsSaveSchedule(normalizedItem), 'Gagal menyimpan jadwal ke Firebase');
+    } else if (isServerActive) {
+      trackRemoteSave(
+        apiSaveSchedules(nextDb.schedules || []),
+        'Gagal menyimpan jadwal ke server'
+      );
+    }
+    notify(isEdit ? 'Jadwal mengajar diperbarui.' : 'Jadwal mengajar baru ditambahkan.');
+  };
+
+  const handleDeleteSchedule = (id: string) => {
+    const { perms, isOwnerOrAdmin } = resolveActiveAuth();
+    if (!perms.canManageJournals) {
+      notify('Akses ditolak: peran Anda tidak diizinkan menghapus jadwal mengajar.');
+      return;
+    }
+    const existing = (dbRef.current?.schedules || []).find((s) => s.id === id);
+    if (!existing || !isOwnerOrAdmin(existing.teacherId)) {
+      notify('Akses ditolak: Anda hanya dapat menghapus slot jadwal milik Anda sendiri.');
+      return;
+    }
+    const nextDb = updateDatabase((prev) => ({
+      ...prev,
+      schedules: (prev.schedules || []).filter((s) => s.id !== id),
+    }));
+    if (isCloudActive) {
+      trackRemoteSave(fsDeleteSchedule(id), 'Gagal menghapus jadwal di Firebase');
+    } else if (isServerActive) {
+      trackRemoteSave(
+        apiSaveSchedules(nextDb.schedules || []),
+        'Gagal menghapus jadwal di server'
+      );
+    }
+    notify('Slot jadwal mengajar dihapus.');
+  };
+
+  const handleSaveAgenda = (item: TeacherAgendaItem, isEdit: boolean) => {
+    const { perms, user, isOwnerOrAdmin } = resolveActiveAuth();
+    if (!perms.canManageJournals) {
+      notify('Akses ditolak: peran Anda tidak diizinkan mengubah agenda guru.');
+      return;
+    }
+    const existing = (dbRef.current?.agendas || []).find((a) => a.id === item.id);
+    if (existing && !isOwnerOrAdmin(existing.teacherId)) {
+      notify('Akses ditolak: Anda hanya dapat mengubah agenda milik Anda sendiri.');
+      return;
+    }
+    const normalizedItem: TeacherAgendaItem = {
+      ...item,
+      teacherId: existing?.teacherId || item.teacherId || user?.id,
+    };
+    const nextDb = updateDatabase((prev) => {
+      const list = prev.agendas || [];
+      const exists = list.some((a) => a.id === normalizedItem.id);
+      const agendas = exists
+        ? list.map((a) => (a.id === normalizedItem.id ? normalizedItem : a))
+        : [normalizedItem, ...list];
+      return { ...prev, agendas };
+    });
+    if (isCloudActive) {
+      trackRemoteSave(fsSaveAgenda(normalizedItem), 'Gagal menyimpan agenda ke Firebase');
+    } else if (isServerActive) {
+      trackRemoteSave(apiSaveAgendas(nextDb.agendas || []), 'Gagal menyimpan agenda ke server');
+    }
+    notify(isEdit ? 'Agenda kerja diperbarui.' : 'Agenda kerja baru ditambahkan.');
+  };
+
+  const handleDeleteAgenda = (id: string) => {
+    const { perms, isOwnerOrAdmin } = resolveActiveAuth();
+    if (!perms.canManageJournals) {
+      notify('Akses ditolak: peran Anda tidak diizinkan menghapus agenda guru.');
+      return;
+    }
+    const existing = (dbRef.current?.agendas || []).find((a) => a.id === id);
+    if (!existing || !isOwnerOrAdmin(existing.teacherId)) {
+      notify('Akses ditolak: Anda hanya dapat menghapus agenda milik Anda sendiri.');
+      return;
+    }
+    const nextDb = updateDatabase((prev) => ({
+      ...prev,
+      agendas: (prev.agendas || []).filter((a) => a.id !== id),
+    }));
+    if (isCloudActive) {
+      trackRemoteSave(fsDeleteAgenda(id), 'Gagal menghapus agenda di Firebase');
+    } else if (isServerActive) {
+      trackRemoteSave(apiSaveAgendas(nextDb.agendas || []), 'Gagal menghapus agenda di server');
+    }
+    notify('Catatan agenda dihapus.');
+  };
+
+  const handleCreateJournalFromSchedule = (slot: TeachingScheduleItem) => {
+    const { perms } = resolveActiveAuth();
+    if (!perms.canManageJournals || !perms.allowedMenus.includes('jurnal')) {
+      notify('Akses ditolak: peran Anda tidak diizinkan mencatat jurnal mengajar.');
+      return;
+    }
+    setDraftJournal(null);
+    setScheduleJournalPreset({
+      date: getTodayIso(),
+      period: slot.period,
+      className: slot.className,
+      subject: slot.subject,
+    });
+    setActiveMenu('jurnal');
+    notify(`Siap mengisi jurnal ${slot.className} — ${slot.subject} (Jam ${slot.period}).`);
   };
 
   // Student handlers
   const handleAddOrUpdateStudent = (student: Student, isEdit: boolean) => {
+    const { perms, isClassInScope } = resolveActiveAuth();
+    if (!perms.canManageStudents) {
+      notify('Akses ditolak: peran Anda hanya memiliki akses lihat untuk data siswa.');
+      return;
+    }
+    if (!isClassInScope(student.className)) {
+      notify('Akses ditolak: kelas siswa berada di luar tanggung jawab Anda.');
+      return;
+    }
+    const existing = (dbRef.current?.students || []).find((s) => s.id === student.id);
+    if (existing && !isClassInScope(existing.className)) {
+      notify('Akses ditolak: Anda tidak dapat mengubah data siswa dari kelas lain.');
+      return;
+    }
+    const sanitizedStudent: Student = !perms.canPromoteStudents
+      ? {
+          ...student,
+          status: isEdit && existing ? existing.status || 'aktif' : 'aktif',
+        }
+      : student;
     const nextDb = updateDatabase((prev) => {
       const students = isEdit
-        ? prev.students.map((s) => (s.id === student.id ? student : s))
-        : [...prev.students, student];
+        ? prev.students.map((s) => (s.id === sanitizedStudent.id ? sanitizedStudent : s))
+        : [...prev.students, sanitizedStudent];
       return { ...prev, students };
     });
-    if (isEdit && selectedStudentModal?.id === student.id) {
-      setSelectedStudentModal(student);
+    if (isEdit && selectedStudentModal?.id === sanitizedStudent.id) {
+      setSelectedStudentModal(sanitizedStudent);
     }
     if (isCloudActive) {
-      trackRemoteSave(fsSaveStudent(student), 'Gagal menyimpan siswa ke Firebase');
+      trackRemoteSave(fsSaveStudent(sanitizedStudent), 'Gagal menyimpan siswa ke Firebase');
     } else if (isServerActive) {
       trackRemoteSave(apiSaveStudents(nextDb.students), 'Gagal menyimpan siswa ke server');
     }
-    notify(isEdit ? `Data siswa ${student.name} diperbarui.` : `Siswa ${student.name} ditambahkan.`);
+    notify(
+      isEdit
+        ? `Data siswa ${sanitizedStudent.name} diperbarui.`
+        : `Siswa ${sanitizedStudent.name} ditambahkan.`
+    );
   };
 
   const handlePromoteStudents = (updatedStudents: Student[], summaryMsg: string) => {
-    const updatedMap = new Map(updatedStudents.map((s) => [s.id, s]));
+    const { perms, isClassInScope } = resolveActiveAuth();
+    if (!perms.canPromoteStudents) {
+      notify('Akses ditolak: kenaikan kelas & mutasi hanya dapat dilakukan oleh Wali Kelas, Staff TU, atau Admin.');
+      return;
+    }
+    const existingMap = new Map((dbRef.current?.students || []).map((s) => [s.id, s]));
+    const permittedUpdates = updatedStudents.filter((s) => {
+      const cur = existingMap.get(s.id);
+      return cur ? isClassInScope(cur.className) : false;
+    });
+    if (permittedUpdates.length === 0) {
+      notify('Akses ditolak: tidak ada siswa dalam kelas binaan Anda untuk dimutasi.');
+      return;
+    }
+    const updatedMap = new Map(permittedUpdates.map((s) => [s.id, s]));
     const nextDb = updateDatabase((prev) => ({
       ...prev,
       students: prev.students.map((s) => updatedMap.get(s.id) || s),
     }));
     if (isCloudActive) {
-      trackRemoteSave(fsSaveStudentsBatch(updatedStudents), 'Gagal menyimpan mutasi ke Firebase');
+      trackRemoteSave(fsSaveStudentsBatch(permittedUpdates), 'Gagal menyimpan mutasi ke Firebase');
     } else if (isServerActive) {
       trackRemoteSave(apiSaveStudents(nextDb.students), 'Gagal menyimpan mutasi ke server');
     }
@@ -774,6 +1097,16 @@ export default function App() {
   };
 
   const handleDeleteStudent = (id: string) => {
+    const { perms, isClassInScope } = resolveActiveAuth();
+    if (!perms.canManageStudents) {
+      notify('Akses ditolak: peran Anda tidak diizinkan menghapus data siswa.');
+      return;
+    }
+    const target = (dbRef.current?.students || []).find((s) => s.id === id);
+    if (!target || !isClassInScope(target.className)) {
+      notify('Akses ditolak: siswa berada di luar kelas tanggung jawab Anda.');
+      return;
+    }
     const gradeIds = (dbRef.current?.grades || [])
       .filter((g) => g.studentId === id)
       .map((g) => g.id);
@@ -796,7 +1129,21 @@ export default function App() {
   };
 
   const handleDeleteStudentsBulk = (ids: string[]) => {
-    const delSet = new Set(ids);
+    const { perms, isClassInScope } = resolveActiveAuth();
+    if (!perms.canManageStudents) {
+      notify('Akses ditolak: peran Anda tidak diizinkan menghapus data siswa.');
+      return;
+    }
+    const currentStudents = dbRef.current?.students || [];
+    const allowedIds = ids.filter((id) => {
+      const target = currentStudents.find((s) => s.id === id);
+      return target ? isClassInScope(target.className) : false;
+    });
+    if (allowedIds.length === 0) {
+      notify('Akses ditolak: tidak ada siswa dalam kelas tanggung jawab Anda.');
+      return;
+    }
+    const delSet = new Set(allowedIds);
     const gradeIds = (dbRef.current?.grades || [])
       .filter((g) => delSet.has(g.studentId))
       .map((g) => g.id);
@@ -810,17 +1157,22 @@ export default function App() {
       setStudentFormModal(null);
     }
     if (isCloudActive) {
-      trackRemoteSave(fsDeleteStudents(ids, gradeIds), 'Gagal menghapus siswa di Firebase');
+      trackRemoteSave(fsDeleteStudents(allowedIds, gradeIds), 'Gagal menghapus siswa di Firebase');
     } else if (isServerActive) {
       trackRemoteSave(
         Promise.all([apiSaveStudents(nextDb.students), apiSaveGrades(nextDb.grades)]),
         'Gagal menghapus siswa di server'
       );
     }
-    notify(`${ids.length} data siswa berhasil dihapus.`);
+    notify(`${allowedIds.length} data siswa berhasil dihapus.`);
   };
 
   const handleImportStudents = (newStudents: Student[]) => {
+    const { role, perms, isClassInScope } = resolveActiveAuth();
+    if (!perms.canManageStudents) {
+      notify('Akses ditolak: peran Anda tidak diizinkan mengimpor data siswa.');
+      return;
+    }
     const currentStudents = db?.students ?? [];
     const existingNis = new Set(currentStudents.map((s) => s.nis.trim().toLowerCase()));
     let addedCount = 0;
@@ -828,10 +1180,14 @@ export default function App() {
     const toAdd: Student[] = [];
 
     newStudents.forEach((st) => {
+      if (!isClassInScope(st.className)) {
+        skippedCount++;
+        return;
+      }
       const normNis = st.nis.trim().toLowerCase();
       if (!existingNis.has(normNis)) {
         existingNis.add(normNis);
-        toAdd.push(st);
+        toAdd.push(!perms.canPromoteStudents ? { ...st, status: 'aktif' } : st);
         addedCount++;
       } else {
         skippedCount++;
@@ -841,16 +1197,19 @@ export default function App() {
     if (toAdd.length > 0) {
       let nextSettingsToSync: SystemSettings | null = null;
       const nextDb = updateDatabase((prev) => {
-        const extraClasses = new Set(prev.settings.classes);
-        toAdd.forEach((st) => {
-          if (st.className) extraClasses.add(st.className);
-        });
-        const updatedSettings: SystemSettings = {
-          ...prev.settings,
-          classes: Array.from(extraClasses),
-        };
-        if (updatedSettings.classes.length !== prev.settings.classes.length) {
-          nextSettingsToSync = updatedSettings;
+        let updatedSettings = prev.settings;
+        if (role === 'admin') {
+          const extraClasses = new Set(prev.settings.classes);
+          toAdd.forEach((st) => {
+            if (st.className) extraClasses.add(st.className);
+          });
+          updatedSettings = {
+            ...prev.settings,
+            classes: Array.from(extraClasses),
+          };
+          if (updatedSettings.classes.length !== prev.settings.classes.length) {
+            nextSettingsToSync = updatedSettings;
+          }
         }
         return {
           ...prev,
@@ -862,7 +1221,7 @@ export default function App() {
         trackRemoteSave(
           Promise.all([
             fsSaveStudentsBatch(toAdd),
-            nextSettingsToSync && session?.role === 'admin'
+            nextSettingsToSync && role === 'admin'
               ? fsSaveSettings(nextSettingsToSync)
               : Promise.resolve(),
           ]),
@@ -872,7 +1231,7 @@ export default function App() {
         trackRemoteSave(
           Promise.all([
             apiSaveStudents(nextDb.students),
-            nextSettingsToSync && session?.role === 'admin'
+            nextSettingsToSync && role === 'admin'
               ? apiSaveSettings(nextSettingsToSync)
               : Promise.resolve(),
           ]),
@@ -883,13 +1242,18 @@ export default function App() {
 
     notify(
       skippedCount > 0
-        ? `Impor selesai: ${addedCount} siswa ditambahkan, ${skippedCount} baris dilewati karena NIS sudah terdaftar.`
+        ? `Impor selesai: ${addedCount} siswa ditambahkan, ${skippedCount} baris dilewati (NIS sudah ada / kelas di luar akses).`
         : `Impor selesai: ${addedCount} siswa baru ditambahkan.`
     );
   };
 
   // Settings & Users handlers
   const handleUpdateSettings = async (nextSettings: SystemSettings): Promise<boolean> => {
+    const { role, perms } = resolveActiveAuth();
+    if (role !== 'admin' || !perms.canAccessSettings) {
+      notify('Akses ditolak: hanya Admin Sistem yang dapat mengubah pengaturan.');
+      return false;
+    }
     const base = dbRef.current ?? db ?? createSeedDatabase();
     const nextDb: PortalDatabase = {
       ...base,
@@ -947,6 +1311,11 @@ export default function App() {
   };
 
   const handleUpdateUsers = (nextUsers: AppUser[]) => {
+    const { role } = resolveActiveAuth();
+    if (role !== 'admin') {
+      notify('Akses ditolak: hanya Admin Sistem yang dapat mengelola data guru & pengguna.');
+      return;
+    }
     const prevUsers = dbRef.current?.users ?? [];
     const sanitizedLocalUsers = nextUsers.map((u) => ({ ...u, password: '' }));
     let nextSettingsForSync: SystemSettings | null = null;
@@ -971,6 +1340,10 @@ export default function App() {
               photoDataUrl: matchedTeacher.photoDataUrl,
               assignedClasses: matchedTeacher.assignedClasses,
               assignedSubjects: matchedTeacher.assignedSubjects,
+              signatureDataUrl: matchedTeacher.signatureDataUrl,
+              signatureSize: matchedTeacher.signatureSize,
+              signatureOffsetX: matchedTeacher.signatureOffsetX,
+              signatureOffsetY: matchedTeacher.signatureOffsetY,
             },
           }
         : prev.settings;
@@ -1008,6 +1381,11 @@ export default function App() {
   };
 
   const handleResetDemoData = async () => {
+    const { role } = resolveActiveAuth();
+    if (role !== 'admin') {
+      notify('Akses ditolak: hanya Admin Sistem yang dapat mereset seluruh data.');
+      return;
+    }
     if (isServerActive) {
       try {
         const serverFresh = await apiResetDemoWorkspace();
@@ -1121,13 +1499,32 @@ export default function App() {
             photoDataUrl: activeUser.photoDataUrl,
             assignedClasses: activeUser.assignedClasses,
             assignedSubjects: activeUser.assignedSubjects,
+            signatureDataUrl: activeUser.signatureDataUrl,
+            signatureSize: activeUser.signatureSize,
+            signatureOffsetX: activeUser.signatureOffsetX,
+            signatureOffsetY: activeUser.signatureOffsetY,
           },
         }
       : scoped.scopedSettings;
 
   const handleSaveTeacherProfile = (updated: { teacherProfile: SystemSettings['teacherProfile'] }) => {
+    const isTeachingRole = currentUserRole === 'guru' || currentUserRole === 'wali_kelas';
+    const allowPersonalTeacherSig = isTeachingRole || currentUserRole === 'admin';
     const tp = updated.teacherProfile;
-    const sanitizedTp = { ...tp, password: '' };
+    const sanitizedTp = {
+      ...tp,
+      password: '',
+      assignedClasses: isTeachingRole ? tp.assignedClasses ?? [] : [],
+      assignedSubjects: isTeachingRole ? tp.assignedSubjects ?? [] : [],
+      ...(allowPersonalTeacherSig
+        ? {}
+        : {
+            signatureDataUrl: undefined,
+            signatureSize: undefined,
+            signatureOffsetX: undefined,
+            signatureOffsetY: undefined,
+          }),
+    };
     const prevUsersSnapshot = dbRef.current?.users ?? [];
     let resolvedNextUsers: AppUser[] = prevUsersSnapshot;
     let resolvedNextSettings: SystemSettings | null = null;
@@ -1152,8 +1549,20 @@ export default function App() {
                 password: '',
                 gender: sanitizedTp.gender ?? u.gender,
                 photoDataUrl: sanitizedTp.photoDataUrl,
-                assignedClasses: sanitizedTp.assignedClasses ?? [],
-                assignedSubjects: sanitizedTp.assignedSubjects ?? [],
+                assignedClasses: isTeachingRole ? sanitizedTp.assignedClasses ?? [] : [],
+                assignedSubjects: isTeachingRole ? sanitizedTp.assignedSubjects ?? [] : [],
+                signatureDataUrl: allowPersonalTeacherSig
+                  ? sanitizedTp.signatureDataUrl ?? u.signatureDataUrl
+                  : u.signatureDataUrl,
+                signatureSize: allowPersonalTeacherSig
+                  ? sanitizedTp.signatureSize ?? u.signatureSize
+                  : u.signatureSize,
+                signatureOffsetX: allowPersonalTeacherSig
+                  ? sanitizedTp.signatureOffsetX ?? u.signatureOffsetX
+                  : u.signatureOffsetX,
+                signatureOffsetY: allowPersonalTeacherSig
+                  ? sanitizedTp.signatureOffsetY ?? u.signatureOffsetY
+                  : u.signatureOffsetY,
               };
               updatedSelfUser = nextUser;
               return nextUser;
@@ -1163,9 +1572,10 @@ export default function App() {
       resolvedNextUsers = nextUsers;
 
       const shouldSyncLegacyTeacherProfile =
-        !activeUser ||
-        activeUser.id === 'usr-guru-1' ||
-        activeUser.email.toLowerCase() === prev.settings.teacherProfile.email.toLowerCase();
+        currentUserRole === 'admin' &&
+        (!activeUser ||
+          activeUser.id === 'usr-guru-1' ||
+          activeUser.email.toLowerCase() === prev.settings.teacherProfile.email.toLowerCase());
 
       const nextSettings = {
         ...prev.settings,
@@ -1197,7 +1607,7 @@ export default function App() {
       }
     } else if (isServerActive) {
       const serverPromise = (async () => {
-        const res = await apiSaveOwnProfile(tp);
+        const res = await apiSaveOwnProfile({ ...sanitizedTp, password: tp.password });
         updateDatabase((prev) => ({
           ...prev,
           users: res.user
@@ -1326,15 +1736,45 @@ export default function App() {
               onNavigate={setActiveMenu}
               onOpenProfileModal={() => setShowTeacherProfileModal(true)}
               onEditJournal={(entry) => {
+                if (!rolePerms.canManageJournals || !rolePerms.allowedMenus.includes('jurnal')) return;
                 setDraftJournal({ mode: 'edit', entry });
                 setActiveMenu('jurnal');
               }}
               onDuplicateJournal={(entry) => {
+                if (!rolePerms.canManageJournals || !rolePerms.allowedMenus.includes('jurnal')) return;
                 setDraftJournal({ mode: 'duplicate', entry });
                 setActiveMenu('jurnal');
               }}
+              onViewStudent={setSelectedStudentModal}
               onViewClass={setSelectedClassModal}
               onViewSubject={setSelectedSubjectModal}
+            />
+          )}
+
+          {activeMenu === 'jadwal' && rolePerms.allowedMenus.includes('jadwal') && (
+            <ScheduleAgendaView
+              schedules={(db.schedules || []).filter((s) => {
+                if (currentUserRole === 'admin' || currentUserRole === 'kepala_sekolah') return true;
+                const classOk = !scoped.hasClassRestriction || scoped.allowedClasses.includes(s.className);
+                const subjectOk = !scoped.hasSubjectRestriction || scoped.allowedSubjects.includes(s.subject);
+                const ownerOrShared = !s.teacherId || s.teacherId === activeUser?.id;
+                return classOk && subjectOk && ownerOrShared;
+              })}
+              agendas={(db.agendas || []).filter((a) => {
+                if (currentUserRole === 'admin' || currentUserRole === 'kepala_sekolah') return true;
+                return !a.teacherId || a.teacherId === activeUser?.id;
+              })}
+              settings={effectiveScopedSettings}
+              currentUserId={activeUser?.id}
+              currentUserName={currentUserName}
+              readOnly={!rolePerms.canManageJournals}
+              canManageAll={currentUserRole === 'admin'}
+              onSaveSchedule={handleSaveSchedule}
+              onDeleteSchedule={handleDeleteSchedule}
+              onCreateJournalFromSchedule={handleCreateJournalFromSchedule}
+              onSaveAgenda={handleSaveAgenda}
+              onDeleteAgenda={handleDeleteAgenda}
+              onNotify={notify}
             />
           )}
 
@@ -1347,6 +1787,8 @@ export default function App() {
               currentUserName={currentUserName}
               readOnly={!rolePerms.canManageJournals}
               draftJournal={draftJournal}
+              presetDraft={scheduleJournalPreset}
+              onConsumePresetDraft={() => setScheduleJournalPreset(null)}
               onClearDraft={() => setDraftJournal(null)}
               onSaveJournal={handleSaveJournal}
               onImportJournals={handleImportJournals}
@@ -1422,6 +1864,7 @@ export default function App() {
               journals={scoped.scopedJournals}
               grades={scoped.scopedGrades}
               users={usersList}
+              activeUser={activeUser}
               currentUserRole={currentUserRole}
               initialReportType={reportPreset?.reportType}
               initialTeacherFilter={reportPreset?.teacherId}
@@ -1469,6 +1912,10 @@ export default function App() {
               settings={db.settings}
               onUpdateSettings={handleUpdateSettings}
               onRestoreDatabase={(restored) => {
+                if (currentUserRole !== 'admin') {
+                  notify('Akses ditolak: hanya Admin Sistem yang dapat memulihkan cadangan.');
+                  return;
+                }
                 dbRef.current = restored;
                 setDb(restored);
                 void saveDatabase(restored);
@@ -1522,8 +1969,10 @@ export default function App() {
         journals={scoped.scopedJournals}
         grades={scoped.scopedGrades}
         settings={effectiveScopedSettings}
+        activeUser={activeUser}
         canEditStudent={rolePerms.canManageStudents}
         onEditStudent={(st) => {
+          if (!rolePerms.canManageStudents) return;
           setSelectedStudentModal(null);
           setStudentFormModal({ mode: 'edit', student: st });
         }}
@@ -1533,39 +1982,44 @@ export default function App() {
         onClose={() => setSelectedStudentModal(null)}
       />
 
-      <StudentEditModal
-        isOpen={Boolean(studentFormModal)}
-        mode={studentFormModal?.mode || 'edit'}
-        student={studentFormModal?.student || null}
-        classes={scoped.allowedClasses}
-        existingStudents={db.students}
-        teacherSuggestions={Array.from(
-          new Set([
-            ...usersList
-              .filter((u) => u.active && (u.role === 'guru' || u.role === 'wali_kelas'))
-              .map((u) => u.name),
-            ...db.students.map((s) => s.homeroomTeacher || '').filter(Boolean),
-            ...db.students.map((s) => s.counselor || '').filter(Boolean),
-          ])
-        )}
-        defaultEnrollmentYear={db.settings.academicYear}
-        onSave={(savedStudent, isEdit) => {
-          handleAddOrUpdateStudent(savedStudent, isEdit);
-          setStudentFormModal(null);
-        }}
-        onClose={() => setStudentFormModal(null)}
-      />
+      {rolePerms.canManageStudents && (
+        <StudentEditModal
+          isOpen={Boolean(studentFormModal)}
+          mode={studentFormModal?.mode || 'edit'}
+          student={studentFormModal?.student || null}
+          classes={scoped.allowedClasses}
+          existingStudents={db.students}
+          canPromoteStudents={rolePerms.canPromoteStudents}
+          teacherSuggestions={Array.from(
+            new Set([
+              ...usersList
+                .filter((u) => u.active && (u.role === 'guru' || u.role === 'wali_kelas'))
+                .map((u) => u.name),
+              ...db.students.map((s) => s.homeroomTeacher || '').filter(Boolean),
+              ...db.students.map((s) => s.counselor || '').filter(Boolean),
+            ])
+          )}
+          defaultEnrollmentYear={db.settings.academicYear}
+          onSave={(savedStudent, isEdit) => {
+            handleAddOrUpdateStudent(savedStudent, isEdit);
+            setStudentFormModal(null);
+          }}
+          onClose={() => setStudentFormModal(null)}
+        />
+      )}
 
-      <StudentPromotionModal
-        isOpen={promotionModal.open}
-        students={scoped.scopedStudents}
-        classes={db.settings.classes}
-        academicYears={db.settings.academicYears}
-        currentAcademicYear={db.settings.academicYear}
-        preselectedStudentIds={promotionModal.preselectedIds}
-        onApplyPromotion={handlePromoteStudents}
-        onClose={() => setPromotionModal({ open: false, preselectedIds: [] })}
-      />
+      {rolePerms.canPromoteStudents && (
+        <StudentPromotionModal
+          isOpen={promotionModal.open}
+          students={scoped.scopedStudents}
+          classes={db.settings.classes}
+          academicYears={db.settings.academicYears}
+          currentAcademicYear={db.settings.academicYear}
+          preselectedStudentIds={promotionModal.preselectedIds}
+          onApplyPromotion={handlePromoteStudents}
+          onClose={() => setPromotionModal({ open: false, preselectedIds: [] })}
+        />
+      )}
 
       <ClassDetailModal
         className={selectedClassModal}
@@ -1573,6 +2027,7 @@ export default function App() {
         journals={scoped.scopedJournals}
         grades={scoped.scopedGrades}
         settings={effectiveScopedSettings}
+        currentUserRole={currentUserRole}
         onSelectStudent={setSelectedStudentModal}
         onSelectSubject={setSelectedSubjectModal}
         onNavigate={setActiveMenu}
@@ -1585,6 +2040,7 @@ export default function App() {
         journals={scoped.scopedJournals}
         grades={scoped.scopedGrades}
         settings={effectiveScopedSettings}
+        currentUserRole={currentUserRole}
         onSelectClass={setSelectedClassModal}
         onSelectStudent={setSelectedStudentModal}
         onNavigate={setActiveMenu}

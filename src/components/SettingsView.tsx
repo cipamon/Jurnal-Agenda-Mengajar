@@ -48,6 +48,7 @@ import {
   normalizeWebBrand,
   PAPER_SIZE_OPTIONS,
   PRINT_FONT_OPTIONS,
+  PX_TO_MM,
   THEME_PRESETS,
 } from '../utils/helpers';
 import { migrateDatabase } from '../utils/storage';
@@ -398,14 +399,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [draft, setDraft] = useState<SystemSettings>(settings);
   const backupFileRef = useRef<HTMLInputElement | null>(null);
   const [dragTarget, setDragTarget] = useState<
-    'principalSig' | 'teacherSig' | 'stamp' | 'principalBlock' | 'teacherBlock' | null
+    | 'principalSig'
+    | 'teacherSig'
+    | 'stamp'
+    | 'principalBlock'
+    | 'teacherBlock'
+    | 'resizeSig'
+    | 'resizeStamp'
+    | null
   >(null);
   const dragOriginRef = useRef<{
-    target: 'principalSig' | 'teacherSig' | 'stamp' | 'principalBlock' | 'teacherBlock';
+    target:
+      | 'principalSig'
+      | 'teacherSig'
+      | 'stamp'
+      | 'principalBlock'
+      | 'teacherBlock'
+      | 'resizeSig'
+      | 'resizeStamp';
     startX: number;
     startY: number;
     initOffX: number;
     initOffY: number;
+    initSize?: number;
   } | null>(null);
 
   const [isFormatLockedUi, setIsFormatLockedUi] = useState(true);
@@ -413,8 +429,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [syncKopFontWithStandard, setSyncKopFontWithStandard] = useState(true);
   const [isSavingFormat, setIsSavingFormat] = useState(false);
   const [isSavingKop, setIsSavingKop] = useState(false);
+  const [isSavingBrand, setIsSavingBrand] = useState(false);
 
   const prevSavedKopJsonRef = useRef<string>(JSON.stringify(settings.kopSurat));
+  const prevSavedBrandRef = useRef<string>(JSON.stringify(normalizeWebBrand(settings)));
   const getFormatSignature = (s: SystemSettings) =>
     JSON.stringify({
       reportFontFamily: s.reportFontFamily || 'Times New Roman',
@@ -427,14 +445,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   useEffect(() => {
     const nextSavedKopJson = JSON.stringify(settings.kopSurat);
     const nextSavedFormatJson = getFormatSignature(settings);
+    const nextSavedBrandJson = JSON.stringify(normalizeWebBrand(settings));
     setDraft((prev) => {
       const hasUnsavedKop =
         !isKopLockedUi && JSON.stringify(prev.kopSurat) !== prevSavedKopJsonRef.current;
       const hasUnsavedFormat =
         !isFormatLockedUi && getFormatSignature(prev) !== prevSavedFormatRef.current;
+      const hasUnsavedBrand =
+        JSON.stringify(normalizeWebBrand(prev)) !== prevSavedBrandRef.current;
       return {
         ...settings,
         kopSurat: hasUnsavedKop ? prev.kopSurat : settings.kopSurat,
+        webBrand: hasUnsavedBrand ? prev.webBrand : settings.webBrand,
         reportFontFamily: hasUnsavedFormat ? prev.reportFontFamily : settings.reportFontFamily,
         reportPaperSize: hasUnsavedFormat ? prev.reportPaperSize : settings.reportPaperSize,
         reportOrientation: hasUnsavedFormat ? prev.reportOrientation : settings.reportOrientation,
@@ -443,12 +465,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     });
     prevSavedKopJsonRef.current = nextSavedKopJson;
     prevSavedFormatRef.current = nextSavedFormatJson;
+    prevSavedBrandRef.current = nextSavedBrandJson;
   }, [settings, isFormatLockedUi, isKopLockedUi]);
 
   const normBrand = normalizeWebBrand(draft);
   const activeThemeId: ThemeId = draft.themeId || 'neomorphic';
   const isKopDirty = JSON.stringify(draft.kopSurat) !== JSON.stringify(settings.kopSurat);
   const isFormatDirty = getFormatSignature(draft) !== getFormatSignature(settings);
+  const isBrandDirty =
+    JSON.stringify(normBrand) !== JSON.stringify(normalizeWebBrand(settings));
 
   const handleSaveAll = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -459,7 +484,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setIsFormatLockedUi(true);
     setIsKopLockedUi(true);
     onNotify(
-      'Pengaturan sistem, format kertas/huruf, identitas web, dan Kop Surat berhasil disimpan & dikunci.'
+      draft.lockReportFormat === false
+        ? 'Pengaturan sistem, format kertas/huruf (Mode Fleksibel), identitas web, dan Kop Surat berhasil disimpan.'
+        : 'Pengaturan sistem, format kertas/huruf, identitas web, dan Kop Surat berhasil disimpan & dikunci.'
     );
   };
 
@@ -467,6 +494,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setIsSavingFormat(true);
     try {
       const targetFont = draft.reportFontFamily || 'Times New Roman';
+      const shouldLockFormat = draft.lockReportFormat ?? true;
       const nextKop = syncKopFontWithStandard
         ? { ...settings.kopSurat, fontFamily: targetFont }
         : settings.kopSurat;
@@ -475,7 +503,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         reportFontFamily: targetFont,
         reportPaperSize: draft.reportPaperSize || 'A4',
         reportOrientation: draft.reportOrientation || 'landscape',
-        lockReportFormat: draft.lockReportFormat ?? true,
+        lockReportFormat: shouldLockFormat,
         kopSurat: nextKop,
       };
       const ok = await onUpdateSettings(next);
@@ -486,7 +514,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         setDraft((prev) => ({ ...prev, kopSurat: { ...prev.kopSurat, fontFamily: targetFont } }));
       }
       setIsFormatLockedUi(true);
-      onNotify('Standar jenis huruf & kertas berhasil disimpan dan langsung dikunci untuk semua akun.');
+      onNotify(
+        shouldLockFormat
+          ? 'Standar jenis huruf & kertas berhasil disimpan dan langsung dikunci untuk semua akun.'
+          : 'Standar jenis huruf & kertas berhasil disimpan dalam Mode Fleksibel (akun lain dapat menyesuaikan saat mencetak).'
+      );
     } finally {
       setIsSavingFormat(false);
     }
@@ -547,19 +579,54 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     reader.readAsDataURL(file);
   };
 
+  const handleSaveWebBrand = async () => {
+    setIsSavingBrand(true);
+    try {
+      const cleanBrand = normalizeWebBrand({ ...settings, webBrand: normBrand });
+      const next: SystemSettings = {
+        ...settings,
+        webBrand: cleanBrand,
+        teacherProfile: {
+          ...settings.teacherProfile,
+          school: cleanBrand.schoolName || settings.teacherProfile.school,
+        },
+      };
+      const ok = await onUpdateSettings(next);
+      if (ok === false) return;
+      prevSavedBrandRef.current = JSON.stringify(cleanBrand);
+      setDraft((prev) => ({
+        ...prev,
+        webBrand: cleanBrand,
+        teacherProfile: {
+          ...prev.teacherProfile,
+          school: cleanBrand.schoolName || prev.teacherProfile.school,
+        },
+      }));
+      onNotify('Identitas web, nama sekolah sidebar, logo & tampilan halaman login berhasil disimpan.');
+    } finally {
+      setIsSavingBrand(false);
+    }
+  };
+
   const handleWebLogoUpload = (file: File | undefined) => {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const result = typeof reader.result === 'string' ? reader.result : '';
       if (!result) return;
+      const nextBrand = {
+        ...normBrand,
+        webLogoDataUrl: result,
+      };
       setDraft((prev) => ({
         ...prev,
-        webBrand: {
-          ...normalizeWebBrand(prev),
-          webLogoDataUrl: result,
-        },
+        webBrand: nextBrand,
       }));
+      const ok = await onUpdateSettings({ ...settings, webBrand: nextBrand });
+      if (ok !== false) {
+        prevSavedBrandRef.current = JSON.stringify(nextBrand);
+        onNotify('Logo portal & favicon berhasil diunggah dan disimpan.');
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -693,134 +760,283 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </section>
 
       {/* ===================================================================== */}
-      {/* 1B. PENGATURAN LOGO WEB & NAMA WEB DI TAB BROWSER */}
+      {/* 1B. PENGATURAN IDENTITAS WEB, SIDEBAR & HALAMAN LOGIN */}
       {/* ===================================================================== */}
       <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-4 sm:px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+        <div className="px-4 sm:px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <Globe className="w-4 h-4 text-indigo-600" />
-              <span>Identitas Web, Logo & Nama Tab Browser</span>
-            </h3>
-            <p className="text-xs text-slate-500">
-              Atur nama portal pada sidebar/login, judul tab browser, dan ikon favicon web aplikasi
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Globe className="w-4 h-4 text-indigo-600" />
+                <span>Identitas Web, Sidebar &amp; Halaman Login</span>
+              </h3>
+              {isBrandDirty ? (
+                <span className="text-xs font-bold text-amber-700">· Belum Disimpan</span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700">
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Tersinkron</span>
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Atur nama portal &amp; sekolah di sidebar, judul/subjudul halaman login, judul tab browser, serta logo aplikasi
             </p>
           </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-t-lg border border-b-0 border-slate-300 bg-slate-100 max-w-full sm:max-w-xs">
-            <img
-              src={normBrand.webLogoDataUrl}
-              alt="Preview Favicon"
-              className="w-4 h-4 rounded-sm object-contain shrink-0"
-            />
-            <span className="text-[11px] font-medium text-slate-800 truncate">{normBrand.tabTitle}</span>
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-300 bg-white max-w-xs">
+              <img
+                src={normBrand.webLogoDataUrl}
+                alt="Preview Favicon"
+                className="w-4 h-4 rounded-sm object-contain shrink-0"
+              />
+              <span className="text-[11px] font-medium text-slate-800 truncate">{normBrand.tabTitle}</span>
+            </div>
+            <button
+              type="button"
+              disabled={isSavingBrand}
+              onClick={handleSaveWebBrand}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shadow-sm min-h-[40px]"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>{isSavingBrand ? 'Menyimpan...' : 'Simpan Identitas & Login'}</span>
+            </button>
           </div>
         </div>
 
-        <div className="p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
-          <div className="lg:col-span-3">
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-              Nama Web / Aplikasi (Sidebar & Login)
-            </label>
-            <input
-              type="text"
-              value={normBrand.appName}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  webBrand: { ...normBrand, appName: e.target.value },
-                })
-              }
-              placeholder="Portal E-Guru v10.2"
-              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
-            />
-          </div>
+        <div className="p-4 sm:p-6 space-y-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-4 items-start">
+            <div className="lg:col-span-4">
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Nama Web / Aplikasi (Sidebar &amp; Login)
+              </label>
+              <input
+                type="text"
+                value={normBrand.appName}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    webBrand: { ...normBrand, appName: e.target.value },
+                  })
+                }
+                placeholder="Portal E-Guru v10.2"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              />
+            </div>
 
-          <div className="lg:col-span-4">
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-              Nama Web di Tab Browser (Title Tab)
-            </label>
-            <input
-              type="text"
-              value={normBrand.tabTitle}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  webBrand: { ...normBrand, tabTitle: e.target.value },
-                })
-              }
-              placeholder="Portal E-Guru — Sistem Administrasi Mengajar"
-              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
-            />
-          </div>
+            <div className="lg:col-span-4">
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Nama Sekolah / Subjudul Sidebar
+              </label>
+              <input
+                type="text"
+                value={normBrand.schoolName}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    webBrand: { ...normBrand, schoolName: e.target.value },
+                  })
+                }
+                placeholder="SMA Negeri 1 Nusantara"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              />
+            </div>
 
-          <div className="lg:col-span-5 space-y-3">
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-              Logo Web, Favicon &amp; Ukuran Logo ({normBrand.webLogoSize} px)
-            </label>
-            <div className="flex items-center gap-2.5">
-              <div className="w-11 h-11 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center p-1 shrink-0 overflow-hidden">
-                <img
-                  src={normBrand.webLogoDataUrl}
-                  alt="Logo Web"
-                  style={{ width: Math.min(36, normBrand.webLogoSize), height: Math.min(36, normBrand.webLogoSize) }}
-                  className="object-contain"
+            <div className="sm:col-span-2 lg:col-span-4">
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Nama Web di Tab Browser (Title Tab)
+              </label>
+              <input
+                type="text"
+                value={normBrand.tabTitle}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    webBrand: { ...normBrand, tabTitle: e.target.value },
+                  })
+                }
+                placeholder="Portal E-Guru — Sistem Administrasi Mengajar"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              />
+            </div>
+
+            <div className="lg:col-span-3">
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Judul Utama Halaman Login
+              </label>
+              <input
+                type="text"
+                value={normBrand.loginTitle}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    webBrand: { ...normBrand, loginTitle: e.target.value },
+                  })
+                }
+                placeholder="Selamat Datang"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              />
+            </div>
+
+            <div className="lg:col-span-3">
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Subjudul Halaman Login
+              </label>
+              <input
+                type="text"
+                value={normBrand.loginSubtitle}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    webBrand: { ...normBrand, loginSubtitle: e.target.value },
+                  })
+                }
+                placeholder="Masuk untuk melanjutkan"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              />
+            </div>
+
+            <div className="lg:col-span-3">
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Teks Footer Halaman Login
+              </label>
+              <input
+                type="text"
+                value={normBrand.loginFooterText}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    webBrand: { ...normBrand, loginFooterText: e.target.value },
+                  })
+                }
+                placeholder="Jurnal · Presensi · Leger Nilai"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600"
+              />
+            </div>
+
+            <div className="sm:col-span-2 lg:col-span-3 space-y-2.5">
+              <label className="block text-xs font-semibold text-slate-700">
+                Logo Web, Favicon &amp; Ukuran ({normBrand.webLogoSize} px)
+              </label>
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center p-1 shrink-0 overflow-hidden">
+                  <img
+                    src={normBrand.webLogoDataUrl}
+                    alt="Logo Web"
+                    style={{
+                      width: Math.min(34, normBrand.webLogoSize),
+                      height: Math.min(34, normBrand.webLogoSize),
+                    }}
+                    className="object-contain"
+                  />
+                </div>
+                <label className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap min-h-[38px]">
+                  <ImagePlus className="w-3.5 h-3.5" />
+                  <span>Unggah Logo</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleWebLogoUpload(e.target.files?.[0])}
+                    className="hidden"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const nextBrand = {
+                      ...normBrand,
+                      webLogoDataUrl: DEFAULT_WEB_LOGO,
+                      webLogoSize: 36,
+                    };
+                    setDraft((prev) => ({ ...prev, webBrand: nextBrand }));
+                    const ok = await onUpdateSettings({ ...settings, webBrand: nextBrand });
+                    if (ok !== false) {
+                      prevSavedBrandRef.current = JSON.stringify(nextBrand);
+                      onNotify('Logo & ukuran web dikembalikan ke default.');
+                    }
+                  }}
+                  className="px-2.5 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs text-slate-600 cursor-pointer min-h-[38px]"
+                  title="Kembalikan logo & ukuran web default"
+                >
+                  Default
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-semibold text-slate-600 shrink-0">Ukuran:</span>
+                <input
+                  type="range"
+                  min={24}
+                  max={80}
+                  step={2}
+                  value={normBrand.webLogoSize}
+                  onChange={(e) => {
+                    const nextBrand = { ...normBrand, webLogoSize: Number(e.target.value) };
+                    setDraft((prev) => ({ ...prev, webBrand: nextBrand }));
+                    onUpdateSettings({ ...settings, webBrand: nextBrand });
+                  }}
+                  className="flex-1 accent-indigo-600 cursor-pointer"
+                />
+                <input
+                  type="number"
+                  min={24}
+                  max={80}
+                  value={normBrand.webLogoSize}
+                  onChange={(e) => {
+                    const val = Math.max(24, Math.min(80, Number(e.target.value) || 36));
+                    const nextBrand = { ...normBrand, webLogoSize: val };
+                    setDraft((prev) => ({ ...prev, webBrand: nextBrand }));
+                    onUpdateSettings({ ...settings, webBrand: nextBrand });
+                  }}
+                  className="w-14 px-1.5 py-1 text-xs font-mono text-center rounded-md border border-slate-300 bg-white tabular-nums"
                 />
               </div>
-              <label className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap">
-                <ImagePlus className="w-3.5 h-3.5" />
-                <span>Unggah Logo</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => handleWebLogoUpload(e.target.files?.[0])}
-                  className="hidden"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={() => {
-                  const nextBrand = {
-                    ...normBrand,
-                    webLogoDataUrl: DEFAULT_WEB_LOGO,
-                    webLogoSize: 36,
-                  };
-                  setDraft((prev) => ({ ...prev, webBrand: nextBrand }));
-                  onUpdateSettings({ ...settings, webBrand: nextBrand });
-                }}
-                className="px-2.5 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs text-slate-600 cursor-pointer"
-                title="Kembalikan logo & ukuran web default"
-              >
-                Default
-              </button>
             </div>
-            <div className="flex items-center gap-2.5 pt-1">
-              <span className="text-[11px] font-semibold text-slate-600 shrink-0">Ukuran:</span>
-              <input
-                type="range"
-                min={24}
-                max={80}
-                step={2}
-                value={normBrand.webLogoSize}
-                onChange={(e) => {
-                  const nextBrand = { ...normBrand, webLogoSize: Number(e.target.value) };
-                  setDraft((prev) => ({ ...prev, webBrand: nextBrand }));
-                  onUpdateSettings({ ...settings, webBrand: nextBrand });
+          </div>
+
+          {/* Pratinjau Langsung Header Sidebar & Header Halaman Login */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-slate-100">
+            <div className="p-3.5 rounded-xl bg-slate-900 text-white flex items-center gap-3">
+              <div
+                style={{
+                  width: normBrand.webLogoSize,
+                  height: normBrand.webLogoSize,
                 }}
-                className="flex-1 accent-indigo-600 cursor-pointer"
-              />
-              <input
-                type="number"
-                min={24}
-                max={80}
-                value={normBrand.webLogoSize}
-                onChange={(e) => {
-                  const val = Math.max(24, Math.min(80, Number(e.target.value) || 36));
-                  const nextBrand = { ...normBrand, webLogoSize: val };
-                  setDraft((prev) => ({ ...prev, webBrand: nextBrand }));
-                  onUpdateSettings({ ...settings, webBrand: nextBrand });
-                }}
-                className="w-16 px-2 py-1 text-xs font-mono text-center rounded-md border border-slate-300 bg-white tabular-nums"
-              />
+                className="rounded-2xl bg-white p-1.5 flex items-center justify-center shrink-0 overflow-hidden shadow-md"
+              >
+                <img
+                  src={normBrand.webLogoDataUrl}
+                  alt="Preview Sidebar Logo"
+                  className="w-full h-full object-contain"
+                />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] text-sky-300 uppercase tracking-wider font-semibold">
+                  Pratinjau Sidebar
+                </p>
+                <p className="text-sm font-bold text-white truncate">{normBrand.appName}</p>
+                <p className="text-xs text-slate-300 truncate">{normBrand.schoolName}</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-blue-50/70 flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-white border border-white shadow-sm flex items-center justify-center p-2 shrink-0">
+                <img
+                  src={normBrand.webLogoDataUrl}
+                  alt="Preview Login Logo"
+                  className="w-full h-full object-contain"
+                />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] text-indigo-600 uppercase tracking-wider font-semibold">
+                  Pratinjau Halaman Login
+                </p>
+                <p className="text-sm font-extrabold text-slate-900 truncate">
+                  {normBrand.loginTitle}
+                </p>
+                <p className="text-[11px] uppercase tracking-wider text-slate-600 truncate">
+                  {normBrand.loginSubtitle} · {normBrand.appName}
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -910,17 +1126,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <span
                 className={`inline-flex items-center gap-1 text-xs font-bold ${
                   isFormatLockedUi
-                    ? 'text-emerald-700'
+                    ? (settings.lockReportFormat ?? true)
+                      ? 'text-emerald-700'
+                      : 'text-sky-700'
                     : isFormatDirty
                       ? 'text-amber-700'
                       : 'text-indigo-700'
                 }`}
               >
                 {isFormatLockedUi ? (
-                  <>
-                    <Lock className="w-3.5 h-3.5" />
-                    <span>Tersimpan &amp; Terkunci</span>
-                  </>
+                  (settings.lockReportFormat ?? true) ? (
+                    <>
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>Tersimpan &amp; Terkunci</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Tersimpan · Mode Fleksibel</span>
+                    </>
+                  )
                 ) : isFormatDirty ? (
                   <span>· Mode Edit (Belum Disimpan)</span>
                 ) : (
@@ -929,7 +1154,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Tetapkan jenis huruf, ukuran kertas (A4, F4/Folio, Letter, Legal), dan orientasi baku. Setelah disimpan, panel otomatis terkunci agar tidak berubah saat berganti akun.
+              Tetapkan jenis huruf, ukuran kertas (A4, F4/Folio, Letter, Legal), dan orientasi baku. Centang &ldquo;Kunci Format Sekolah&rdquo; jika ingin mengunci standar untuk semua akun, atau biarkan tidak tercentang untuk Mode Fleksibel.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
@@ -939,8 +1164,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 onClick={() => setIsFormatLockedUi(false)}
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-xs font-semibold cursor-pointer whitespace-nowrap min-h-[40px]"
               >
-                <Unlock className="w-3.5 h-3.5 text-indigo-600" />
-                <span>Buka Kunci / Edit</span>
+                {(settings.lockReportFormat ?? true) ? (
+                  <>
+                    <Unlock className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Buka Kunci / Edit</span>
+                  </>
+                ) : (
+                  <>
+                    <FileEdit className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Edit Format</span>
+                  </>
+                )}
               </button>
             ) : (
               <>
@@ -958,8 +1192,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   onClick={handleSaveFormatDokumen}
                   className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shadow-sm min-h-[40px]"
                 >
-                  <Lock className="w-3.5 h-3.5" />
-                  <span>{isSavingFormat ? 'Menyimpan...' : 'Simpan & Kunci Format'}</span>
+                  {(draft.lockReportFormat ?? true) ? (
+                    <>
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>{isSavingFormat ? 'Menyimpan...' : 'Simpan & Kunci Format'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-3.5 h-3.5" />
+                      <span>{isSavingFormat ? 'Menyimpan...' : 'Simpan Format (Fleksibel)'}</span>
+                    </>
+                  )}
                 </button>
               </>
             )}
@@ -1046,7 +1289,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <span className="text-xs leading-snug text-slate-800">
                   <strong className="block">Kunci Format Sekolah</strong>
                   <span className="text-[11px] text-slate-500">
-                    Akun lain tidak bisa mengubah font, kertas &amp; kop surat
+                    {(draft.lockReportFormat ?? true)
+                      ? 'Terkunci: akun lain tidak bisa mengubah font, kertas & orientasi'
+                      : 'Fleksibel: akun lain bebas menyesuaikan font, kertas & orientasi'}
                   </span>
                 </span>
               </label>
@@ -1709,7 +1954,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           };
 
           const startSigDrag = (
-            target: 'principalSig' | 'teacherSig' | 'stamp' | 'principalBlock' | 'teacherBlock',
+            target:
+              | 'principalSig'
+              | 'teacherSig'
+              | 'stamp'
+              | 'principalBlock'
+              | 'teacherBlock'
+              | 'resizeSig'
+              | 'resizeStamp',
             e: React.PointerEvent<HTMLElement>
           ) => {
             e.preventDefault();
@@ -1724,7 +1976,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     ? sigStamp.stampOffsetX
                     : target === 'principalBlock'
                       ? sigStamp.principalBlockOffsetX
-                      : sigStamp.teacherBlockOffsetX;
+                      : target === 'teacherBlock'
+                        ? sigStamp.teacherBlockOffsetX
+                        : 0;
             const initOffY =
               target === 'principalSig'
                 ? sigStamp.principalSigOffsetY
@@ -1734,13 +1988,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     ? sigStamp.stampOffsetY
                     : target === 'principalBlock'
                       ? sigStamp.principalBlockOffsetY
-                      : sigStamp.teacherBlockOffsetY;
+                      : target === 'teacherBlock'
+                        ? sigStamp.teacherBlockOffsetY
+                        : 0;
+            const initSize =
+              target === 'resizeSig'
+                ? sigStamp.signatureSize
+                : target === 'resizeStamp'
+                  ? sigStamp.stampSize
+                  : undefined;
             dragOriginRef.current = {
               target,
               startX: e.clientX,
               startY: e.clientY,
               initOffX,
               initOffY,
+              initSize,
             };
             setDragTarget(target);
           };
@@ -1750,6 +2013,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             if (!origin) return;
             const dx = Math.round(e.clientX - origin.startX);
             const dy = Math.round(e.clientY - origin.startY);
+
+            if (origin.target === 'resizeSig') {
+              const delta = Math.round((dx + dy) / 2);
+              const nextSize = Math.max(40, Math.min(280, (origin.initSize ?? sigStamp.signatureSize) + delta));
+              updateSigStamp({ signatureSize: nextSize });
+              return;
+            }
+            if (origin.target === 'resizeStamp') {
+              const delta = Math.round((dx + dy) / 2);
+              const nextSize = Math.max(40, Math.min(280, (origin.initSize ?? sigStamp.stampSize) + delta));
+              updateSigStamp({ stampSize: nextSize });
+              return;
+            }
+
             const isBlock = origin.target === 'principalBlock' || origin.target === 'teacherBlock';
             const minX = isBlock ? -320 : -120;
             const maxX = isBlock ? 320 : 120;
@@ -1771,6 +2048,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             }
           };
 
+          const handleZoomWheel = (
+            kind: 'sig' | 'stamp',
+            e: React.WheelEvent<HTMLElement>
+          ) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const step = e.deltaY < 0 ? 4 : -4;
+            if (kind === 'sig') {
+              const next = Math.max(40, Math.min(280, sigStamp.signatureSize + step));
+              updateSigStamp({ signatureSize: next });
+            } else {
+              const next = Math.max(40, Math.min(280, sigStamp.stampSize + step));
+              updateSigStamp({ stampSize: next });
+            }
+          };
+
           const stopSigDrag = () => {
             dragOriginRef.current = null;
             setDragTarget(null);
@@ -1781,7 +2074,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           return (
             <div className="p-4 sm:p-6 space-y-6">
-              {/* Ringkasan Font, Ukuran, Penempatan Stempel & Saklar */}
+              {/* Ringkasan Font, Ukuran (1:1 mm), Penempatan Stempel & 3 Saklar Gambar */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200">
                 <div>
                   <label className="block text-xs font-bold text-slate-800 mb-1.5">
@@ -1791,19 +2084,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     {activeFont} · {getPaperSizeMeta(draft.reportPaperSize).id}
                   </div>
                   <p className="text-[10px] text-slate-500 mt-1">
-                    Diatur pada panel Standar Format Dokumen di atas
+                    Skala kanvas 1:1 PDF ({PX_TO_MM} mm/px)
                   </p>
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-800 mb-1.5">
-                    Tinggi TTD ({sigStamp.signatureSize} px)
+                    Tinggi TTD ({sigStamp.signatureSize}px ≈ {(sigStamp.signatureSize * PX_TO_MM).toFixed(1)}mm)
                   </label>
                   <div className="flex items-center gap-2 mt-1">
                     <input
                       type="range"
-                      min={28}
-                      max={200}
+                      min={40}
+                      max={280}
                       step={2}
                       value={sigStamp.signatureSize}
                       onChange={(e) => updateSigStamp({ signatureSize: Number(e.target.value) })}
@@ -1811,12 +2104,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     />
                     <input
                       type="number"
-                      min={28}
-                      max={200}
+                      min={40}
+                      max={280}
                       value={sigStamp.signatureSize}
                       onChange={(e) =>
                         updateSigStamp({
-                          signatureSize: Math.max(28, Math.min(200, Number(e.target.value) || 54)),
+                          signatureSize: Math.max(40, Math.min(280, Number(e.target.value) || 54)),
                         })
                       }
                       className="w-14 px-1.5 py-1 text-xs font-mono text-center rounded-md border border-slate-300 bg-white tabular-nums"
@@ -1826,13 +2119,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 <div>
                   <label className="block text-xs font-bold text-slate-800 mb-1.5">
-                    Ukuran Stempel ({sigStamp.stampSize} px)
+                    Ukuran Stempel ({sigStamp.stampSize}px ≈ {(sigStamp.stampSize * PX_TO_MM).toFixed(1)}mm)
                   </label>
                   <div className="flex items-center gap-2 mt-1">
                     <input
                       type="range"
-                      min={32}
-                      max={220}
+                      min={40}
+                      max={280}
                       step={2}
                       value={sigStamp.stampSize}
                       onChange={(e) => updateSigStamp({ stampSize: Number(e.target.value) })}
@@ -1840,12 +2133,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     />
                     <input
                       type="number"
-                      min={32}
-                      max={220}
+                      min={40}
+                      max={280}
                       value={sigStamp.stampSize}
                       onChange={(e) =>
                         updateSigStamp({
-                          stampSize: Math.max(32, Math.min(220, Number(e.target.value) || 74)),
+                          stampSize: Math.max(40, Math.min(280, Number(e.target.value) || 74)),
                         })
                       }
                       className="w-14 px-1.5 py-1 text-xs font-mono text-center rounded-md border border-slate-300 bg-white tabular-nums"
@@ -1869,15 +2162,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </select>
                 </div>
 
-                <div className="flex items-center">
-                  <label className="inline-flex items-start gap-2 text-xs font-semibold text-slate-800 cursor-pointer">
+                <div className="space-y-1.5">
+                  <span className="block text-[11px] font-bold text-slate-800">Default Tampil Gambar</span>
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={sigStamp.showPrincipalSigImgDefault !== false}
+                      onChange={(e) => updateSigStamp({ showPrincipalSigImgDefault: e.target.checked })}
+                      className="rounded border-slate-300 text-indigo-600"
+                    />
+                    <span>Gbr TTD Kepsek</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={sigStamp.showStampDefault}
                       onChange={(e) => updateSigStamp({ showStampDefault: e.target.checked })}
-                      className="rounded border-slate-300 text-indigo-600 mt-0.5"
+                      className="rounded border-slate-300 text-indigo-600"
                     />
-                    <span>Tampilkan Stempel default saat cetak/PDF</span>
+                    <span>Gbr Stempel Sekolah</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={sigStamp.showTeacherSigImgDefault !== false}
+                      onChange={(e) => updateSigStamp({ showTeacherSigImgDefault: e.target.checked })}
+                      className="rounded border-slate-300 text-indigo-600"
+                    />
+                    <span>Gbr TTD Guru Mapel</span>
                   </label>
                 </div>
               </div>
@@ -2152,13 +2464,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               </div>
 
-              {/* Pratinjau Interaktif Drag-to-Position Tanda Tangan, Stempel & Blok Pengesahan */}
+              {/* Pratinjau Interaktif Drag & Zoom 1:1 (0.264583 mm/px) */}
               <div className="eguru-paper-preview p-4 rounded-xl border border-slate-300 bg-white space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
                     <Move className="w-3.5 h-3.5 text-indigo-600" />
                     <span>
-                      Pratinjau Pengesahan Interaktif — Seret kotak pengesahan untuk menggeser seluruh blok, atau seret TTD/Stempel untuk posisi detail (Font {activeFont})
+                      Kanvas Interaktif 1:1 PDF — Seret gambar untuk geser, gulir mouse (scroll wheel) atau tarik titik biru di sudut kanan bawah untuk Zoom (Font {activeFont})
                     </span>
                   </p>
                   <button
@@ -2218,54 +2530,80 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <p>{draft.principalTitle}</p>
                       <div className="relative h-[86px] w-full overflow-visible">
                         {sigStamp.stampDataUrl && sigStamp.showStampDefault && sigStamp.stampTarget === 'principal' && (
-                          <img
-                            src={sigStamp.stampDataUrl}
-                            alt="Stempel Sekolah (Seret untuk geser)"
-                            title="Seret untuk mengatur posisi stempel"
-                            referrerPolicy="no-referrer"
-                            draggable={false}
+                          <div
                             onPointerDown={(e) => startSigDrag('stamp', e)}
                             onPointerMove={handleSigPointerMove}
                             onPointerUp={stopSigDrag}
                             onPointerCancel={stopSigDrag}
+                            onWheel={(e) => handleZoomWheel('stamp', e)}
+                            title="Seret untuk geser, scroll wheel atau tarik titik biru untuk zoom Stempel"
                             style={{
                               left: '34px',
                               top: '50%',
                               width: sigStamp.stampSize,
                               height: sigStamp.stampSize,
-                              maxWidth: 'none',
                               transform: `translate(calc(-50% + ${sigStamp.stampOffsetX}px), calc(-50% + ${sigStamp.stampOffsetY}px))`,
                             }}
-                            className={`absolute z-10 object-contain opacity-85 mix-blend-multiply cursor-grab active:cursor-grabbing touch-none transition-shadow ${
-                              dragTarget === 'stamp' ? 'ring-2 ring-indigo-500 rounded-md' : 'hover:ring-1 hover:ring-indigo-300 rounded-md'
+                            className={`group absolute z-10 cursor-grab active:cursor-grabbing touch-none transition-shadow ${
+                              dragTarget === 'stamp' || dragTarget === 'resizeStamp'
+                                ? 'ring-2 ring-blue-500 rounded-md'
+                                : 'hover:ring-1 hover:ring-blue-400 rounded-md'
                             }`}
-                          />
+                          >
+                            <img
+                              src={sigStamp.stampDataUrl}
+                              alt="Stempel Sekolah (Seret untuk geser)"
+                              referrerPolicy="no-referrer"
+                              draggable={false}
+                              className="w-full h-full object-contain opacity-85 mix-blend-multiply pointer-events-none"
+                            />
+                            <span
+                              onPointerDown={(e) => startSigDrag('resizeStamp', e)}
+                              onPointerMove={handleSigPointerMove}
+                              onPointerUp={stopSigDrag}
+                              onPointerCancel={stopSigDrag}
+                              title="Tarik untuk ubah ukuran Stempel"
+                              className="absolute -right-1.5 -bottom-1.5 w-3.5 h-3.5 rounded-full bg-blue-600 border-2 border-white shadow cursor-nwse-resize opacity-80 group-hover:opacity-100"
+                            />
+                          </div>
                         )}
-                        {sigStamp.principalSignatureDataUrl && (
-                          <img
-                            src={sigStamp.principalSignatureDataUrl}
-                            alt="TTD Kepala Sekolah (Seret untuk geser)"
-                            title="Seret untuk mengatur posisi TTD Kepala Sekolah"
-                            referrerPolicy="no-referrer"
-                            draggable={false}
+                        {sigStamp.principalSignatureDataUrl && sigStamp.showPrincipalSigImgDefault !== false && (
+                          <div
                             onPointerDown={(e) => startSigDrag('principalSig', e)}
                             onPointerMove={handleSigPointerMove}
                             onPointerUp={stopSigDrag}
                             onPointerCancel={stopSigDrag}
+                            onWheel={(e) => handleZoomWheel('sig', e)}
+                            title="Seret untuk geser, scroll wheel atau tarik titik biru untuk zoom TTD Kepsek"
                             style={{
                               left: '78px',
                               top: '50%',
                               height: sigStamp.signatureSize,
-                              width: 'auto',
-                              maxWidth: 'none',
                               transform: `translate(calc(-50% + ${sigStamp.principalSigOffsetX}px), calc(-50% + ${sigStamp.principalSigOffsetY}px))`,
                             }}
-                            className={`absolute z-20 object-contain cursor-grab active:cursor-grabbing touch-none ${
-                              dragTarget === 'principalSig'
-                                ? 'ring-2 ring-indigo-500 rounded-md'
-                                : 'hover:ring-1 hover:ring-indigo-300 rounded-md'
+                            className={`group absolute z-20 inline-flex items-center justify-center cursor-grab active:cursor-grabbing touch-none ${
+                              dragTarget === 'principalSig' || dragTarget === 'resizeSig'
+                                ? 'ring-2 ring-blue-500 rounded-md'
+                                : 'hover:ring-1 hover:ring-blue-400 rounded-md'
                             }`}
-                          />
+                          >
+                            <img
+                              src={sigStamp.principalSignatureDataUrl}
+                              alt="TTD Kepala Sekolah (Seret untuk geser)"
+                              referrerPolicy="no-referrer"
+                              draggable={false}
+                              style={{ height: '100%', width: 'auto', maxWidth: 'none' }}
+                              className="object-contain pointer-events-none"
+                            />
+                            <span
+                              onPointerDown={(e) => startSigDrag('resizeSig', e)}
+                              onPointerMove={handleSigPointerMove}
+                              onPointerUp={stopSigDrag}
+                              onPointerCancel={stopSigDrag}
+                              title="Tarik untuk ubah ukuran TTD"
+                              className="absolute -right-1.5 -bottom-1.5 w-3.5 h-3.5 rounded-full bg-blue-600 border-2 border-white shadow cursor-nwse-resize opacity-80 group-hover:opacity-100"
+                            />
+                          </div>
                         )}
                       </div>
                       <p className="font-bold underline">{draft.principalName}</p>
@@ -2294,54 +2632,80 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <p>Guru Mata Pelajaran,</p>
                       <div className="relative h-[86px] w-full overflow-visible">
                         {sigStamp.stampDataUrl && sigStamp.showStampDefault && sigStamp.stampTarget === 'teacher' && (
-                          <img
-                            src={sigStamp.stampDataUrl}
-                            alt="Stempel Sekolah (Seret untuk geser)"
-                            title="Seret untuk mengatur posisi stempel"
-                            referrerPolicy="no-referrer"
-                            draggable={false}
+                          <div
                             onPointerDown={(e) => startSigDrag('stamp', e)}
                             onPointerMove={handleSigPointerMove}
                             onPointerUp={stopSigDrag}
                             onPointerCancel={stopSigDrag}
+                            onWheel={(e) => handleZoomWheel('stamp', e)}
+                            title="Seret untuk geser, scroll wheel atau tarik titik biru untuk zoom Stempel"
                             style={{
                               left: '34px',
                               top: '50%',
                               width: sigStamp.stampSize,
                               height: sigStamp.stampSize,
-                              maxWidth: 'none',
                               transform: `translate(calc(-50% + ${sigStamp.stampOffsetX}px), calc(-50% + ${sigStamp.stampOffsetY}px))`,
                             }}
-                            className={`absolute z-10 object-contain opacity-85 mix-blend-multiply cursor-grab active:cursor-grabbing touch-none ${
-                              dragTarget === 'stamp' ? 'ring-2 ring-indigo-500 rounded-md' : 'hover:ring-1 hover:ring-indigo-300 rounded-md'
+                            className={`group absolute z-10 cursor-grab active:cursor-grabbing touch-none ${
+                              dragTarget === 'stamp' || dragTarget === 'resizeStamp'
+                                ? 'ring-2 ring-blue-500 rounded-md'
+                                : 'hover:ring-1 hover:ring-blue-400 rounded-md'
                             }`}
-                          />
+                          >
+                            <img
+                              src={sigStamp.stampDataUrl}
+                              alt="Stempel Sekolah (Seret untuk geser)"
+                              referrerPolicy="no-referrer"
+                              draggable={false}
+                              className="w-full h-full object-contain opacity-85 mix-blend-multiply pointer-events-none"
+                            />
+                            <span
+                              onPointerDown={(e) => startSigDrag('resizeStamp', e)}
+                              onPointerMove={handleSigPointerMove}
+                              onPointerUp={stopSigDrag}
+                              onPointerCancel={stopSigDrag}
+                              title="Tarik untuk ubah ukuran Stempel"
+                              className="absolute -right-1.5 -bottom-1.5 w-3.5 h-3.5 rounded-full bg-blue-600 border-2 border-white shadow cursor-nwse-resize opacity-80 group-hover:opacity-100"
+                            />
+                          </div>
                         )}
-                        {sigStamp.teacherSignatureDataUrl && (
-                          <img
-                            src={sigStamp.teacherSignatureDataUrl}
-                            alt="TTD Guru Mapel (Seret untuk geser)"
-                            title="Seret untuk mengatur posisi TTD Guru Mapel"
-                            referrerPolicy="no-referrer"
-                            draggable={false}
+                        {sigStamp.teacherSignatureDataUrl && sigStamp.showTeacherSigImgDefault !== false && (
+                          <div
                             onPointerDown={(e) => startSigDrag('teacherSig', e)}
                             onPointerMove={handleSigPointerMove}
                             onPointerUp={stopSigDrag}
                             onPointerCancel={stopSigDrag}
+                            onWheel={(e) => handleZoomWheel('sig', e)}
+                            title="Seret untuk geser, scroll wheel atau tarik titik biru untuk zoom TTD Guru"
                             style={{
                               left: '78px',
                               top: '50%',
                               height: sigStamp.signatureSize,
-                              width: 'auto',
-                              maxWidth: 'none',
                               transform: `translate(calc(-50% + ${sigStamp.teacherSigOffsetX}px), calc(-50% + ${sigStamp.teacherSigOffsetY}px))`,
                             }}
-                            className={`absolute z-20 object-contain cursor-grab active:cursor-grabbing touch-none ${
-                              dragTarget === 'teacherSig'
-                                ? 'ring-2 ring-indigo-500 rounded-md'
-                                : 'hover:ring-1 hover:ring-indigo-300 rounded-md'
+                            className={`group absolute z-20 inline-flex items-center justify-center cursor-grab active:cursor-grabbing touch-none ${
+                              dragTarget === 'teacherSig' || dragTarget === 'resizeSig'
+                                ? 'ring-2 ring-blue-500 rounded-md'
+                                : 'hover:ring-1 hover:ring-blue-400 rounded-md'
                             }`}
-                          />
+                          >
+                            <img
+                              src={sigStamp.teacherSignatureDataUrl}
+                              alt="TTD Guru Mapel (Seret untuk geser)"
+                              referrerPolicy="no-referrer"
+                              draggable={false}
+                              style={{ height: '100%', width: 'auto', maxWidth: 'none' }}
+                              className="object-contain pointer-events-none"
+                            />
+                            <span
+                              onPointerDown={(e) => startSigDrag('resizeSig', e)}
+                              onPointerMove={handleSigPointerMove}
+                              onPointerUp={stopSigDrag}
+                              onPointerCancel={stopSigDrag}
+                              title="Tarik untuk ubah ukuran TTD"
+                              className="absolute -right-1.5 -bottom-1.5 w-3.5 h-3.5 rounded-full bg-blue-600 border-2 border-white shadow cursor-nwse-resize opacity-80 group-hover:opacity-100"
+                            />
+                          </div>
                         )}
                       </div>
                       <p className="font-bold underline">{draft.teacherProfile.name}</p>
@@ -2402,6 +2766,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           placeholder="Contoh: 2027/2028"
           onChange={(academicYears) => {
             const next = { ...draft, academicYears };
+            setDraft(next);
+            onUpdateSettings(next);
+          }}
+        />
+      </section>
+
+      {/* ===================================================================== */}
+      {/* 3A. BANK TUJUAN PEMBELAJARAN (TP / ATP) */}
+      {/* ===================================================================== */}
+      <section>
+        <MasterListCard
+          title="Bank Tujuan Pembelajaran (TP / ATP)"
+          subtitle="Daftar tujuan pembelajaran siap pilih pada Form Jurnal Mengajar agar pengisian lebih cepat dan terstandar"
+          items={draft.learningObjectives || []}
+          placeholder="Contoh: Memahami konsep dasar dan penerapannya dalam studi kasus"
+          onChange={(learningObjectives) => {
+            const next = { ...draft, learningObjectives };
             setDraft(next);
             onUpdateSettings(next);
           }}

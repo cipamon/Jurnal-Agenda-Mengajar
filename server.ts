@@ -12,7 +12,9 @@ import {
   PortalDatabase,
   Student,
   SystemSettings,
+  TeacherAgendaItem,
   TeacherProfile,
+  TeachingScheduleItem,
   UserRole,
 } from './src/types';
 import { createSeedDatabase } from './src/utils/seedData';
@@ -45,6 +47,8 @@ interface WorkspaceStore {
   students: Student[];
   journals: JournalEntry[];
   grades: GradeRecord[];
+  schedules: TeachingScheduleItem[];
+  agendas: TeacherAgendaItem[];
   settings: SystemSettings;
 }
 
@@ -186,6 +190,11 @@ function toPublicAppUser(u: StoredServerUser): AppUser {
     photoDataUrl: u.photoDataUrl || '',
     assignedClasses: Array.isArray(u.assignedClasses) ? u.assignedClasses : [],
     assignedSubjects: Array.isArray(u.assignedSubjects) ? u.assignedSubjects : [],
+    signatureDataUrl: u.signatureDataUrl || '',
+    signatureSize: typeof u.signatureSize === 'number' ? u.signatureSize : undefined,
+    signatureOffsetX: typeof u.signatureOffsetX === 'number' ? u.signatureOffsetX : undefined,
+    signatureOffsetY: typeof u.signatureOffsetY === 'number' ? u.signatureOffsetY : undefined,
+    hasPassword: Boolean(u.passwordHash && u.passwordSalt),
     active: Boolean(u.active),
     createdAt: u.createdAt,
   };
@@ -218,6 +227,8 @@ function loadWorkspaceStore(): WorkspaceStore {
           students: migrated.students,
           journals: migrated.journals,
           grades: migrated.grades,
+          schedules: migrated.schedules || [],
+          agendas: migrated.agendas || [],
           settings: sanitizeSettingsForServer(migrated.settings),
         };
       }
@@ -233,6 +244,8 @@ function loadWorkspaceStore(): WorkspaceStore {
     students: initialSource.students,
     journals: initialSource.journals,
     grades: initialSource.grades,
+    schedules: initialSource.schedules || [],
+    agendas: initialSource.agendas || [],
     settings: sanitizeSettingsForServer(initialSource.settings),
   };
   writeJsonAtomic(WORKSPACE_FILE, initialStore);
@@ -246,6 +259,8 @@ function saveWorkspaceStore(store: WorkspaceStore): WorkspaceStore {
     students: Array.isArray(store.students) ? store.students : [],
     journals: Array.isArray(store.journals) ? store.journals : [],
     grades: Array.isArray(store.grades) ? store.grades : [],
+    schedules: Array.isArray(store.schedules) ? store.schedules : [],
+    agendas: Array.isArray(store.agendas) ? store.agendas : [],
     settings: sanitizeSettingsForServer(store.settings),
   };
   writeJsonAtomic(WORKSPACE_FILE, next);
@@ -287,6 +302,10 @@ function loadUsersStore(): UsersStore {
     photoDataUrl: u.photoDataUrl || '',
     assignedClasses: u.assignedClasses || [],
     assignedSubjects: u.assignedSubjects || [],
+    signatureDataUrl: u.signatureDataUrl || '',
+    signatureSize: u.signatureSize,
+    signatureOffsetX: u.signatureOffsetX,
+    signatureOffsetY: u.signatureOffsetY,
     active: u.active,
     createdAt: u.createdAt,
     passwordSalt: '',
@@ -395,6 +414,7 @@ async function startServer() {
   app.get('/api/auth/status', (_req, res) => {
     const envAdmin = getEnvAdminConfig();
     const usersStore = loadUsersStore();
+    const ws = loadWorkspaceStore();
     const primaryAdmin = usersStore.users.find((u) => u.role === 'admin' && u.active);
     res.json({
       ok: true,
@@ -403,6 +423,10 @@ async function startServer() {
       adminUsernameHint: envAdmin.enabled
         ? envAdmin.username
         : primaryAdmin?.username || 'admin',
+      webBrand: ws.settings.webBrand,
+      academicYear: ws.settings.academicYear,
+      semester: ws.settings.semester,
+      academicYears: ws.settings.academicYears,
     });
   });
 
@@ -424,6 +448,10 @@ async function startServer() {
       const rawPassword = typeof body.password === 'string' ? body.password : '';
       const rawEmail = typeof body.email === 'string' ? body.email.trim() : '';
       const rawName = typeof body.name === 'string' ? body.name.trim() : '';
+      const rawStaffPassword = typeof body.staffPassword === 'string' ? body.staffPassword.trim() : '';
+      const reqAcademicYear = typeof body.academicYear === 'string' ? body.academicYear.trim() : '';
+      const reqSemester =
+        body.semester === 'Ganjil' || body.semester === 'Genap' ? body.semester : undefined;
 
       if (!rawUsername || !/^[a-z0-9._@-]{3,64}$/.test(rawUsername)) {
         res.status(400).json({
@@ -436,6 +464,13 @@ async function startServer() {
         res.status(400).json({
           ok: false,
           error: 'Password Admin wajib diisi minimal 8 karakter (maksimal 128 karakter).',
+        });
+        return;
+      }
+      if (rawStaffPassword.length > 0 && (rawStaffPassword.length < 6 || rawStaffPassword.length > 128)) {
+        res.status(400).json({
+          ok: false,
+          error: 'Password awal akun lain minimal 6 karakter (maksimal 128 karakter).',
         });
         return;
       }
@@ -485,6 +520,37 @@ async function startServer() {
         usersStore.users.unshift(adminUser);
       }
 
+      let activatedStaffCount = 0;
+      if (rawStaffPassword.length >= 6) {
+        usersStore.users = usersStore.users.map((u) => {
+          if (u.id === adminUser.id || u.role === 'admin') return u;
+          if (!u.passwordHash || !u.passwordSalt) {
+            const staffHashed = hashPassword(rawStaffPassword);
+            activatedStaffCount += 1;
+            return {
+              ...u,
+              passwordSalt: staffHashed.salt,
+              passwordHash: staffHashed.hash,
+            };
+          }
+          return u;
+        });
+      }
+
+      if (
+        (reqAcademicYear && workspace.settings.academicYears.includes(reqAcademicYear)) ||
+        reqSemester
+      ) {
+        workspace.settings = sanitizeSettingsForServer({
+          ...workspace.settings,
+          ...(reqAcademicYear && workspace.settings.academicYears.includes(reqAcademicYear)
+            ? { academicYear: reqAcademicYear }
+            : {}),
+          ...(reqSemester ? { semester: reqSemester } : {}),
+        });
+        saveWorkspaceStore(workspace);
+      }
+
       usersStore.adminClaimed = true;
       saveUsersStore(usersStore);
 
@@ -499,6 +565,7 @@ async function startServer() {
         ok: true,
         token,
         user: toPublicAppUser(adminUser),
+        activatedStaffCount,
       });
     } catch (err) {
       res.status(500).json({
@@ -665,6 +732,7 @@ async function startServer() {
           role: 'admin',
           school: loadWorkspaceStore().settings.teacherProfile.school,
           gender: 'L',
+          hasPassword: true,
           active: true,
           createdAt: new Date().toISOString(),
         },
@@ -699,6 +767,29 @@ async function startServer() {
         res.status(400).json({ ok: false, error: 'Payload pengaturan tidak valid.' });
         return;
       }
+      const rawKkm = Number(body.settings.kkm);
+      if (Number.isNaN(rawKkm) || rawKkm < 0 || rawKkm > 100) {
+        res.status(400).json({ ok: false, error: 'Nilai KKM harus antara 0 hingga 100.' });
+        return;
+      }
+      if (body.settings.semester !== 'Ganjil' && body.settings.semester !== 'Genap') {
+        res.status(400).json({ ok: false, error: 'Semester harus Ganjil atau Genap.' });
+        return;
+      }
+      if (
+        !Array.isArray(body.settings.classes) ||
+        body.settings.classes.length === 0 ||
+        !Array.isArray(body.settings.subjects) ||
+        body.settings.subjects.length === 0 ||
+        !Array.isArray(body.settings.examTypes) ||
+        body.settings.examTypes.length === 0
+      ) {
+        res.status(400).json({
+          ok: false,
+          error: 'Daftar kelas, mata pelajaran, dan jenis ujian tidak boleh kosong.',
+        });
+        return;
+      }
       const ws = loadWorkspaceStore();
       ws.settings = sanitizeSettingsForServer(body.settings);
       const saved = saveWorkspaceStore(ws);
@@ -711,19 +802,117 @@ async function startServer() {
     }
   });
 
+  function getServerUserScope(authUser: NonNullable<AuthedRequest['authUser']>) {
+    const usersStore = loadUsersStore();
+    const matched = usersStore.users.find((u) => u.id === authUser.id);
+    const isTeachingRole = authUser.role === 'guru' || authUser.role === 'wali_kelas';
+    const assignedClasses = isTeachingRole && Array.isArray(matched?.assignedClasses)
+      ? matched.assignedClasses
+      : [];
+    const assignedSubjects = isTeachingRole && Array.isArray(matched?.assignedSubjects)
+      ? matched.assignedSubjects
+      : [];
+    const hasClassRestriction = isTeachingRole && assignedClasses.length > 0;
+    const hasSubjectRestriction = isTeachingRole && assignedSubjects.length > 0;
+    return {
+      isAdmin: authUser.role === 'admin',
+      role: authUser.role,
+      userId: authUser.id,
+      isClassAllowed: (cls: string) =>
+        authUser.role === 'admin' || !hasClassRestriction || assignedClasses.includes(cls),
+      isSubjectAllowed: (subj: string) =>
+        authUser.role === 'admin' || !hasSubjectRestriction || assignedSubjects.includes(subj),
+      isOwnerOrAdmin: (teacherId?: string) =>
+        authUser.role === 'admin' || !teacherId || teacherId === authUser.id,
+    };
+  }
+
   app.put(
     '/api/workspace/students',
     requireAuth,
     requireRoles(['admin', 'guru', 'wali_kelas', 'karyawan']),
-    (req, res) => {
+    (req: AuthedRequest, res) => {
       try {
         const body = req.body as { students?: Student[] };
         if (!Array.isArray(body.students)) {
           res.status(400).json({ ok: false, error: 'Data siswa harus berupa daftar array.' });
           return;
         }
+        for (const st of body.students) {
+          if (!st || !String(st.id || '').trim() || !String(st.nis || '').trim() || !String(st.name || '').trim()) {
+            res.status(400).json({ ok: false, error: 'Setiap data siswa wajib memiliki ID, NIS, dan Nama.' });
+            return;
+          }
+        }
         const ws = loadWorkspaceStore();
-        ws.students = body.students;
+        const scope = getServerUserScope(req.authUser!);
+        if (!scope.isAdmin) {
+          const existingMap = new Map(ws.students.map((s) => [s.id, s]));
+          const incomingMap = new Map(body.students.map((s) => [s.id, s]));
+
+          for (const prev of ws.students) {
+            if (!incomingMap.has(prev.id) && !scope.isClassAllowed(prev.className)) {
+              res.status(403).json({
+                ok: false,
+                error: 'Akses ditolak: Anda tidak dapat menghapus siswa di luar kelas tanggung jawab Anda.',
+              });
+              return;
+            }
+          }
+
+          for (const nextItem of body.students) {
+            const prev = existingMap.get(nextItem.id);
+            if (!prev) {
+              if (!scope.isClassAllowed(nextItem.className)) {
+                res.status(403).json({
+                  ok: false,
+                  error: 'Akses ditolak: Anda tidak dapat menambah siswa ke kelas di luar tanggung jawab Anda.',
+                });
+                return;
+              }
+              if (scope.role === 'guru' && nextItem.status && nextItem.status !== 'aktif') {
+                res.status(403).json({
+                  ok: false,
+                  error: 'Akses ditolak: Guru Mapel hanya dapat menambahkan siswa berstatus Aktif.',
+                });
+                return;
+              }
+            } else if (JSON.stringify(prev) !== JSON.stringify(nextItem)) {
+              if (!scope.isClassAllowed(prev.className)) {
+                res.status(403).json({
+                  ok: false,
+                  error: 'Akses ditolak: siswa ini berada di luar kelas tanggung jawab Anda.',
+                });
+                return;
+              }
+              if (scope.role === 'guru') {
+                if (!scope.isClassAllowed(nextItem.className)) {
+                  res.status(403).json({
+                    ok: false,
+                    error: 'Akses ditolak: kelas tujuan berada di luar tanggung jawab Anda.',
+                  });
+                  return;
+                }
+                if ((nextItem.status || 'aktif') !== (prev.status || 'aktif')) {
+                  res.status(403).json({
+                    ok: false,
+                    error: 'Akses ditolak: perubahan status mutasi/kelulusan hanya untuk Wali Kelas, Staff TU, atau Admin.',
+                  });
+                  return;
+                }
+              }
+            }
+          }
+        }
+        ws.students = body.students.map((st) => ({
+          ...st,
+          nis: String(st.nis).trim(),
+          name: String(st.name).trim(),
+          status:
+            st.status === 'lulus' || st.status === 'pindah' || st.status === 'keluar'
+              ? st.status
+              : 'aktif',
+        }));
         const saved = saveWorkspaceStore(ws);
         res.json({ ok: true, lastSyncedAt: saved.lastSyncedAt });
       } catch (err) {
@@ -739,15 +928,86 @@ async function startServer() {
     '/api/workspace/journals',
     requireAuth,
     requireRoles(['admin', 'guru', 'wali_kelas']),
-    (req, res) => {
+    (req: AuthedRequest, res) => {
       try {
         const body = req.body as { journals?: JournalEntry[] };
         if (!Array.isArray(body.journals)) {
           res.status(400).json({ ok: false, error: 'Data jurnal harus berupa daftar array.' });
           return;
         }
+        for (const j of body.journals) {
+          if (
+            !j ||
+            !String(j.id || '').trim() ||
+            !String(j.date || '').trim() ||
+            !String(j.className || '').trim() ||
+            !String(j.subject || '').trim()
+          ) {
+            res.status(400).json({
+              ok: false,
+              error: 'Setiap entri jurnal wajib memiliki ID, tanggal, kelas, dan mata pelajaran.',
+            });
+            return;
+          }
+        }
         const ws = loadWorkspaceStore();
-        ws.journals = body.journals;
+        const scope = getServerUserScope(req.authUser!);
+        const existingMap = new Map(ws.journals.map((j) => [j.id, j]));
+        if (!scope.isAdmin) {
+          const incomingMap = new Map(body.journals.map((j) => [j.id, j]));
+
+          for (const prev of ws.journals) {
+            if (
+              !incomingMap.has(prev.id) &&
+              (!scope.isClassAllowed(prev.className) ||
+                !scope.isSubjectAllowed(prev.subject) ||
+                !scope.isOwnerOrAdmin(prev.teacherId))
+            ) {
+              res.status(403).json({
+                ok: false,
+                error: 'Akses ditolak: Anda hanya dapat menghapus jurnal milik Anda dalam cakupan ampu.',
+              });
+              return;
+            }
+          }
+
+          for (const nextItem of body.journals) {
+            const prev = existingMap.get(nextItem.id);
+            if (!prev) {
+              if (
+                !scope.isClassAllowed(nextItem.className) ||
+                !scope.isSubjectAllowed(nextItem.subject) ||
+                !scope.isOwnerOrAdmin(nextItem.teacherId)
+              ) {
+                res.status(403).json({
+                  ok: false,
+                  error: 'Akses ditolak: jurnal baru harus sesuai kelas, mata pelajaran, dan akun Anda.',
+                });
+                return;
+              }
+            } else if (JSON.stringify(prev) !== JSON.stringify(nextItem)) {
+              if (
+                !scope.isClassAllowed(prev.className) ||
+                !scope.isSubjectAllowed(prev.subject) ||
+                !scope.isClassAllowed(nextItem.className) ||
+                !scope.isSubjectAllowed(nextItem.subject) ||
+                !scope.isOwnerOrAdmin(prev.teacherId)
+              ) {
+                res.status(403).json({
+                  ok: false,
+                  error: 'Akses ditolak: Anda hanya dapat mengubah jurnal milik Anda dalam cakupan ampu.',
+                });
+                return;
+              }
+            }
+          }
+        }
+        ws.journals = body.journals.map((j) => {
+          const prev = existingMap.get(j.id);
+          return !scope.isAdmin && !prev
+            ? { ...j, teacherId: req.authUser!.id }
+            : j;
+        });
         const saved = saveWorkspaceStore(ws);
         res.json({ ok: true, lastSyncedAt: saved.lastSyncedAt });
       } catch (err) {
@@ -763,15 +1023,87 @@ async function startServer() {
     '/api/workspace/grades',
     requireAuth,
     requireRoles(['admin', 'guru', 'wali_kelas']),
-    (req, res) => {
+    (req: AuthedRequest, res) => {
       try {
         const body = req.body as { grades?: GradeRecord[] };
         if (!Array.isArray(body.grades)) {
           res.status(400).json({ ok: false, error: 'Data nilai harus berupa daftar array.' });
           return;
         }
+        for (const g of body.grades) {
+          if (
+            !g ||
+            !String(g.id || '').trim() ||
+            !String(g.studentId || '').trim() ||
+            !String(g.className || '').trim() ||
+            !String(g.subject || '').trim() ||
+            !String(g.examType || '').trim()
+          ) {
+            res.status(400).json({
+              ok: false,
+              error: 'Setiap data nilai wajib memiliki ID, ID siswa, kelas, mapel, dan jenis ujian.',
+            });
+            return;
+          }
+          if (g.score !== null && (typeof g.score !== 'number' || Number.isNaN(g.score) || g.score < 0 || g.score > 100)) {
+            res.status(400).json({
+              ok: false,
+              error: 'Skor nilai harus bernilai kosong (null) atau angka 0 hingga 100.',
+            });
+            return;
+          }
+        }
         const ws = loadWorkspaceStore();
-        ws.grades = body.grades;
+        const scope = getServerUserScope(req.authUser!);
+        const existingMap = new Map(ws.grades.map((g) => [g.id, g]));
+        if (!scope.isAdmin) {
+          const incomingMap = new Map(body.grades.map((g) => [g.id, g]));
+
+          for (const prev of ws.grades) {
+            if (
+              !incomingMap.has(prev.id) &&
+              (!scope.isClassAllowed(prev.className) || !scope.isSubjectAllowed(prev.subject))
+            ) {
+              res.status(403).json({
+                ok: false,
+                error: 'Akses ditolak: Anda tidak dapat menghapus nilai di luar cakupan ampu Anda.',
+              });
+              return;
+            }
+          }
+
+          for (const nextItem of body.grades) {
+            const prev = existingMap.get(nextItem.id);
+            if (!prev) {
+              if (!scope.isClassAllowed(nextItem.className) || !scope.isSubjectAllowed(nextItem.subject)) {
+                res.status(403).json({
+                  ok: false,
+                  error: 'Akses ditolak: nilai berada di luar kelas atau mata pelajaran ampu Anda.',
+                });
+                return;
+              }
+            } else if (JSON.stringify(prev) !== JSON.stringify(nextItem)) {
+              if (
+                !scope.isClassAllowed(prev.className) ||
+                !scope.isSubjectAllowed(prev.subject) ||
+                !scope.isClassAllowed(nextItem.className) ||
+                !scope.isSubjectAllowed(nextItem.subject)
+              ) {
+                res.status(403).json({
+                  ok: false,
+                  error: 'Akses ditolak: Anda tidak dapat mengubah nilai di luar cakupan ampu Anda.',
+                });
+                return;
+              }
+            }
+          }
+        }
+        ws.grades = body.grades.map((g) => {
+          const prev = existingMap.get(g.id);
+          return !scope.isAdmin && !prev
+            ? { ...g, teacherId: req.authUser!.id }
+            : g;
+        });
         const saved = saveWorkspaceStore(ws);
         res.json({ ok: true, lastSyncedAt: saved.lastSyncedAt });
       } catch (err) {
@@ -782,6 +1114,251 @@ async function startServer() {
       }
     }
   );
+
+  app.put(
+    '/api/workspace/schedules',
+    requireAuth,
+    requireRoles(['admin', 'guru', 'wali_kelas']),
+    (req: AuthedRequest, res) => {
+      try {
+        const body = req.body as { schedules?: TeachingScheduleItem[] };
+        if (!Array.isArray(body.schedules)) {
+          res.status(400).json({ ok: false, error: 'Data jadwal mengajar harus berupa daftar array.' });
+          return;
+        }
+        for (const s of body.schedules) {
+          if (
+            !s ||
+            !String(s.id || '').trim() ||
+            !String(s.day || '').trim() ||
+            !String(s.className || '').trim() ||
+            !String(s.subject || '').trim()
+          ) {
+            res.status(400).json({
+              ok: false,
+              error: 'Setiap slot jadwal wajib memiliki ID, hari, kelas, dan mata pelajaran.',
+            });
+            return;
+          }
+        }
+        const ws = loadWorkspaceStore();
+        const scope = getServerUserScope(req.authUser!);
+        const existingMap = new Map((ws.schedules || []).map((s) => [s.id, s]));
+        if (!scope.isAdmin) {
+          const incomingMap = new Map(body.schedules.map((s) => [s.id, s]));
+
+          for (const prev of ws.schedules || []) {
+            if (
+              !incomingMap.has(prev.id) &&
+              (!scope.isClassAllowed(prev.className) ||
+                !scope.isSubjectAllowed(prev.subject) ||
+                !scope.isOwnerOrAdmin(prev.teacherId))
+            ) {
+              res.status(403).json({
+                ok: false,
+                error: 'Akses ditolak: Anda hanya dapat menghapus jadwal milik Anda sendiri.',
+              });
+              return;
+            }
+          }
+
+          for (const nextItem of body.schedules) {
+            const prev = existingMap.get(nextItem.id);
+            if (!prev) {
+              if (
+                !scope.isClassAllowed(nextItem.className) ||
+                !scope.isSubjectAllowed(nextItem.subject) ||
+                !scope.isOwnerOrAdmin(nextItem.teacherId)
+              ) {
+                res.status(403).json({
+                  ok: false,
+                  error: 'Akses ditolak: jadwal baru berada di luar tanggung jawab Anda.',
+                });
+                return;
+              }
+            } else if (JSON.stringify(prev) !== JSON.stringify(nextItem)) {
+              if (
+                !scope.isClassAllowed(prev.className) ||
+                !scope.isSubjectAllowed(prev.subject) ||
+                !scope.isClassAllowed(nextItem.className) ||
+                !scope.isSubjectAllowed(nextItem.subject) ||
+                !scope.isOwnerOrAdmin(prev.teacherId)
+              ) {
+                res.status(403).json({
+                  ok: false,
+                  error: 'Akses ditolak: Anda hanya dapat mengubah jadwal milik Anda sendiri.',
+                });
+                return;
+              }
+            }
+          }
+        }
+        ws.schedules = body.schedules.map((s) => {
+          const prev = existingMap.get(s.id);
+          return !scope.isAdmin && !prev
+            ? { ...s, teacherId: req.authUser!.id }
+            : s;
+        });
+        const saved = saveWorkspaceStore(ws);
+        res.json({ ok: true, lastSyncedAt: saved.lastSyncedAt });
+      } catch (err) {
+        res.status(500).json({
+          ok: false,
+          error: err instanceof Error ? err.message : 'Gagal menyimpan jadwal mengajar di server.',
+        });
+      }
+    }
+  );
+
+  app.put(
+    '/api/workspace/agendas',
+    requireAuth,
+    requireRoles(['admin', 'guru', 'wali_kelas']),
+    (req: AuthedRequest, res) => {
+      try {
+        const body = req.body as { agendas?: TeacherAgendaItem[] };
+        if (!Array.isArray(body.agendas)) {
+          res.status(400).json({ ok: false, error: 'Data agenda guru harus berupa daftar array.' });
+          return;
+        }
+        for (const a of body.agendas) {
+          if (!a || !String(a.id || '').trim() || !String(a.date || '').trim() || !String(a.title || '').trim()) {
+            res.status(400).json({
+              ok: false,
+              error: 'Setiap agenda wajib memiliki ID, tanggal, dan judul agenda.',
+            });
+            return;
+          }
+        }
+        const ws = loadWorkspaceStore();
+        const scope = getServerUserScope(req.authUser!);
+        const existingMap = new Map((ws.agendas || []).map((a) => [a.id, a]));
+        if (!scope.isAdmin) {
+          const incomingMap = new Map(body.agendas.map((a) => [a.id, a]));
+
+          for (const prev of ws.agendas || []) {
+            if (!incomingMap.has(prev.id) && !scope.isOwnerOrAdmin(prev.teacherId)) {
+              res.status(403).json({
+                ok: false,
+                error: 'Akses ditolak: Anda hanya dapat menghapus agenda milik Anda sendiri.',
+              });
+              return;
+            }
+          }
+
+          for (const nextItem of body.agendas) {
+            const prev = existingMap.get(nextItem.id);
+            if (!prev && !scope.isOwnerOrAdmin(nextItem.teacherId)) {
+              res.status(403).json({
+                ok: false,
+                error: 'Akses ditolak: Anda tidak dapat membuat agenda atas nama guru lain.',
+              });
+              return;
+            }
+            if (prev && JSON.stringify(prev) !== JSON.stringify(nextItem) && !scope.isOwnerOrAdmin(prev.teacherId)) {
+              res.status(403).json({
+                ok: false,
+                error: 'Akses ditolak: Anda hanya dapat mengubah agenda milik Anda sendiri.',
+              });
+              return;
+            }
+          }
+        }
+        ws.agendas = body.agendas.map((a) => {
+          const prev = existingMap.get(a.id);
+          return !scope.isAdmin && !prev
+            ? { ...a, teacherId: req.authUser!.id }
+            : a;
+        });
+        const saved = saveWorkspaceStore(ws);
+        res.json({ ok: true, lastSyncedAt: saved.lastSyncedAt });
+      } catch (err) {
+        res.status(500).json({
+          ok: false,
+          error: err instanceof Error ? err.message : 'Gagal menyimpan agenda guru di server.',
+        });
+      }
+    }
+  );
+
+  const ALLOWED_IMAGE_PROXY_HOSTS = new Set([
+    'drive.google.com',
+    'drive.usercontent.google.com',
+    'lh3.googleusercontent.com',
+    'lh3.google.com',
+    'dl.dropboxusercontent.com',
+    'www.dropbox.com',
+  ]);
+
+  app.get('/api/proxy-image', requireAuth, async (req, res) => {
+    try {
+      const rawUrl = typeof req.query.url === 'string' ? req.query.url.trim() : '';
+      if (!rawUrl || !rawUrl.startsWith('https://')) {
+        res.status(400).json({ ok: false, error: 'URL gambar harus menggunakan HTTPS yang valid.' });
+        return;
+      }
+      let parsed: URL;
+      try {
+        parsed = new URL(rawUrl);
+      } catch {
+        res.status(400).json({ ok: false, error: 'Format URL tidak valid.' });
+        return;
+      }
+      if (
+        parsed.protocol !== 'https:' ||
+        parsed.username ||
+        parsed.password ||
+        !ALLOWED_IMAGE_PROXY_HOSTS.has(parsed.hostname.toLowerCase())
+      ) {
+        res.status(403).json({
+          ok: false,
+          error: 'Host gambar eksternal tidak diizinkan oleh proxy.',
+        });
+        return;
+      }
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      try {
+        const upstream = await fetch(parsed.toString(), {
+          signal: controller.signal,
+          headers: { Accept: 'image/*' },
+        });
+        if (!upstream.ok) {
+          res.status(502).json({ ok: false, error: `Gagal mengunduh gambar (${upstream.status}).` });
+          return;
+        }
+        const contentType = String(upstream.headers.get('content-type') || '').toLowerCase();
+        if (!contentType.startsWith('image/')) {
+          res.status(415).json({ ok: false, error: 'Tautan tidak mengembalikan berkas gambar.' });
+          return;
+        }
+        const buf = Buffer.from(await upstream.arrayBuffer());
+        if (buf.byteLength > 5 * 1024 * 1024) {
+          res.status(413).json({ ok: false, error: 'Ukuran gambar eksternal melebihi batas 5 MB.' });
+          return;
+        }
+        const mime = contentType.split(';')[0].trim() || 'image/png';
+        const dataUrl = `data:${mime};base64,${buf.toString('base64')}`;
+        res.json({ ok: true, dataUrl });
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch (err) {
+      res.status(500).json({
+        ok: false,
+        error: err instanceof Error ? err.message : 'Gagal memproses gambar eksternal.',
+      });
+    }
+  });
+
+  const VALID_USER_ROLES = new Set<UserRole>([
+    'admin',
+    'guru',
+    'wali_kelas',
+    'kepala_sekolah',
+    'karyawan',
+  ]);
 
   app.put('/api/workspace/users', requireAuth, requireRoles(['admin']), (req, res) => {
     try {
@@ -802,34 +1379,74 @@ async function startServer() {
 
       const prevStore = loadUsersStore();
       const prevMap = new Map(prevStore.users.map((u) => [u.id, u]));
+      const seenEmails = new Set<string>();
+      const seenUsernames = new Set<string>();
 
       const nextUsers: StoredServerUser[] = body.users.map((u) => {
+        if (!VALID_USER_ROLES.has(u.role)) {
+          throw new Error(`Role "${String(u.role)}" tidak valid.`);
+        }
+        const cleanEmail = String(u.email || '').trim().slice(0, 200);
+        if (!cleanEmail || !cleanEmail.includes('@')) {
+          throw new Error(`Email untuk ${u.name || 'pengguna'} tidak valid.`);
+        }
+        const normEmail = cleanEmail.toLowerCase();
+        if (seenEmails.has(normEmail)) {
+          throw new Error(`Duplikat email ditemukan: ${cleanEmail}`);
+        }
+        seenEmails.add(normEmail);
+
+        const resolvedUsername = deriveUsername(u.username, cleanEmail, String(u.id));
+        if (seenUsernames.has(resolvedUsername)) {
+          throw new Error(`Duplikat username ditemukan: ${resolvedUsername}`);
+        }
+        seenUsernames.add(resolvedUsername);
+
         const existing = prevMap.get(u.id);
         const plainNewPass = typeof u.password === 'string' ? u.password.trim() : '';
         let passwordSalt = existing?.passwordSalt || '';
         let passwordHash = existing?.passwordHash || '';
 
         if (plainNewPass.length > 0) {
-          if (plainNewPass.length < 6) {
-            throw new Error(`Password untuk ${u.name || u.email} minimal 6 karakter.`);
+          if (plainNewPass.length < 6 || plainNewPass.length > 128) {
+            throw new Error(`Password untuk ${u.name || cleanEmail} harus 6–128 karakter.`);
           }
           const hashed = hashPassword(plainNewPass);
           passwordSalt = hashed.salt;
           passwordHash = hashed.hash;
         }
 
+        const isTeachingRole = u.role === 'guru' || u.role === 'wali_kelas';
+
         return {
           id: String(u.id),
-          username: deriveUsername(u.username, u.email, u.id),
+          username: resolvedUsername,
           name: String(u.name || 'Pengguna').slice(0, 150),
           nip: String(u.nip || '-').slice(0, 60),
-          email: String(u.email || '').trim().slice(0, 200),
+          email: cleanEmail,
           role: u.role,
           school: String(u.school || '').slice(0, 180),
           gender: u.gender === 'P' ? 'P' : 'L',
           photoDataUrl: String(u.photoDataUrl || ''),
-          assignedClasses: Array.isArray(u.assignedClasses) ? u.assignedClasses : [],
-          assignedSubjects: Array.isArray(u.assignedSubjects) ? u.assignedSubjects : [],
+          assignedClasses: isTeachingRole && Array.isArray(u.assignedClasses) ? u.assignedClasses : [],
+          assignedSubjects:
+            isTeachingRole && Array.isArray(u.assignedSubjects) ? u.assignedSubjects : [],
+          signatureDataUrl:
+            typeof u.signatureDataUrl === 'string'
+              ? u.signatureDataUrl
+              : existing?.signatureDataUrl || '',
+          signatureSize:
+            typeof u.signatureSize === 'number'
+              ? u.signatureSize
+              : existing?.signatureSize,
+          signatureOffsetX:
+            typeof u.signatureOffsetX === 'number'
+              ? u.signatureOffsetX
+              : existing?.signatureOffsetX,
+          signatureOffsetY:
+            typeof u.signatureOffsetY === 'number'
+              ? u.signatureOffsetY
+              : existing?.signatureOffsetY,
           active: Boolean(u.active),
           createdAt: u.createdAt || existing?.createdAt || new Date().toISOString(),
           passwordSalt,
@@ -877,8 +1494,8 @@ async function startServer() {
         let passwordSalt = cur.passwordSalt;
         let passwordHash = cur.passwordHash;
         if (plainNewPass.length > 0) {
-          if (plainNewPass.length < 6) {
-            res.status(400).json({ ok: false, error: 'Password baru minimal 6 karakter.' });
+          if (plainNewPass.length < 6 || plainNewPass.length > 128) {
+            res.status(400).json({ ok: false, error: 'Password baru harus 6–128 karakter.' });
             return;
           }
           const hashed = hashPassword(plainNewPass);
@@ -886,6 +1503,8 @@ async function startServer() {
           passwordHash = hashed.hash;
         }
 
+        const isTeachingRole = cur.role === 'guru' || cur.role === 'wali_kelas';
+        const allowTeacherSig = isTeachingRole || cur.role === 'admin';
         updatedUser = {
           ...cur,
           name: String(tp.name).trim().slice(0, 150),
@@ -894,8 +1513,30 @@ async function startServer() {
           email: authUser.role === 'admin' && tp.email ? String(tp.email).trim() : cur.email,
           gender: tp.gender === 'P' ? 'P' : tp.gender === 'L' ? 'L' : cur.gender,
           photoDataUrl: String(tp.photoDataUrl || ''),
-          assignedClasses: Array.isArray(tp.assignedClasses) ? tp.assignedClasses : [],
-          assignedSubjects: Array.isArray(tp.assignedSubjects) ? tp.assignedSubjects : [],
+          assignedClasses:
+            isTeachingRole && Array.isArray(tp.assignedClasses) ? tp.assignedClasses : [],
+          assignedSubjects:
+            isTeachingRole && Array.isArray(tp.assignedSubjects) ? tp.assignedSubjects : [],
+          signatureDataUrl: allowTeacherSig
+            ? tp.signatureDataUrl !== undefined
+              ? String(tp.signatureDataUrl || '')
+              : cur.signatureDataUrl || ''
+            : cur.signatureDataUrl || '',
+          signatureSize: allowTeacherSig
+            ? typeof tp.signatureSize === 'number'
+              ? Math.max(40, Math.min(280, tp.signatureSize))
+              : cur.signatureSize
+            : cur.signatureSize,
+          signatureOffsetX: allowTeacherSig
+            ? typeof tp.signatureOffsetX === 'number'
+              ? tp.signatureOffsetX
+              : cur.signatureOffsetX
+            : cur.signatureOffsetX,
+          signatureOffsetY: allowTeacherSig
+            ? typeof tp.signatureOffsetY === 'number'
+              ? tp.signatureOffsetY
+              : cur.signatureOffsetY
+            : cur.signatureOffsetY,
           passwordSalt,
           passwordHash,
         };
@@ -905,6 +1546,7 @@ async function startServer() {
 
       const ws = loadWorkspaceStore();
       if (
+        authUser.role === 'admin' &&
         updatedUser &&
         (updatedUser.id === 'usr-guru-1' ||
           updatedUser.email.toLowerCase() === ws.settings.teacherProfile.email.toLowerCase())
@@ -921,15 +1563,46 @@ async function startServer() {
             photoDataUrl: updatedUser.photoDataUrl,
             assignedClasses: updatedUser.assignedClasses,
             assignedSubjects: updatedUser.assignedSubjects,
+            signatureDataUrl: updatedUser.signatureDataUrl,
+            signatureSize: updatedUser.signatureSize,
+            signatureOffsetX: updatedUser.signatureOffsetX,
+            signatureOffsetY: updatedUser.signatureOffsetY,
             password: '',
           },
         });
         saveWorkspaceStore(ws);
       }
 
+      const fallbackEnvAdminUser: AppUser | null =
+        !updatedUser && authUser.isEnvAdmin
+          ? {
+              id: authUser.id,
+              username: authUser.username,
+              name: String(tp.name).trim().slice(0, 150),
+              nip: String(tp.nip || '-').trim().slice(0, 60),
+              email: authUser.email,
+              password: '',
+              role: 'admin',
+              school: String(tp.school || ws.settings.teacherProfile.school).trim().slice(0, 180),
+              gender: tp.gender === 'P' ? 'P' : 'L',
+              photoDataUrl: String(tp.photoDataUrl || ''),
+              assignedClasses: [],
+              assignedSubjects: [],
+              signatureDataUrl: String(tp.signatureDataUrl || ''),
+              signatureSize: typeof tp.signatureSize === 'number' ? tp.signatureSize : undefined,
+              signatureOffsetX:
+                typeof tp.signatureOffsetX === 'number' ? tp.signatureOffsetX : undefined,
+              signatureOffsetY:
+                typeof tp.signatureOffsetY === 'number' ? tp.signatureOffsetY : undefined,
+              hasPassword: true,
+              active: true,
+              createdAt: new Date().toISOString(),
+            }
+          : null;
+
       res.json({
         ok: true,
-        user: updatedUser ? toPublicAppUser(updatedUser) : null,
+        user: updatedUser ? toPublicAppUser(updatedUser) : fallbackEnvAdminUser,
         settings: ws.settings,
       });
     } catch (err) {
@@ -955,6 +1628,8 @@ async function startServer() {
         students: migrated.students,
         journals: migrated.journals,
         grades: migrated.grades,
+        schedules: migrated.schedules || [],
+        agendas: migrated.agendas || [],
         settings: migrated.settings,
       });
 
@@ -982,6 +1657,10 @@ async function startServer() {
           photoDataUrl: u.photoDataUrl || '',
           assignedClasses: u.assignedClasses || [],
           assignedSubjects: u.assignedSubjects || [],
+          signatureDataUrl: u.signatureDataUrl || existing?.signatureDataUrl || '',
+          signatureSize: u.signatureSize ?? existing?.signatureSize,
+          signatureOffsetX: u.signatureOffsetX ?? existing?.signatureOffsetX,
+          signatureOffsetY: u.signatureOffsetY ?? existing?.signatureOffsetY,
           active: u.active,
           createdAt: u.createdAt,
           passwordSalt,
@@ -1024,6 +1703,8 @@ async function startServer() {
         students: fresh.students,
         journals: fresh.journals,
         grades: fresh.grades,
+        schedules: fresh.schedules || [],
+        agendas: fresh.agendas || [],
         settings: fresh.settings,
       });
 
@@ -1044,6 +1725,7 @@ async function startServer() {
           photoDataUrl: prev?.photoDataUrl || '',
           assignedClasses: u.assignedClasses || [],
           assignedSubjects: u.assignedSubjects || [],
+          signatureDataUrl: '',
           active: u.active,
           createdAt: prev?.createdAt || u.createdAt,
           passwordSalt: prev?.passwordSalt || '',

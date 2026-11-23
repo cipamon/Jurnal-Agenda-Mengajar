@@ -5,11 +5,15 @@ import {
   PortalDatabase,
   Student,
   SystemSettings,
+  TeacherAgendaItem,
   TeacherProfile,
+  TeachingScheduleItem,
+  WebBrandConfig,
 } from '../types';
 
 // Bearer token is stored strictly in JS memory (never in localStorage or sessionStorage)
 let inMemoryBearerToken: string | null = null;
+let unauthorizedHandler: (() => void) | null = null;
 
 export function setApiAuthToken(token: string | null): void {
   inMemoryBearerToken = token && token.trim() ? token.trim() : null;
@@ -17,6 +21,10 @@ export function setApiAuthToken(token: string | null): void {
 
 export function getApiAuthToken(): string | null {
   return inMemoryBearerToken;
+}
+
+export function setOnUnauthorizedHandler(handler: (() => void) | null): void {
+  unauthorizedHandler = handler;
 }
 
 async function apiRequest<T>(
@@ -52,6 +60,11 @@ async function apiRequest<T>(
     error?: string;
   } & T;
 
+  if (res.status === 401 && requireAuth) {
+    setApiAuthToken(null);
+    if (unauthorizedHandler) unauthorizedHandler();
+  }
+
   if (!res.ok || data.ok === false) {
     throw new Error(data.error || `Permintaan server gagal (HTTP ${res.status}).`);
   }
@@ -64,12 +77,17 @@ export interface ServerAuthStatus {
   adminConfigured: boolean;
   envAdminManaged: boolean;
   adminUsernameHint: string;
+  webBrand?: WebBrandConfig;
+  academicYear?: string;
+  semester?: 'Ganjil' | 'Genap';
+  academicYears?: string[];
 }
 
 export interface ServerAuthResponse {
   ok: boolean;
   token: string;
   user: AppUser;
+  activatedStaffCount?: number;
 }
 
 export async function apiGetAuthStatus(): Promise<ServerAuthStatus> {
@@ -84,6 +102,9 @@ export async function apiClaimAdmin(payload: {
   password: string;
   email?: string;
   name?: string;
+  staffPassword?: string;
+  academicYear?: string;
+  semester?: 'Ganjil' | 'Genap';
 }): Promise<ServerAuthResponse> {
   const res = await apiRequest<ServerAuthResponse>('/api/auth/claim-admin', {
     method: 'POST',
@@ -145,6 +166,20 @@ export async function apiSaveGrades(grades: GradeRecord[]): Promise<void> {
   await apiRequest('/api/workspace/grades', {
     method: 'PUT',
     body: { grades },
+  });
+}
+
+export async function apiSaveSchedules(schedules: TeachingScheduleItem[]): Promise<void> {
+  await apiRequest('/api/workspace/schedules', {
+    method: 'PUT',
+    body: { schedules },
+  });
+}
+
+export async function apiSaveAgendas(agendas: TeacherAgendaItem[]): Promise<void> {
+  await apiRequest('/api/workspace/agendas', {
+    method: 'PUT',
+    body: { agendas },
   });
 }
 

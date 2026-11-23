@@ -7,9 +7,9 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { GradeRecord, JournalEntry, MenuId, Student, SystemSettings } from '../types';
+import { GradeRecord, JournalEntry, MenuId, Student, SystemSettings, UserRole } from '../types';
 import { getStudentPhotoUrl } from '../utils/defaultAvatars';
-import { formatTanggalID } from '../utils/helpers';
+import { formatTanggalID, ROLE_PERMISSIONS } from '../utils/helpers';
 
 interface ClassDetailModalProps {
   className: string | null;
@@ -17,6 +17,7 @@ interface ClassDetailModalProps {
   journals: JournalEntry[];
   grades: GradeRecord[];
   settings: SystemSettings;
+  currentUserRole?: UserRole;
   onSelectStudent: (student: Student) => void;
   onSelectSubject: (subject: string) => void;
   onNavigate?: (menu: MenuId) => void;
@@ -29,11 +30,13 @@ export const ClassDetailModal: React.FC<ClassDetailModalProps> = ({
   journals,
   grades,
   settings,
+  currentUserRole = 'guru',
   onSelectStudent,
   onSelectSubject,
   onNavigate,
   onClose,
 }) => {
+  const rolePerms = ROLE_PERMISSIONS[currentUserRole];
   const [activeTab, setActiveTab] = useState<'siswa' | 'jurnal' | 'nilai'>('siswa');
 
   useEffect(() => {
@@ -404,29 +407,29 @@ export const ClassDetailModal: React.FC<ClassDetailModalProps> = ({
             Klik nama siswa atau mata pelajaran untuk berpindah detail pop-up
           </p>
           <div className="flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto sm:ml-auto">
-            {onNavigate && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    onNavigate('jurnal');
-                  }}
-                  className="px-3.5 py-2 min-h-[40px] rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 cursor-pointer whitespace-nowrap"
-                >
-                  Buka Jurnal & Absensi
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    onNavigate('nilai');
-                  }}
-                  className="px-3.5 py-2 min-h-[40px] rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
-                >
-                  Buka Input Nilai
-                </button>
-              </>
+            {onNavigate && rolePerms.allowedMenus.includes('jurnal') && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onNavigate('jurnal');
+                }}
+                className="px-3.5 py-2 min-h-[40px] rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 cursor-pointer whitespace-nowrap"
+              >
+                {rolePerms.canManageJournals ? 'Buka Jurnal & Absensi' : 'Lihat Jurnal & Absensi'}
+              </button>
+            )}
+            {onNavigate && rolePerms.allowedMenus.includes('nilai') && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onNavigate('nilai');
+                }}
+                className="px-3.5 py-2 min-h-[40px] rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+              >
+                {rolePerms.canManageGrades ? 'Buka Input Nilai' : 'Lihat Rekap Nilai'}
+              </button>
             )}
             <button
               type="button"

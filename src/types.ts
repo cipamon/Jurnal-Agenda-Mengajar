@@ -1,5 +1,6 @@
 export type MenuId =
   | 'dashboard'
+  | 'jadwal'
   | 'pegawai'
   | 'jurnal'
   | 'nilai'
@@ -65,6 +66,11 @@ export interface AppUser {
   photoDataUrl?: string;
   assignedClasses?: string[];
   assignedSubjects?: string[];
+  signatureDataUrl?: string;
+  signatureSize?: number; // px (40 - 280)
+  signatureOffsetX?: number;
+  signatureOffsetY?: number;
+  hasPassword?: boolean;
   active: boolean;
   createdAt: string;
 }
@@ -104,6 +110,8 @@ export interface JournalEntry {
   className: string;
   subject: string;
   topic: string;
+  learningObjective?: string;
+  materialUrl?: string;
   activities: string;
   attendance: Record<string, StudentAttendanceItem>; // keyed by student.id
   teacherId?: string;
@@ -172,7 +180,11 @@ export interface KopSuratConfig {
 
 export interface WebBrandConfig {
   appName: string;
+  schoolName?: string;
   tabTitle: string;
+  loginTitle?: string;
+  loginSubtitle?: string;
+  loginFooterText?: string;
   webLogoDataUrl: string;
   webLogoSize?: number; // px (24 - 80)
 }
@@ -187,15 +199,21 @@ export interface TeacherProfile {
   photoDataUrl?: string;
   assignedClasses?: string[];
   assignedSubjects?: string[];
+  signatureDataUrl?: string;
+  signatureSize?: number;
+  signatureOffsetX?: number;
+  signatureOffsetY?: number;
 }
 
 export interface SignatureStampConfig {
   principalSignatureDataUrl?: string;
   teacherSignatureDataUrl?: string;
   stampDataUrl?: string;
-  signatureSize?: number; // px height (28 - 200)
-  stampSize?: number; // px square (32 - 220)
+  signatureSize?: number; // px height (40 - 280)
+  stampSize?: number; // px square (40 - 280)
   showStampDefault?: boolean;
+  showPrincipalSigImgDefault?: boolean;
+  showTeacherSigImgDefault?: boolean;
   principalSigOffsetX?: number; // px (-100 to 100)
   principalSigOffsetY?: number; // px (-50 to 50)
   teacherSigOffsetX?: number; // px (-100 to 100)
@@ -207,6 +225,33 @@ export interface SignatureStampConfig {
   teacherBlockOffsetX?: number; // px (-320 to 320)
   teacherBlockOffsetY?: number; // px (-80 to 120)
   stampTarget?: 'principal' | 'teacher';
+}
+
+export type DayOfWeek = 'Senin' | 'Selasa' | 'Rabu' | 'Kamis' | 'Jumat' | 'Sabtu';
+
+export interface TeachingScheduleItem {
+  id: string;
+  day: DayOfWeek;
+  period: string;
+  startTime?: string;
+  endTime?: string;
+  className: string;
+  subject: string;
+  room?: string;
+  teacherId?: string;
+  teacherName?: string;
+  updatedAt?: string;
+}
+
+export interface TeacherAgendaItem {
+  id: string;
+  date: string; // YYYY-MM-DD
+  title: string;
+  note: string;
+  done: boolean;
+  teacherId?: string;
+  teacherName?: string;
+  updatedAt: string;
 }
 
 export interface SystemSettings {
@@ -229,6 +274,7 @@ export interface SystemSettings {
   classes: string[];
   subjects: string[];
   examTypes: string[];
+  learningObjectives?: string[];
   examWeights?: Record<string, number>;
   useWeightedAverage?: boolean;
   academicYears: string[];
@@ -240,6 +286,8 @@ export interface PortalDatabase {
   students: Student[];
   journals: JournalEntry[];
   grades: GradeRecord[];
+  schedules?: TeachingScheduleItem[];
+  agendas?: TeacherAgendaItem[];
   users?: AppUser[];
   settings: SystemSettings;
 }

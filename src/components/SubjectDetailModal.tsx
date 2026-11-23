@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BookOpen, ClipboardCheck, FileSpreadsheet, X } from 'lucide-react';
-import { GradeRecord, JournalEntry, MenuId, Student, SystemSettings } from '../types';
-import { formatTanggalID } from '../utils/helpers';
+import { GradeRecord, JournalEntry, MenuId, Student, SystemSettings, UserRole } from '../types';
+import { formatTanggalID, ROLE_PERMISSIONS } from '../utils/helpers';
 
 interface SubjectDetailModalProps {
   subject: string | null;
@@ -9,6 +9,7 @@ interface SubjectDetailModalProps {
   journals: JournalEntry[];
   grades: GradeRecord[];
   settings: SystemSettings;
+  currentUserRole?: UserRole;
   onSelectClass: (className: string) => void;
   onSelectStudent: (student: Student) => void;
   onNavigate?: (menu: MenuId) => void;
@@ -21,11 +22,13 @@ export const SubjectDetailModal: React.FC<SubjectDetailModalProps> = ({
   journals,
   grades,
   settings,
+  currentUserRole = 'guru',
   onSelectClass,
   onSelectStudent,
   onNavigate,
   onClose,
 }) => {
+  const rolePerms = ROLE_PERMISSIONS[currentUserRole];
   const [activeTab, setActiveTab] = useState<'jurnal' | 'nilai'>('jurnal');
 
   useEffect(() => {
@@ -341,29 +344,29 @@ export const SubjectDetailModal: React.FC<SubjectDetailModalProps> = ({
             Klik kelas atau nama siswa untuk membuka detail pop-up lainnya
           </p>
           <div className="flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto sm:ml-auto">
-            {onNavigate && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    onNavigate('jurnal');
-                  }}
-                  className="px-3.5 py-2 min-h-[40px] rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 cursor-pointer whitespace-nowrap"
-                >
-                  Catat Jurnal
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    onNavigate('nilai');
-                  }}
-                  className="px-3.5 py-2 min-h-[40px] rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
-                >
-                  Input Nilai
-                </button>
-              </>
+            {onNavigate && rolePerms.allowedMenus.includes('jurnal') && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onNavigate('jurnal');
+                }}
+                className="px-3.5 py-2 min-h-[40px] rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 cursor-pointer whitespace-nowrap"
+              >
+                {rolePerms.canManageJournals ? 'Catat Jurnal' : 'Lihat Jurnal'}
+              </button>
+            )}
+            {onNavigate && rolePerms.allowedMenus.includes('nilai') && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onNavigate('nilai');
+                }}
+                className="px-3.5 py-2 min-h-[40px] rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+              >
+                {rolePerms.canManageGrades ? 'Input Nilai' : 'Lihat Nilai'}
+              </button>
             )}
             <button
               type="button"

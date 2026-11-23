@@ -1,0 +1,126 @@
+{
+  "adminClaimed": false,
+  "users": [
+    {
+      "id": "usr-admin-1",
+      "username": "admin",
+      "name": "Administrator Sistem",
+      "nip": "-",
+      "email": "admin@sman1nusantara.sch.id",
+      "role": "admin",
+      "school": "SMA Negeri 1 Kudus",
+      "gender": "L",
+      "photoDataUrl": "",
+      "assignedClasses": [],
+      "assignedSubjects": [],
+      "active": true,
+      "createdAt": "2026-11-23T10:17:54.964Z",
+      "passwordSalt": "",
+      "passwordHash": "",
+      "signatureDataUrl": "",
+      "signatureSize": 54,
+      "signatureOffsetX": 0,
+      "signatureOffsetY": 0
+    },
+    {
+      "id": "usr-guru-1",
+      "username": "guru",
+      "name": "Rina Kusumawardani, S.Pd., M.Pd.",
+      "nip": "19870915 201101 2 014",
+      "email": "guru@sman1nusantara.sch.id",
+      "role": "guru",
+      "school": "SMA Negeri 1 Nusantara",
+      "gender": "P",
+      "photoDataUrl": "",
+      "assignedClasses": [
+        "X IPA 1",
+        "X IPA 2",
+        "XI IPA 1"
+      ],
+      "assignedSubjects": [
+        "Matematika Wajib",
+        "Matematika Peminatan"
+      ],
+      "active": true,
+      "createdAt": "2026-11-23T10:17:54.964Z",
+      "passwordSalt": "",
+      "passwordHash": ""
+    },
+    {
+      "id": "usr-guru-2",
+      "username": "guru2",
+      "name": "Hendra Wijaya, S.Kom.",
+      "nip": "19900521 201603 1 006",
+      "email": "guru2@sman1nusantara.sch.id",
+      "role": "guru",
+      "school": "SMA Negeri 1 Nusantara",
+      "gender": "L",
+      "photoDataUrl": "",
+      "assignedClasses": [
+        "X IPA 2",
+        "XII IPA 1"
+      ],
+      "assignedSubjects": [
+        "Informatika",
+        "Fisika"
+      ],
+      "active": true,
+      "createdAt": "2026-11-23T10:17:54.964Z",
+      "passwordSalt": "",
+      "passwordHash": ""
+    },
+    {
+      "id": "usr-wali-1",
+      "username": "walikelas",
+      "name": "Budi Hartono, S.Pd.",
+      "nip": "19890310 201402 1 003",
+      "email": "walikelas@sman1nusantara.sch.id",
+      "role": "wali_kelas",
+      "school": "SMA Negeri 1 Nusantara",
+      "gender": "L",
+      "photoDataUrl": "",
+      "assignedClasses": [
+        "X IPA 1"
+      ],
+      "assignedSubjects": [],
+      "active": true,
+      "createdAt": "2026-11-23T10:17:54.964Z",
+      "passwordSalt": "",
+      "passwordHash": ""
+    },
+    {
+      "id": "usr-kepsek-1",
+      "username": "kepsek",
+      "name": "Drs. H. Ahmad Fauzi, M.Pd.",
+      "nip": "19680412 199403 1 008",
+      "email": "kepsek@sman1nusantara.sch.id",
+      "role": "kepala_sekolah",
+      "school": "SMA Negeri 1 Nusantara",
+      "gender": "L",
+      "photoDataUrl": "",
+      "assignedClasses": [],
+      "assignedSubjects": [],
+      "active": true,
+      "createdAt": "2026-11-23T10:17:54.964Z",
+      "passwordSalt": "",
+      "passwordHash": ""
+    },
+    {
+      "id": "usr-staff-1",
+      "username": "staff",
+      "name": "Siti Aminah, A.Md.",
+      "nip": "19920614 201903 2 009",
+      "email": "staff@sman1nusantara.sch.id",
+      "role": "karyawan",
+      "school": "SMA Negeri 1 Nusantara",
+      "gender": "P",
+      "photoDataUrl": "",
+      "assignedClasses": [],
+      "assignedSubjects": [],
+      "active": true,
+      "createdAt": "2026-11-23T10:17:54.964Z",
+      "passwordSalt": "",
+      "passwordHash": ""
+    }
+  ]
+}

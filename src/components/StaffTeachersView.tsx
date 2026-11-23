@@ -1,17 +1,24 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   BookOpen,
   Briefcase,
+  Check,
   ClipboardCheck,
+  Copy,
   Download,
+  Eye,
+  EyeOff,
   FileEdit,
   FileSpreadsheet,
   GraduationCap,
   ImagePlus,
+  KeyRound,
   Link2,
   Plus,
   Printer,
   Search,
+  Sparkles,
   Trash2,
   Upload,
   UserCheck,
@@ -22,6 +29,28 @@ import * as XLSX from 'xlsx';
 import { AppUser, GradeRecord, JournalEntry, UserRole } from '../types';
 import { getUserPhotoUrl, hasRealPhoto } from '../utils/defaultAvatars';
 import { generateId, USER_ROLE_LABELS } from '../utils/helpers';
+
+function generateStaffPassword(length = 10): string {
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower = 'abcdefghijkmnopqrstuvwxyz';
+  const digits = '23456789';
+  const symbols = '!@#$%';
+  const all = upper + lower + digits + symbols;
+  const pick = (pool: string) => {
+    const arr = new Uint32Array(1);
+    window.crypto.getRandomValues(arr);
+    return pool[arr[0] % pool.length];
+  };
+  const chars = [pick(upper), pick(lower), pick(digits), pick(symbols)];
+  while (chars.length < length) chars.push(pick(all));
+  for (let i = chars.length - 1; i > 0; i--) {
+    const arr = new Uint32Array(1);
+    window.crypto.getRandomValues(arr);
+    const j = arr[0] % (i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join('');
+}
 
 interface StaffTeachersViewProps {
   users: AppUser[];
@@ -70,6 +99,8 @@ export const StaffTeachersView: React.FC<StaffTeachersViewProps> = ({
   const [nip, setNip] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [copiedCreds, setCopiedCreds] = useState(false);
   const [role, setRole] = useState<UserRole>('guru');
   const [gender, setGender] = useState<'L' | 'P'>('L');
   const [school, setSchool] = useState(defaultSchool);
@@ -77,6 +108,9 @@ export const StaffTeachersView: React.FC<StaffTeachersViewProps> = ({
   const [assignedClasses, setAssignedClasses] = useState<string[]>([]);
   const [assignedSubjects, setAssignedSubjects] = useState<string[]>([]);
   const [active, setActive] = useState(true);
+
+  const [bulkStaffPass, setBulkStaffPass] = useState('');
+  const [showBulkStaffPass, setShowBulkStaffPass] = useState(true);
 
   const activityStatsByUser = useMemo(() => {
     const map = new Map<string, { journalCount: number; gradeCount: number }>();
@@ -134,6 +168,8 @@ export const StaffTeachersView: React.FC<StaffTeachersViewProps> = ({
     setNip('');
     setEmail('');
     setPassword('');
+    setShowPassword(false);
+    setCopiedCreds(false);
     setRole('guru');
     setGender('L');
     setSchool(defaultSchool);
@@ -151,6 +187,8 @@ export const StaffTeachersView: React.FC<StaffTeachersViewProps> = ({
     setNip(u.nip);
     setEmail(u.email);
     setPassword('');
+    setShowPassword(false);
+    setCopiedCreds(false);
     setRole(u.role);
     setGender(u.gender);
     setSchool(u.school);
@@ -159,6 +197,49 @@ export const StaffTeachersView: React.FC<StaffTeachersViewProps> = ({
     setAssignedSubjects(u.assignedSubjects ? [...u.assignedSubjects] : []);
     setActive(u.active);
     setFormOpen(true);
+  };
+
+  const unconfiguredUsers = isServerMode ? users.filter((u) => u.hasPassword === false) : [];
+
+  const handleCopyModalCredentials = async () => {
+    const loginId =
+      username.trim().toLowerCase() || email.trim().split('@')[0]?.toLowerCase() || email.trim();
+    if (!loginId || !password.trim()) return;
+    const text = `Portal E-Guru (${USER_ROLE_LABELS[role]})\nNama: ${name.trim() || '-'}\nUsername: ${loginId}\nEmail: ${email.trim() || '-'}\nPassword: ${password.trim()}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedCreds(true);
+      window.setTimeout(() => setCopiedCreds(false), 2500);
+      onNotify('Kredensial akun disalin ke clipboard.');
+    } catch {
+      onNotify('Tidak dapat menyalin ke clipboard.');
+    }
+  };
+
+  const handleApplyBulkStaffPassword = () => {
+    const cleanPass = bulkStaffPass.trim();
+    if (cleanPass.length < 6) {
+      onNotify('Password awal minimal 6 karakter.');
+      return;
+    }
+    if (unconfiguredUsers.length === 0) return;
+    const targetIds = new Set(unconfiguredUsers.map((u) => u.id));
+    onUpdateUsers(users.map((u) => (targetIds.has(u.id) ? { ...u, password: cleanPass } : u)));
+    const summary = unconfiguredUsers
+      .map(
+        (u, idx) =>
+          `${idx + 1}. ${u.username || u.email.split('@')[0]} (${USER_ROLE_LABELS[u.role]}) | ${u.email} | Password: ${cleanPass}`
+      )
+      .join('\n');
+    try {
+      void navigator.clipboard.writeText(`=== KREDENSIAL AKUN PORTAL E-GURU ===\n${summary}`);
+    } catch {
+      // ignore clipboard errors
+    }
+    onNotify(
+      `${unconfiguredUsers.length} akun berhasil diaktifkan dengan password baru (daftar kredensial disalin).`
+    );
+    setBulkStaffPass('');
   };
 
   const handlePhotoUpload = (file?: File) => {
@@ -407,6 +488,7 @@ export const StaffTeachersView: React.FC<StaffTeachersViewProps> = ({
   ) => {
     const existing = new Set(users.map((u) => u.email.toLowerCase()));
     const added: AppUser[] = [];
+    let skippedShortPass = 0;
     const nowIso = new Date().toISOString();
 
     rawRows.forEach((r) => {
@@ -414,34 +496,54 @@ export const StaffTeachersView: React.FC<StaffTeachersViewProps> = ({
       const cleanEmail = String(r.email || '').trim();
       if (!cleanName || !cleanEmail || cleanEmail.toLowerCase().includes('email login')) return;
       if (existing.has(cleanEmail.toLowerCase())) return;
+      const cleanPass = String(r.password || '').trim();
+      if (cleanPass.length > 0 && cleanPass.length < 6) {
+        skippedShortPass++;
+        return;
+      }
       existing.add(cleanEmail.toLowerCase());
+      const parsedRole = normalizeImportedRole(r.role || 'guru');
+      const isTeaching = parsedRole === 'guru' || parsedRole === 'wali_kelas';
       added.push({
         id: generateId('usr'),
         username: cleanEmail.split('@')[0]?.toLowerCase().replace(/[^a-z0-9._-]/g, ''),
         name: cleanName,
         nip: String(r.nip || '-').trim() || '-',
         email: cleanEmail,
-        password: String(r.password || '').trim(),
-        role: normalizeImportedRole(r.role || 'guru'),
+        password: cleanPass,
+        role: parsedRole,
         gender: String(r.gender || 'L').trim().toUpperCase().startsWith('P') ? 'P' : 'L',
         school: String(r.school || defaultSchool).trim() || defaultSchool,
         photoDataUrl: String(r.photoDataUrl || '').trim(),
-        assignedClasses: splitList(r.assignedClasses),
-        assignedSubjects: splitList(r.assignedSubjects),
+        assignedClasses: isTeaching ? splitList(r.assignedClasses) : [],
+        assignedSubjects: isTeaching ? splitList(r.assignedSubjects) : [],
         active: true,
         createdAt: nowIso,
       });
     });
 
     if (added.length === 0) {
-      onNotify('Tidak ada data baru yang valid atau email sudah terdaftar.');
+      onNotify(
+        skippedShortPass > 0
+          ? `${skippedShortPass} baris dilewati karena password kurang dari 6 karakter.`
+          : 'Tidak ada data baru yang valid atau email sudah terdaftar.'
+      );
       return;
     }
 
     onUpdateUsers([...users, ...added]);
     setPasteText('');
     setShowImport(false);
-    onNotify(`Berhasil mengimpor ${added.length} data guru & karyawan.`);
+    const noPassCount = added.filter((a) => !a.password).length;
+    onNotify(
+      `Berhasil mengimpor ${added.length} data guru & karyawan.${
+        skippedShortPass > 0 ? ` (${skippedShortPass} baris password < 6 karakter dilewati).` : ''
+      }${
+        isServerMode && noPassCount > 0
+          ? ` ${noPassCount} akun belum memiliki password — tetapkan password di banner/edit.`
+          : ''
+      }`
+    );
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -584,6 +686,68 @@ export const StaffTeachersView: React.FC<StaffTeachersViewProps> = ({
             </button>
           </div>
         </div>
+
+        {isServerMode && unconfiguredUsers.length > 0 && (
+          <div className="p-4 sm:p-5 bg-amber-50/90 border-b border-amber-200 space-y-3">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+              <div className="space-y-0.5 text-xs">
+                <p className="font-bold text-slate-900">
+                  {unconfiguredUsers.length} Akun Belum Memiliki Password Login Server
+                </p>
+                <p className="text-slate-600">
+                  Akun:{' '}
+                  <span className="font-mono font-semibold text-slate-800">
+                    {unconfiguredUsers.map((u) => u.username || u.email.split('@')[0]).join(', ')}
+                  </span>
+                  . Tetapkan password awal sekarang agar seluruh akun dapat login ke server.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className="relative flex-1 flex items-center rounded-lg border border-amber-300 bg-white overflow-hidden">
+                <input
+                  type={showBulkStaffPass ? 'text' : 'password'}
+                  value={bulkStaffPass}
+                  onChange={(e) => setBulkStaffPass(e.target.value)}
+                  placeholder="Password awal (min. 6 karakter)"
+                  className="w-full px-3 py-2 text-xs font-mono focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowBulkStaffPass((v) => !v)}
+                  className="px-2 text-slate-500 hover:text-slate-800 cursor-pointer"
+                  aria-label="Tampilkan atau sembunyikan password"
+                >
+                  {showBulkStaffPass ? (
+                    <EyeOff className="w-3.5 h-3.5" />
+                  ) : (
+                    <Eye className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setBulkStaffPass(generateStaffPassword(10));
+                  setShowBulkStaffPass(true);
+                }}
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-amber-300 bg-white hover:bg-amber-100 text-xs font-semibold text-amber-900 cursor-pointer whitespace-nowrap"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Buat Otomatis</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleApplyBulkStaffPassword}
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>Aktifkan ({unconfiguredUsers.length} Akun)</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Import Panel */}
         {showImport && (
@@ -780,6 +944,17 @@ export const StaffTeachersView: React.FC<StaffTeachersViewProps> = ({
                           </span>
                           <span className="text-slate-300">·</span>
                           <span className="font-mono text-slate-600 truncate">{u.email}</span>
+                          {isServerMode && (
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
+                                u.hasPassword === false
+                                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                  : 'bg-sky-50 text-sky-700 border-sky-200'
+                              }`}
+                            >
+                              {u.hasPassword === false ? 'Sandi Belum Diatur' : 'Sandi Aktif'}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -957,17 +1132,30 @@ export const StaffTeachersView: React.FC<StaffTeachersViewProps> = ({
                         </div>
                       </td>
                       <td className="py-3 px-3 text-center whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleActive(u)}
-                          className={`px-2.5 py-1 rounded-md border text-[11px] font-semibold cursor-pointer ${
-                            u.active
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : 'bg-slate-100 text-slate-500 border-slate-200'
-                          }`}
-                        >
-                          {u.active ? 'Aktif' : 'Nonaktif'}
-                        </button>
+                        <div className="inline-flex flex-col items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleActive(u)}
+                            className={`px-2.5 py-1 rounded-md border text-[11px] font-semibold cursor-pointer ${
+                              u.active
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-slate-100 text-slate-500 border-slate-200'
+                            }`}
+                          >
+                            {u.active ? 'Aktif' : 'Nonaktif'}
+                          </button>
+                          {isServerMode && (
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
+                                u.hasPassword === false
+                                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                  : 'bg-sky-50 text-sky-700 border-sky-200'
+                              }`}
+                            >
+                              {u.hasPassword === false ? 'Belum Diatur' : 'Sandi Aktif'}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3 px-4 text-right whitespace-nowrap">
                         <div className="inline-flex items-center gap-1.5">
@@ -1142,26 +1330,68 @@ export const StaffTeachersView: React.FC<StaffTeachersViewProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    {editingId
-                      ? 'Password Baru (Opsional)'
-                      : isCloudMode
-                        ? 'Password Server (Opsional)'
-                        : 'Password Login (min. 6)'}
-                  </label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder={
-                      editingId
-                        ? 'Kosongkan jika tidak mengubah'
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      {editingId
+                        ? 'Password Baru (Opsional)'
                         : isCloudMode
-                          ? 'Kosongkan untuk login Google'
-                          : 'Minimal 6 karakter'
-                    }
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600"
-                  />
+                          ? 'Password Server (Opsional)'
+                          : 'Password Login (min. 6)'}
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPassword(generateStaffPassword(10));
+                        setShowPassword(true);
+                        setCopiedCreds(false);
+                      }}
+                      className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>Buat Otomatis</span>
+                    </button>
+                  </div>
+                  <div className="flex items-center rounded-lg border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-indigo-600 overflow-hidden">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        setCopiedCreds(false);
+                      }}
+                      placeholder={
+                        editingId
+                          ? 'Kosongkan jika tidak mengubah'
+                          : isCloudMode
+                            ? 'Kosongkan untuk login Google'
+                            : 'Minimal 6 karakter'
+                      }
+                      className="w-full px-3 py-2 text-xs font-mono focus:outline-none"
+                    />
+                    {password.trim() && (
+                      <button
+                        type="button"
+                        onClick={handleCopyModalCredentials}
+                        className="px-2 text-slate-500 hover:text-indigo-600 cursor-pointer"
+                        title="Salin kredensial"
+                        aria-label="Salin kredensial"
+                      >
+                        {copiedCreds ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      className="px-2 text-slate-500 hover:text-slate-800 cursor-pointer"
+                      aria-label="Tampilkan atau sembunyikan password"
+                    >
+                      {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Jabatan / Role</label>

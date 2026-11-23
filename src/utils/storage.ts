@@ -59,6 +59,9 @@ export function migrateSettings(rawSettings?: Partial<SystemSettings> & { sheets
       Array.isArray(rawSettings.examTypes) && rawSettings.examTypes.length > 0
         ? rawSettings.examTypes
         : defaults.examTypes,
+    learningObjectives: Array.isArray(rawSettings.learningObjectives)
+      ? rawSettings.learningObjectives
+      : defaults.learningObjectives || [],
     academicYears:
       Array.isArray(rawSettings.academicYears) && rawSettings.academicYears.length > 0
         ? rawSettings.academicYears
@@ -73,13 +76,19 @@ export function migrateSettings(rawSettings?: Partial<SystemSettings> & { sheets
         : defaults.useWeightedAverage,
     webBrand: {
       appName: rawBrand?.appName || defaults.webBrand!.appName,
+      schoolName: rawBrand?.schoolName ?? rawTeacher.school ?? defaults.teacherProfile.school,
       tabTitle: rawBrand?.tabTitle || defaults.webBrand!.tabTitle,
+      loginTitle: rawBrand?.loginTitle ?? 'Selamat Datang',
+      loginSubtitle: rawBrand?.loginSubtitle ?? 'Masuk untuk melanjutkan',
+      loginFooterText: rawBrand?.loginFooterText ?? 'Jurnal · Presensi · Leger Nilai',
       webLogoDataUrl: rawBrand?.webLogoDataUrl || defaults.webBrand!.webLogoDataUrl,
       webLogoSize: rawBrand?.webLogoSize ?? defaults.webBrand!.webLogoSize ?? 36,
     },
     signatureStamp: {
       ...defaults.signatureStamp!,
       ...(rawSig || {}),
+      showPrincipalSigImgDefault: rawSig?.showPrincipalSigImgDefault ?? true,
+      showTeacherSigImgDefault: rawSig?.showTeacherSigImgDefault ?? true,
       // Preserve explicit empty string '' if admin deliberately removed default stamp
       stampDataUrl:
         rawSig === undefined ? defaults.signatureStamp!.stampDataUrl : rawSig.stampDataUrl ?? '',
@@ -143,6 +152,12 @@ export function migrateDatabase(raw: unknown): PortalDatabase | null {
     : [];
 
   const grades = Array.isArray(obj.grades) ? obj.grades : [];
+  const schedules = Array.isArray(obj.schedules)
+    ? obj.schedules
+    : seedFallback.schedules || [];
+  const agendas = Array.isArray(obj.agendas)
+    ? obj.agendas
+    : seedFallback.agendas || [];
 
   return {
     version: CURRENT_APP_SCHEMA_VERSION,
@@ -150,6 +165,8 @@ export function migrateDatabase(raw: unknown): PortalDatabase | null {
     students,
     journals,
     grades,
+    schedules,
+    agendas,
     users: existingUsers,
     settings: migratedSettings,
   };

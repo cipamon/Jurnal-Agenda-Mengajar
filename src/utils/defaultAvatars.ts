@@ -52,13 +52,13 @@ export function normalizePhotoUrl(raw?: string): string {
   // Google Drive: https://drive.google.com/file/d/<ID>/view...
   const driveFileMatch = clean.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/i);
   if (driveFileMatch?.[1]) {
-    return `https://lh3.googleusercontent.com/d/${driveFileMatch[1]}`;
+    return `https://drive.google.com/thumbnail?id=${driveFileMatch[1]}&sz=w1000`;
   }
 
-  // Google Drive: https://drive.google.com/open?id=<ID> or uc?id=<ID>
-  const driveIdMatch = clean.match(/drive\.google\.com\/(?:open|uc)\?[^#]*[?&]id=([a-zA-Z0-9_-]+)/i);
+  // Google Drive: https://drive.google.com/open?id=<ID> or uc?id=<ID> or thumbnail?id=<ID>
+  const driveIdMatch = clean.match(/drive\.google\.com\/(?:open|uc|thumbnail)\?[^#]*[?&]?id=([a-zA-Z0-9_-]+)/i);
   if (driveIdMatch?.[1]) {
-    return `https://lh3.googleusercontent.com/d/${driveIdMatch[1]}`;
+    return `https://drive.google.com/thumbnail?id=${driveIdMatch[1]}&sz=w1000`;
   }
 
   // Dropbox sharing link ?dl=0 -> ?raw=1
