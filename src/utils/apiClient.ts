@@ -27,6 +27,18 @@ export function setOnUnauthorizedHandler(handler: (() => void) | null): void {
   unauthorizedHandler = handler;
 }
 
+export class ApiHttpError extends Error {
+  status: number;
+  isBackendUnavailable: boolean;
+
+  constructor(message: string, status: number, isBackendUnavailable = false) {
+    super(message);
+    this.name = 'ApiHttpError';
+    this.status = status;
+    this.isBackendUnavailable = isBackendUnavailable;
+  }
+}
+
 async function apiRequest<T>(
   url: string,
   options: {
@@ -44,18 +56,29 @@ async function apiRequest<T>(
   }
   if (requireAuth) {
     if (!inMemoryBearerToken) {
-      throw new Error('Sesi server belum aktif. Silakan masuk terlebih dahulu.');
+      throw new ApiHttpError('Sesi server belum aktif. Silakan masuk terlebih dahulu.', 401, false);
     }
     headers['Authorization'] = `Bearer ${inMemoryBearerToken}`;
   }
 
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new ApiHttpError(
+      'Tidak dapat terhubung ke server backend (/api).',
+      0,
+      true
+    );
+  }
 
-  const data = (await res.json().catch(() => ({}))) as {
+  const contentType = (res.headers.get('content-type') || '').toLowerCase();
+  const isJson = contentType.includes('application/json');
+  const data = (isJson ? await res.json().catch(() => ({})) : {}) as {
     ok?: boolean;
     error?: string;
   } & T;
@@ -65,8 +88,21 @@ async function apiRequest<T>(
     if (unauthorizedHandler) unauthorizedHandler();
   }
 
+  const isGenuineApiJson = isJson && typeof data.ok === 'boolean';
+  if (!isGenuineApiJson) {
+    throw new ApiHttpError(
+      `Endpoint server (${url}) tidak tersedia pada host ini (HTTP ${res.status || 404}).`,
+      res.status || 404,
+      true
+    );
+  }
+
   if (!res.ok || data.ok === false) {
-    throw new Error(data.error || `Permintaan server gagal (HTTP ${res.status}).`);
+    throw new ApiHttpError(
+      data.error || `Permintaan server gagal (HTTP ${res.status}).`,
+      res.status,
+      res.status === 404 && !data.error
+    );
   }
 
   return data;

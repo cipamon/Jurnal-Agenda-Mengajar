@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ArrowRight,
   Check,
+  Cloud,
   Copy,
   Eye,
   EyeOff,
@@ -9,13 +10,14 @@ import {
   Lock,
   Mail,
   Moon,
+  RefreshCw,
   ShieldCheck,
   Sparkles,
   Sun,
   User,
 } from 'lucide-react';
 import { WebBrandConfig } from '../types';
-import { apiGetAuthStatus, ServerAuthStatus } from '../utils/apiClient';
+import { apiGetAuthStatus, ApiHttpError, ServerAuthStatus } from '../utils/apiClient';
 
 const LS_REMEMBERED_USERNAME = 'portal_eguru_remembered_user';
 const LS_LOGIN_THEME_DARK = 'portal_eguru_login_dark';
@@ -89,10 +91,13 @@ export const LoginView: React.FC<LoginViewProps> = ({
   academicYears,
   webBrand,
   externalError,
+  onGoogleLogin,
   onServerLogin,
   onClaimAdmin,
 }) => {
   const [authStatus, setAuthStatus] = useState<ServerAuthStatus | null>(null);
+  const [serverAvailable, setServerAvailable] = useState<boolean | null>(null);
+  const [isCheckingServer, setIsCheckingServer] = useState<boolean>(true);
   const [isDark, setIsDark] = useState<boolean>(() => {
     try {
       return localStorage.getItem(LS_LOGIN_THEME_DARK) === '1';
@@ -134,40 +139,52 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [semester, setSemester] = useState<'Ganjil' | 'Genap'>(defaultSemester);
   const [error, setError] = useState<string | null>(null);
   const [isServerLoading, setIsServerLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [logoFailed, setLogoFailed] = useState(false);
+
+  const checkServerAvailability = useCallback(async (isMountedCheck?: () => boolean) => {
+    setIsCheckingServer(true);
+    try {
+      const status = await apiGetAuthStatus();
+      if (isMountedCheck && !isMountedCheck()) return false;
+      setAuthStatus(status);
+      setServerAvailable(true);
+      if (status.academicYear) setAcademicYear(status.academicYear);
+      if (status.semester) setSemester(status.semester);
+      try {
+        const saved = localStorage.getItem(LS_REMEMBERED_USERNAME);
+        if (!saved && status.adminUsernameHint) {
+          setIdentifier(status.adminUsernameHint);
+        }
+      } catch {
+        if (status.adminUsernameHint) {
+          setIdentifier(status.adminUsernameHint);
+        }
+      }
+      return true;
+    } catch (err) {
+      if (isMountedCheck && !isMountedCheck()) return false;
+      setAuthStatus(null);
+      if (err instanceof ApiHttpError && !err.isBackendUnavailable && err.status >= 500) {
+        setServerAvailable(false);
+      } else {
+        setServerAvailable(false);
+      }
+      return false;
+    } finally {
+      if (!isMountedCheck || isMountedCheck()) {
+        setIsCheckingServer(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
-    apiGetAuthStatus()
-      .then((status) => {
-        if (!active) return;
-        setAuthStatus(status);
-        if (status.academicYear) setAcademicYear(status.academicYear);
-        if (status.semester) setSemester(status.semester);
-        try {
-          const saved = localStorage.getItem(LS_REMEMBERED_USERNAME);
-          if (!saved && status.adminUsernameHint) {
-            setIdentifier(status.adminUsernameHint);
-          }
-        } catch {
-          if (status.adminUsernameHint) {
-            setIdentifier(status.adminUsernameHint);
-          }
-        }
-      })
-      .catch(() => {
-        if (!active) return;
-        setAuthStatus({
-          ok: true,
-          adminConfigured: true,
-          envAdminManaged: false,
-          adminUsernameHint: 'admin',
-        });
-      });
+    void checkServerAvailability(() => active);
     return () => {
       active = false;
     };
-  }, []);
+  }, [checkServerAvailability]);
 
   const toggleDarkMode = () => {
     setIsDark((prev) => {
@@ -223,9 +240,36 @@ export const LoginView: React.FC<LoginViewProps> = ({
         academicYear,
         semester,
       });
-      if (err) setError(err);
+      if (err) {
+        if (
+          err.includes('HTTP 404') ||
+          err.includes('tidak tersedia pada host ini') ||
+          err.includes('Tidak dapat terhubung ke server backend')
+        ) {
+          const stillAvailable = await checkServerAvailability();
+          if (!stillAvailable) {
+            setError(
+              'Layanan server (/api) tidak aktif pada tautan pratinjau statis ini. Gunakan Masuk dengan Google (Cloud Firebase) di bawah.'
+            );
+            return;
+          }
+        }
+        setError(err);
+      }
     } finally {
       setIsServerLoading(false);
+    }
+  };
+
+  const handleGoogleSubmit = async () => {
+    if (!onGoogleLogin) return;
+    setError(null);
+    setIsGoogleLoading(true);
+    try {
+      const err = await onGoogleLogin({ academicYear, semester });
+      if (err) setError(err);
+    } finally {
+      setIsGoogleLoading(false);
     }
   };
 
@@ -258,7 +302,16 @@ export const LoginView: React.FC<LoginViewProps> = ({
         academicYear,
         semester,
       });
-      if (err) setError(err);
+      if (err) {
+        if (
+          err.includes('HTTP 404') ||
+          err.includes('tidak tersedia pada host ini') ||
+          err.includes('Tidak dapat terhubung ke server backend')
+        ) {
+          await checkServerAvailability();
+        }
+        setError(err);
+      }
     } finally {
       setIsServerLoading(false);
     }
@@ -306,7 +359,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
       ? authStatus.academicYears
       : academicYears;
   const displayError = error || externalError;
-  const needsAdminClaim = authStatus !== null && !authStatus.adminConfigured;
+  const needsAdminClaim =
+    serverAvailable === true && authStatus !== null && !authStatus.adminConfigured;
 
   // Soft frosted neumorphic surface tokens matched to light/dark modes
   const pageBgStyle: React.CSSProperties = isDark
@@ -470,7 +524,139 @@ export const LoginView: React.FC<LoginViewProps> = ({
           </div>
         )}
 
-        {needsAdminClaim ? (
+        {serverAvailable === null ? (
+          <div
+            className={`w-full px-5 py-6 rounded-2xl border flex items-center justify-center gap-3 text-sm font-medium ${
+              isDark
+                ? 'bg-slate-900/70 border-slate-700 text-slate-300'
+                : 'bg-white/75 border-white/90 text-slate-600 shadow-sm'
+            }`}
+          >
+            <div className="w-4 h-4 rounded-full border-2 border-blue-500/30 border-t-blue-600 animate-spin" />
+            <span>Memeriksa koneksi server autentikasi...</span>
+          </div>
+        ) : serverAvailable === false ? (
+          <div className="w-full space-y-4">
+            <div
+              className={`px-4 py-3.5 rounded-2xl border text-xs leading-relaxed space-y-1.5 ${
+                isDark
+                  ? 'bg-blue-950/55 border-blue-500/35 text-blue-100'
+                  : 'bg-blue-50/90 border-blue-200 text-slate-700 shadow-sm'
+              }`}
+            >
+              <div
+                className={`flex items-center gap-2 font-bold ${
+                  isDark ? 'text-blue-300' : 'text-blue-700'
+                }`}
+              >
+                <Cloud className="w-4 h-4 shrink-0" />
+                <span>Mode Cloud Preview (Firebase)</span>
+              </div>
+              <p>
+                Tautan pratinjau statis ini tidak menjalankan backend server (<code className="font-mono">/api</code>).
+                Masuk menggunakan akun Google terverifikasi untuk akses sinkronisasi Cloud Firestore, atau
+                gunakan tautan <strong>Development App URL</strong> untuk login username &amp; password server.
+              </p>
+            </div>
+
+            {/* Compact Period Selectors */}
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+              <div className={`px-3 sm:px-3.5 py-2.5 rounded-2xl ${frostedFieldClass}`}>
+                <select
+                  aria-label="Tahun Ajaran"
+                  value={academicYear}
+                  onChange={(e) => setAcademicYear(e.target.value)}
+                  className={`w-full bg-transparent text-xs font-semibold focus:outline-none cursor-pointer ${frostedInputTextClass}`}
+                >
+                  {activeYears.map((yr) => (
+                    <option
+                      key={yr}
+                      value={yr}
+                      className={isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}
+                    >
+                      TA {yr}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className={`px-3.5 py-2.5 rounded-2xl ${frostedFieldClass}`}>
+                <select
+                  aria-label="Semester"
+                  value={semester}
+                  onChange={(e) => setSemester(e.target.value as 'Ganjil' | 'Genap')}
+                  className={`w-full bg-transparent text-xs font-semibold focus:outline-none cursor-pointer ${frostedInputTextClass}`}
+                >
+                  <option
+                    value="Ganjil"
+                    className={isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}
+                  >
+                    Semester Ganjil
+                  </option>
+                  <option
+                    value="Genap"
+                    className={isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}
+                  >
+                    Semester Genap
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            {onGoogleLogin && (
+              <button
+                type="button"
+                disabled={isGoogleLoading}
+                onClick={handleGoogleSubmit}
+                style={{
+                  background: 'linear-gradient(95deg, #217bfe 0%, #1d5ef2 55%, #3f3be6 100%)',
+                }}
+                className="relative w-full flex items-center justify-center gap-3 py-3.5 px-6 rounded-full text-white text-sm sm:text-base font-bold shadow-[0_14px_28px_-6px_rgba(37,99,235,0.55),inset_0_1px_1px_rgba(255,255,255,0.35)] hover:brightness-105 active:scale-[0.99] disabled:opacity-60 transition-all duration-150 cursor-pointer whitespace-nowrap"
+              >
+                <span className="w-6 h-6 rounded-full bg-white flex items-center justify-center shrink-0 shadow-sm">
+                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" aria-hidden="true">
+                    <path
+                      fill="#4285F4"
+                      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24Z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14Z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96Z"
+                    />
+                  </svg>
+                </span>
+                <span>{isGoogleLoading ? 'Menghubungkan Google...' : 'Masuk dengan Google'}</span>
+                <span className="absolute right-2.5 w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                  <ArrowRight className="w-4 h-4 text-white" />
+                </span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              disabled={isCheckingServer}
+              onClick={() => {
+                setError(null);
+                void checkServerAvailability();
+              }}
+              className={`w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-semibold border transition-colors cursor-pointer disabled:opacity-60 ${
+                isDark
+                  ? 'bg-slate-900/60 border-slate-700 text-slate-300 hover:text-white'
+                  : 'bg-white/75 border-white/90 text-slate-600 hover:text-slate-900 shadow-sm'
+              }`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isCheckingServer ? 'animate-spin' : ''}`} />
+              <span>{isCheckingServer ? 'Memeriksa server...' : 'Coba Hubungkan Ulang Server (/api)'}</span>
+            </button>
+          </div>
+        ) : needsAdminClaim ? (
           <form onSubmit={handleClaimAdminSubmit} className="w-full space-y-4">
             <p
               className={`text-xs leading-relaxed text-center px-2 ${
@@ -901,12 +1087,21 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
             {showForgotHelp && (
               <div
-                className={`px-4 py-3 rounded-2xl text-xs leading-relaxed space-y-2 ${
+                className={`px-4 py-3 rounded-2xl text-xs leading-relaxed space-y-2.5 ${
                   isDark
                     ? 'bg-slate-900/80 border border-slate-700 text-slate-300'
                     : 'bg-white/85 border border-slate-200/90 text-slate-600'
                 }`}
               >
+                {authStatus?.envAdminManaged && (
+                  <p className={isDark ? 'text-amber-300' : 'text-amber-800'}>
+                    <strong>Catatan Admin:</strong> Akun{' '}
+                    <code className="font-mono font-semibold">{authStatus.adminUsernameHint}</code>{' '}
+                    menggunakan sandi dari Secret <code className="font-mono">ADMIN_PASSWORD</code>.
+                    Akun lain (<code className="font-mono">guru</code>–<code className="font-mono">staff</code>)
+                    aktif setelah Admin menetapkan passwordnya di menu <strong>Admin &amp; Pengguna</strong>.
+                  </p>
+                )}
                 <p>
                   Pilih username di bawah untuk mengisi kolom masuk (password dikelola oleh{' '}
                   <strong className={isDark ? 'text-white' : 'text-slate-900'}>Admin Sistem</strong>{' '}
@@ -931,6 +1126,31 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     </button>
                   ))}
                 </div>
+                {onGoogleLogin && (
+                  <div
+                    className={`pt-2 border-t ${
+                      isDark ? 'border-slate-700/70' : 'border-slate-200/80'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      disabled={isGoogleLoading}
+                      onClick={handleGoogleSubmit}
+                      className={`w-full py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition-colors disabled:opacity-60 ${
+                        isDark
+                          ? 'bg-slate-800 border-slate-700 text-blue-300 hover:bg-slate-700'
+                          : 'bg-blue-50/80 border-blue-200 text-blue-700 hover:bg-blue-100'
+                      }`}
+                    >
+                      <Cloud className="w-3.5 h-3.5" />
+                      <span>
+                        {isGoogleLoading
+                          ? 'Menghubungkan Google...'
+                          : 'Atau Masuk dengan Google (Firebase Cloud)'}
+                      </span>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 

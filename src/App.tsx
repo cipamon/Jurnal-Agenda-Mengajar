@@ -378,9 +378,26 @@ export default function App() {
     }
   }, [db, session, activeMenu]);
 
-  const handleGoogleLogin = async (): Promise<string | null> => {
+  const handleGoogleLogin = async (payload?: {
+    academicYear: string;
+    semester: 'Ganjil' | 'Genap';
+  }): Promise<string | null> => {
     setCloudAuthError(null);
     setApiAuthToken(null);
+    if (payload && dbRef.current) {
+      const validYear =
+        payload.academicYear && dbRef.current.settings.academicYears.includes(payload.academicYear);
+      if (validYear || payload.semester) {
+        dbRef.current = {
+          ...dbRef.current,
+          settings: {
+            ...dbRef.current.settings,
+            ...(validYear ? { academicYear: payload.academicYear } : {}),
+            ...(payload.semester ? { semester: payload.semester } : {}),
+          },
+        };
+      }
+    }
     try {
       const cred = await signInWithPopup(auth, googleProvider);
       const fbUser = cred.user;
