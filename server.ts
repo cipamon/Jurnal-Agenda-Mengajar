@@ -23,7 +23,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT) || 3000;
-const DATA_DIR = path.resolve(__dirname, '.data');
+const IS_VERCEL = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+const BUNDLED_DATA_DIR = path.resolve(__dirname, '.data');
+const DATA_DIR = process.env.PORTAL_DATA_DIR
+  ? path.resolve(process.env.PORTAL_DATA_DIR)
+  : IS_VERCEL
+    ? path.resolve('/tmp', 'portal-eguru-data')
+    : BUNDLED_DATA_DIR;
 
 // Ephemeral in-memory fallback signing key when SESSION_SECRET env var is unset
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -364,7 +370,19 @@ function loadWorkspaceStore(): WorkspaceStore {
     }
   }
 
-  const initialSource = readLegacyDatabaseIfAvailable() || createSeedDatabase();
+  let bundledSource: PortalDatabase | null = null;
+  if (IS_VERCEL) {
+    try {
+      const bundledWsFile = path.resolve(BUNDLED_DATA_DIR, 'workspace.json');
+      if (fs.existsSync(bundledWsFile)) {
+        bundledSource = migrateDatabase(JSON.parse(fs.readFileSync(bundledWsFile, 'utf-8')));
+      }
+    } catch {
+      bundledSource = null;
+    }
+  }
+
+  const initialSource = bundledSource || readLegacyDatabaseIfAvailable() || createSeedDatabase();
   const initialStore: WorkspaceStore = {
     version: CURRENT_APP_SCHEMA_VERSION,
     lastSyncedAt: initialSource.lastSyncedAt || new Date().toISOString(),
@@ -521,11 +539,13 @@ function requireRoles(allowed: UserRole[]) {
   };
 }
 
-async function startServer() {
+export async function createApiApp(): Promise<express.Express> {
   // Ensure initial stores exist cleanly at startup and create boot backup snapshot
   loadWorkspaceStore();
   loadUsersStore();
-  createServerBackupSnapshot('boot');
+  if (!IS_VERCEL) {
+    createServerBackupSnapshot('boot');
+  }
 
   const app = express();
   app.use(express.json({ limit: '20mb' }));
@@ -533,7 +553,7 @@ async function startServer() {
   app.get('/api/health', (_req, res) => {
     res.json({
       ok: true,
-      mode: 'fullstack',
+      mode: IS_VERCEL ? 'vercel-serverless' : 'fullstack',
       service: 'Portal E-Guru v10.3',
       timestamp: new Date().toISOString(),
     });
@@ -548,6 +568,7 @@ async function startServer() {
       ok: true,
       adminConfigured: envAdmin.enabled || usersStore.adminClaimed,
       envAdminManaged: envAdmin.enabled,
+      ephemeralStorage: Boolean(IS_VERCEL && !process.env.PORTAL_DATA_DIR),
       adminUsernameHint: envAdmin.enabled
         ? envAdmin.username
         : primaryAdmin?.username || 'admin',
@@ -1902,6 +1923,12 @@ async function startServer() {
     res.status(404).json({ ok: false, error: 'Endpoint API tidak ditemukan.' });
   });
 
+  return app;
+}
+
+async function startStandaloneServer() {
+  const app = await createApiApp();
+
   const hasDistIndex = fs.existsSync(path.resolve(__dirname, 'dist', 'index.html'));
   const isDevMode =
     process.argv.includes('--dev') ||
@@ -1910,7 +1937,8 @@ async function startServer() {
       !hasDistIndex);
 
   if (isDevMode) {
-    const { createServer: createViteServer } = await import('vite');
+    const viteModule = 'vite';
+    const { createServer: createViteServer } = (await import(viteModule)) as typeof import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true, hmr: process.env.DISABLE_HMR !== 'true' },
       appType: 'spa',
@@ -1929,4 +1957,15 @@ async function startServer() {
   });
 }
 
-startServer();
+let isDirectMain = false;
+try {
+  if (!IS_VERCEL && process.argv[1]) {
+    isDirectMain = fs.realpathSync(path.resolve(process.argv[1])) === fs.realpathSync(__filename);
+  }
+} catch {
+  isDirectMain = false;
+}
+
+if (isDirectMain) {
+  void startStandaloneServer();
+}

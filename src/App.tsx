@@ -420,7 +420,15 @@ export default function App() {
       return null;
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Login Google dibatalkan atau gagal.';
-      if (msg.includes('popup-closed-by-user')) {
+      if (msg.includes('auth/unauthorized-domain')) {
+        const currentHost =
+          typeof window !== 'undefined' ? window.location.hostname : 'domain ini';
+        return `Domain "${currentHost}" belum terdaftar di Firebase Authorized Domains. Tambahkan "${currentHost}" pada Firebase Console → Authentication → Settings → Authorized domains.`;
+      }
+      if (msg.includes('auth/popup-blocked')) {
+        return 'Pop-up login Google diblokir oleh browser. Izinkan pop-up untuk situs ini lalu coba lagi.';
+      }
+      if (msg.includes('popup-closed-by-user') || msg.includes('cancelled-popup-request')) {
         return 'Jendela login Google ditutup sebelum selesai.';
       }
       return msg;

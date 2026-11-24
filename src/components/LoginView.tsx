@@ -550,12 +550,12 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 }`}
               >
                 <Cloud className="w-4 h-4 shrink-0" />
-                <span>Mode Cloud Preview (Firebase)</span>
+                <span>Login Cloud Firebase (Firestore)</span>
               </div>
               <p>
-                Tautan pratinjau statis ini tidak menjalankan backend server (<code className="font-mono">/api</code>).
-                Masuk menggunakan akun Google terverifikasi untuk akses sinkronisasi Cloud Firestore, atau
-                gunakan tautan <strong>Development App URL</strong> untuk login username &amp; password server.
+                Host ini tidak menjalankan endpoint server <code className="font-mono">/api</code>.
+                Masuk menggunakan akun Google terdaftar untuk akses sinkronisasi Cloud Firestore
+                secara real-time, atau periksa kembali koneksi server API di bawah.
               </p>
             </div>
 
@@ -940,7 +940,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
             </div>
 
             {/* Primary Blue CTA */}
-            <div className="pt-2">
+            <div className="pt-2 space-y-2.5">
               <button
                 type="submit"
                 disabled={isServerLoading}
@@ -954,7 +954,38 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   <ArrowRight className="w-4 h-4 text-white" />
                 </span>
               </button>
+
+              {onGoogleLogin && (
+                <button
+                  type="button"
+                  disabled={isGoogleLoading}
+                  onClick={handleGoogleSubmit}
+                  className={`w-full py-2.5 px-4 rounded-full border text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition-colors disabled:opacity-60 ${
+                    isDark
+                      ? 'bg-slate-900/70 border-slate-700 text-blue-300 hover:bg-slate-800'
+                      : 'bg-white/80 border-white/95 text-slate-700 hover:text-blue-700 shadow-sm'
+                  }`}
+                >
+                  <Cloud className="w-3.5 h-3.5 text-blue-600" />
+                  <span>
+                    {isGoogleLoading
+                      ? 'Menghubungkan Google...'
+                      : 'Atau Masuk dengan Google (Cloud Firestore)'}
+                  </span>
+                </button>
+              )}
             </div>
+
+            {authStatus?.ephemeralStorage && (
+              <p
+                className={`text-[11px] leading-relaxed text-center px-2 ${
+                  isDark ? 'text-amber-300/90' : 'text-amber-800'
+                }`}
+              >
+                Hosting serverless aktif: untuk penyimpanan permanen lintas sesi disarankan login
+                dengan Google (Cloud Firestore) atau rutin mengunduh cadangan JSON di Pengaturan.
+              </p>
+            )}
           </form>
         ) : (
           <form onSubmit={handleServerSubmit} className="w-full space-y-4">
@@ -1154,8 +1185,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
               </div>
             )}
 
-            {/* Signature Blue Gradient Pill Login Button */}
-            <div className="pt-2">
+            {/* Primary Blue CTA */}
+            <div className="pt-2 space-y-2.5">
               <button
                 type="submit"
                 disabled={isServerLoading}
@@ -1169,7 +1200,38 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   <ArrowRight className="w-4 h-4 text-white" />
                 </span>
               </button>
+
+              {onGoogleLogin && (
+                <button
+                  type="button"
+                  disabled={isGoogleLoading}
+                  onClick={handleGoogleSubmit}
+                  className={`w-full py-2.5 px-4 rounded-full border text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition-colors disabled:opacity-60 ${
+                    isDark
+                      ? 'bg-slate-900/70 border-slate-700 text-blue-300 hover:bg-slate-800'
+                      : 'bg-white/80 border-white/95 text-slate-700 hover:text-blue-700 shadow-sm'
+                  }`}
+                >
+                  <Cloud className="w-3.5 h-3.5 text-blue-600" />
+                  <span>
+                    {isGoogleLoading
+                      ? 'Menghubungkan Google...'
+                      : 'Atau Masuk dengan Google (Cloud Firestore)'}
+                  </span>
+                </button>
+              )}
             </div>
+
+            {authStatus?.ephemeralStorage && (
+              <p
+                className={`text-[11px] leading-relaxed text-center px-2 ${
+                  isDark ? 'text-amber-300/90' : 'text-amber-800'
+                }`}
+              >
+                Hosting serverless aktif: untuk penyimpanan permanen lintas sesi disarankan login
+                dengan Google (Cloud Firestore) atau rutin mengunduh cadangan JSON di Pengaturan.
+              </p>
+            )}
           </form>
         )}
 
