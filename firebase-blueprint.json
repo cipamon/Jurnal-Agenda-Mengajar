@@ -64,6 +64,9 @@
           "type": "string",
           "enum": ["portrait", "landscape"]
         },
+        "reportPageLayouts": {
+          "type": "object"
+        },
         "lockReportFormat": {
           "type": "boolean"
         },

@@ -528,12 +528,17 @@
 
 /* Protect Official Paper Previews from Theme & Neomorphic Overrides */
 .eguru-paper-preview,
-#official-print-sheet,
 #student-individual-print-sheet {
   background-color: #ffffff !important;
   color: #020617 !important;
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14) !important;
   border-radius: 0.25rem !important;
+}
+
+.eguru-print-page {
+  background-color: #ffffff !important;
+  color: #020617 !important;
+  box-sizing: border-box;
 }
 
 /* Custom subtle scrollbars for long tables */
@@ -572,6 +577,44 @@
     margin: 12mm;
   }
 
+  @page pg_a4_portrait {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+  @page pg_a4_landscape {
+    size: A4 landscape;
+    margin: 12mm;
+  }
+  @page pg_f4_portrait {
+    size: 215mm 330mm;
+    margin: 12mm;
+  }
+  @page pg_f4_landscape {
+    size: 330mm 215mm;
+    margin: 12mm;
+  }
+  @page pg_letter_portrait {
+    size: letter portrait;
+    margin: 12mm;
+  }
+  @page pg_letter_landscape {
+    size: letter landscape;
+    margin: 12mm;
+  }
+  @page pg_legal_portrait {
+    size: legal portrait;
+    margin: 12mm;
+  }
+  @page pg_legal_landscape {
+    size: legal landscape;
+    margin: 12mm;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
   body,
   .eguru-app-shell {
     background: #ffffff !important;
@@ -595,8 +638,22 @@
     color: #000000 !important;
   }
 
+  .eguru-print-page {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
+  .eguru-print-page-break,
+  .eguru-print-page + .eguru-print-page,
   .print-page-break {
-    page-break-before: always;
+    break-before: page !important;
+    page-break-before: always !important;
   }
 
   table {
@@ -604,6 +661,7 @@
   }
 
   tr {
+    break-inside: avoid;
     page-break-inside: avoid;
     page-break-after: auto;
   }

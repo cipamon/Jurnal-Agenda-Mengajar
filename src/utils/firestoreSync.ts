@@ -304,6 +304,7 @@ function buildSettingsPayload(slimSettings: SystemSettings, uid: string) {
     reportFontFamily: slimSettings.reportFontFamily || 'Times New Roman',
     reportPaperSize: slimSettings.reportPaperSize || 'A4',
     reportOrientation: slimSettings.reportOrientation === 'portrait' ? 'portrait' : 'landscape',
+    reportPageLayouts: stripUndefinedDeep(slimSettings.reportPageLayouts || {}),
     lockReportFormat: slimSettings.lockReportFormat !== undefined ? Boolean(slimSettings.lockReportFormat) : true,
     signatureStamp: stripUndefinedDeep(slimSettings.signatureStamp || {}),
     webBrand: stripUndefinedDeep(slimSettings.webBrand || {}),
@@ -670,6 +671,21 @@ export async function fsInitializeDatabaseOnce(
   uid: string
 ): Promise<void> {
   const { slimSettings, assets } = extractSettingsAndAssets(sourceDb.settings);
+  if (slimSettings.signatureStamp?.extraRows && slimSettings.signatureStamp.extraRows.length > 0) {
+    slimSettings.signatureStamp.extraRows = await Promise.all(
+      slimSettings.signatureStamp.extraRows.map(async (row) => ({
+        ...row,
+        signers: await Promise.all(
+          row.signers.map(async (signer) => ({
+            ...signer,
+            signatureDataUrl: signer.signatureDataUrl
+              ? await shrinkDataUrlIfNeeded(signer.signatureDataUrl, 85000)
+              : '',
+          }))
+        ),
+      }))
+    );
+  }
   const phase1Ops: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
 
   // 1. Settings
@@ -1108,6 +1124,21 @@ export async function fsSaveSettings(nextSettings: SystemSettings): Promise<void
     throw new Error('Sesi Firebase belum aktif. Silakan masuk ulang dengan akun Google Admin.');
   }
   const { slimSettings, assets } = extractSettingsAndAssets(nextSettings);
+  if (slimSettings.signatureStamp?.extraRows && slimSettings.signatureStamp.extraRows.length > 0) {
+    slimSettings.signatureStamp.extraRows = await Promise.all(
+      slimSettings.signatureStamp.extraRows.map(async (row) => ({
+        ...row,
+        signers: await Promise.all(
+          row.signers.map(async (signer) => ({
+            ...signer,
+            signatureDataUrl: signer.signatureDataUrl
+              ? await shrinkDataUrlIfNeeded(signer.signatureDataUrl, 85000)
+              : '',
+          }))
+        ),
+      }))
+    );
+  }
   const ops: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
 
   ops.push((batch) => {

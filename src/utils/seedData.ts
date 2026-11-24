@@ -24,6 +24,7 @@ export function createDefaultSettings(overrides?: Partial<SystemSettings>): Syst
     reportFontFamily: 'Times New Roman',
     reportPaperSize: 'A4',
     reportOrientation: 'landscape',
+    reportPageLayouts: {},
     lockReportFormat: true,
     signatureStamp: {
       principalSignatureDataUrl: '',
@@ -43,6 +44,7 @@ export function createDefaultSettings(overrides?: Partial<SystemSettings>): Syst
       teacherBlockOffsetX: 0,
       teacherBlockOffsetY: 0,
       stampTarget: 'principal',
+      extraRows: [],
     },
     webBrand: {
       appName: 'Portal E-Guru v10.2',

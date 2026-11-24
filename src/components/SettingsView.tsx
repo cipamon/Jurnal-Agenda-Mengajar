@@ -31,7 +31,11 @@ import {
   PaperSize,
   PortalDatabase,
   PrintFontFamily,
+  ReportPageLayoutsMap,
   ServerBackupMeta,
+  SignatureExtraRow,
+  SignatureExtraSigner,
+  SingleReportType,
   SystemSettings,
   ThemeId,
 } from '../types';
@@ -49,6 +53,8 @@ import {
   DEFAULT_TEACHER_TTD,
 } from '../utils/defaultLogos';
 import {
+  ALL_SINGLE_REPORT_META,
+  generateId,
   getPaperSizeMeta,
   getPrintFontCss,
   normalizeKopSurat,
@@ -57,6 +63,7 @@ import {
   PAPER_SIZE_OPTIONS,
   PRINT_FONT_OPTIONS,
   PX_TO_MM,
+  resolveReportPageLayout,
   THEME_PRESETS,
 } from '../utils/helpers';
 import { migrateDatabase } from '../utils/storage';
@@ -452,6 +459,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       reportFontFamily: s.reportFontFamily || 'Times New Roman',
       reportPaperSize: s.reportPaperSize || 'A4',
       reportOrientation: s.reportOrientation || 'landscape',
+      reportPageLayouts: s.reportPageLayouts || {},
       lockReportFormat: s.lockReportFormat ?? true,
     });
   const prevSavedFormatRef = useRef<string>(getFormatSignature(settings));
@@ -511,6 +519,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         reportFontFamily: hasUnsavedFormat ? prev.reportFontFamily : result.reportFontFamily,
         reportPaperSize: hasUnsavedFormat ? prev.reportPaperSize : result.reportPaperSize,
         reportOrientation: hasUnsavedFormat ? prev.reportOrientation : result.reportOrientation,
+        reportPageLayouts: hasUnsavedFormat ? prev.reportPageLayouts : result.reportPageLayouts,
         lockReportFormat: hasUnsavedFormat ? prev.lockReportFormat : result.lockReportFormat,
       };
     });
@@ -556,6 +565,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         reportFontFamily: targetFont,
         reportPaperSize: draft.reportPaperSize || 'A4',
         reportOrientation: draft.reportOrientation || 'landscape',
+        reportPageLayouts: draft.reportPageLayouts || {},
         lockReportFormat: shouldLockFormat,
         kopSurat: nextKop,
       };
@@ -569,8 +579,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setIsFormatLockedUi(true);
       onNotify(
         shouldLockFormat
-          ? 'Standar jenis huruf & kertas berhasil disimpan dan langsung dikunci untuk semua akun.'
-          : 'Standar jenis huruf & kertas berhasil disimpan dalam Mode Fleksibel (akun lain dapat menyesuaikan saat mencetak).'
+          ? 'Standar jenis huruf & kertas per halaman berhasil disimpan dan langsung dikunci untuk semua akun.'
+          : 'Standar jenis huruf & kertas per halaman berhasil disimpan dalam Mode Fleksibel.'
       );
     } finally {
       setIsSavingFormat(false);
@@ -583,6 +593,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       reportFontFamily: settings.reportFontFamily || 'Times New Roman',
       reportPaperSize: settings.reportPaperSize || 'A4',
       reportOrientation: settings.reportOrientation || 'landscape',
+      reportPageLayouts: settings.reportPageLayouts || {},
       lockReportFormat: settings.lockReportFormat ?? true,
     }));
     setIsFormatLockedUi(true);
@@ -1348,6 +1359,149 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </span>
                 </span>
               </label>
+            </div>
+          </div>
+
+          <div className="pt-3 border-t border-slate-100 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-bold text-slate-900">
+                  Pengaturan Kertas &amp; Orientasi per Halaman / Jenis Laporan
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  Atur Portrait atau Landscape serta ukuran kertas secara khusus untuk setiap jenis laporan (berlaku pada Pratinjau, Cetak, PDF &amp; Word).
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={isFormatLockedUi}
+                  onClick={() => {
+                    const nextMap: ReportPageLayoutsMap = {};
+                    ALL_SINGLE_REPORT_META.forEach((m) => {
+                      nextMap[m.id] = {
+                        ...(draft.reportPageLayouts?.[m.id]?.paperSize
+                          ? { paperSize: draft.reportPageLayouts[m.id]!.paperSize }
+                          : {}),
+                        orientation: 'portrait',
+                      };
+                    });
+                    setDraft({ ...draft, reportPageLayouts: nextMap });
+                  }}
+                  className="px-2.5 py-1 rounded-md border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-[11px] font-semibold text-slate-700 cursor-pointer"
+                >
+                  Semua Portrait
+                </button>
+                <button
+                  type="button"
+                  disabled={isFormatLockedUi}
+                  onClick={() => {
+                    const nextMap: ReportPageLayoutsMap = {};
+                    ALL_SINGLE_REPORT_META.forEach((m) => {
+                      nextMap[m.id] = {
+                        ...(draft.reportPageLayouts?.[m.id]?.paperSize
+                          ? { paperSize: draft.reportPageLayouts[m.id]!.paperSize }
+                          : {}),
+                        orientation: 'landscape',
+                      };
+                    });
+                    setDraft({ ...draft, reportPageLayouts: nextMap });
+                  }}
+                  className="px-2.5 py-1 rounded-md border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-[11px] font-semibold text-slate-700 cursor-pointer"
+                >
+                  Semua Landscape
+                </button>
+                <button
+                  type="button"
+                  disabled={isFormatLockedUi}
+                  onClick={() => setDraft({ ...draft, reportPageLayouts: {} })}
+                  className="px-2.5 py-1 rounded-md border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed text-[11px] font-semibold text-indigo-700 cursor-pointer"
+                >
+                  Ikuti Standar Semua
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
+              {ALL_SINGLE_REPORT_META.map((rep) => {
+                const savedEntry = draft.reportPageLayouts?.[rep.id];
+                const resolved = resolveReportPageLayout(draft, rep.id);
+                const explicitSize = savedEntry?.paperSize || '';
+
+                const updateEntry = (patch: { paperSize?: PaperSize | ''; orientation?: PaperOrientation }) => {
+                  const currentLayouts = { ...(draft.reportPageLayouts || {}) };
+                  const nextOrient: PaperOrientation = patch.orientation || resolved.orientation;
+                  const nextSize: PaperSize | undefined =
+                    patch.paperSize !== undefined
+                      ? patch.paperSize || undefined
+                      : savedEntry?.paperSize;
+                  currentLayouts[rep.id] = nextSize
+                    ? { paperSize: nextSize, orientation: nextOrient }
+                    : { orientation: nextOrient };
+                  setDraft({ ...draft, reportPageLayouts: currentLayouts });
+                };
+
+                return (
+                  <div
+                    key={rep.id}
+                    className={`p-2.5 rounded-lg border flex flex-col justify-between gap-2 ${
+                      savedEntry
+                        ? 'border-indigo-200 bg-indigo-50/40'
+                        : 'border-slate-200 bg-slate-50/60'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold text-slate-800 leading-tight">
+                        {rep.label}
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-500 shrink-0">
+                        {resolved.paperSize} · {resolved.orientation === 'landscape' ? 'L' : 'P'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        disabled={isFormatLockedUi}
+                        value={explicitSize}
+                        onChange={(e) => updateEntry({ paperSize: e.target.value as PaperSize | '' })}
+                        className="flex-1 min-w-0 px-2 py-1 text-[11px] rounded border border-slate-300 bg-white disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed font-medium"
+                      >
+                        <option value="">Standar ({draft.reportPaperSize || 'A4'})</option>
+                        {PAPER_SIZE_OPTIONS.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.id}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="inline-flex rounded border border-slate-300 overflow-hidden bg-white shrink-0">
+                        <button
+                          type="button"
+                          disabled={isFormatLockedUi}
+                          onClick={() => updateEntry({ orientation: 'portrait' })}
+                          className={`px-2 py-1 text-[10px] font-bold cursor-pointer disabled:cursor-not-allowed ${
+                            resolved.orientation === 'portrait'
+                              ? 'bg-indigo-600 text-white'
+                              : 'text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          Portrait
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isFormatLockedUi}
+                          onClick={() => updateEntry({ orientation: 'landscape' })}
+                          className={`px-2 py-1 text-[10px] font-bold cursor-pointer disabled:cursor-not-allowed border-l border-slate-300 ${
+                            resolved.orientation === 'landscape'
+                              ? 'bg-indigo-600 text-white'
+                              : 'text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          Landscape
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -2766,7 +2920,304 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     </div>
                   </div>
                 </div>
+
+                {/* Live Preview Baris Tanda Tangan Tambahan */}
+                {sigStamp.extraRows.length > 0 && (
+                  <div
+                    style={{ fontFamily: getPrintFontCss(activeFont) }}
+                    className="min-w-[540px] sm:min-w-0 px-6 pb-6 space-y-5 bg-white text-xs text-slate-950 border-t border-dashed border-slate-200 pt-5"
+                  >
+                    {sigStamp.extraRows.map((row) => (
+                      <div
+                        key={row.id}
+                        className={`grid gap-6 ${
+                          row.signers.length === 1
+                            ? 'grid-cols-1 max-w-xs mx-auto text-center'
+                            : row.signers.length === 2
+                              ? 'grid-cols-2'
+                              : 'grid-cols-3'
+                        }`}
+                      >
+                        {row.signers.map((signer) => (
+                          <div key={signer.id} className={row.signers.length === 1 ? '' : 'pl-2'}>
+                            {signer.topLabel ? <p>{signer.topLabel}</p> : <p className="opacity-0 select-none">&nbsp;</p>}
+                            <p>{signer.title || 'Jabatan Penandatangan,'}</p>
+                            <div
+                              className={`h-[70px] flex items-center ${
+                                row.signers.length === 1 ? 'justify-center' : 'justify-start'
+                              }`}
+                            >
+                              {signer.signatureDataUrl ? (
+                                <img
+                                  src={signer.signatureDataUrl}
+                                  alt={signer.name || signer.title}
+                                  style={{ height: signer.signatureSize || 52 }}
+                                  className="object-contain max-w-full"
+                                />
+                              ) : null}
+                            </div>
+                            <p className="font-bold underline">{signer.name || 'Nama Penandatangan'}</p>
+                            {signer.nip ? (
+                              <p>
+                                {signer.nipLabel ? `${signer.nipLabel} ` : ''}
+                                {signer.nip}
+                              </p>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 </div>
+              </div>
+
+              {/* Editor Baris Tanda Tangan Tambahan (+ Tambah Baris) */}
+              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-bold text-slate-900">
+                      Baris Tanda Tangan Tambahan (Multi-Baris)
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      Tambahkan baris pengesahan ekstra di bawah Kepala Sekolah &amp; Guru (misal: Wali Kelas, Guru BK, Waka Kurikulum, atau Orang Tua).
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newRow: SignatureExtraRow = {
+                        id: generateId('sigrow'),
+                        signers: [
+                          {
+                            id: generateId('sig'),
+                            topLabel: 'Menyetujui,',
+                            title: 'Wakil Kepala Sekolah Bidang Kurikulum,',
+                            name: 'Nama Pejabat Kurikulum',
+                            nipLabel: 'NIP.',
+                            nip: '-',
+                            signatureDataUrl: '',
+                            signatureSize: 52,
+                          },
+                        ],
+                      };
+                      updateSigStamp({ extraRows: [...sigStamp.extraRows, newRow] });
+                      onNotify('Baris tanda tangan tambahan baru ditambahkan.');
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Tambah Baris Tanda Tangan</span>
+                  </button>
+                </div>
+
+                {sigStamp.extraRows.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic">
+                    Belum ada baris tanda tangan tambahan. Klik &ldquo;Tambah Baris Tanda Tangan&rdquo; bila dokumen membutuhkan baris pengesahan ke-2, ke-3, dan seterusnya.
+                  </p>
+                ) : (
+                  <div className="space-y-4">
+                    {sigStamp.extraRows.map((row, rowIdx) => {
+                      const updateRow = (nextSigners: SignatureExtraSigner[]) => {
+                        const nextRows = sigStamp.extraRows.map((r) =>
+                          r.id === row.id ? { ...r, signers: nextSigners } : r
+                        );
+                        updateSigStamp({ extraRows: nextRows });
+                      };
+
+                      const handleExtraSignerFile = (signerId: string, file?: File) => {
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          if (typeof reader.result === 'string') {
+                            updateRow(
+                              row.signers.map((s) =>
+                                s.id === signerId ? { ...s, signatureDataUrl: reader.result as string } : s
+                              )
+                            );
+                            onNotify('TTD penandatangan tambahan berhasil diunggah.');
+                          }
+                        };
+                        reader.readAsDataURL(file);
+                      };
+
+                      return (
+                        <div
+                          key={row.id}
+                          className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-3"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                            <span className="text-xs font-bold text-slate-900">
+                              Baris Tambahan #{rowIdx + 1} ({row.signers.length} kolom penandatangan)
+                            </span>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {row.signers.length < 3 && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateRow([
+                                      ...row.signers,
+                                      {
+                                        id: generateId('sig'),
+                                        topLabel: '',
+                                        title: 'Wali Kelas,',
+                                        name: 'Nama Penandatangan',
+                                        nipLabel: 'NIP.',
+                                        nip: '-',
+                                        signatureDataUrl: '',
+                                        signatureSize: 52,
+                                      },
+                                    ])
+                                  }
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-[11px] font-semibold text-indigo-700 cursor-pointer"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                  <span>Tambah Kolom (Maks 3)</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  updateSigStamp({
+                                    extraRows: sigStamp.extraRows.filter((r) => r.id !== row.id),
+                                  });
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-rose-200 bg-rose-50 hover:bg-rose-100 text-[11px] font-semibold text-rose-700 cursor-pointer"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Hapus Baris</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          <div
+                            className={`grid grid-cols-1 gap-3 ${
+                              row.signers.length === 1
+                                ? 'md:grid-cols-1 max-w-lg'
+                                : row.signers.length === 2
+                                  ? 'md:grid-cols-2'
+                                  : 'md:grid-cols-3'
+                            }`}
+                          >
+                            {row.signers.map((signer, sIdx) => {
+                              const patchSigner = (patch: Partial<SignatureExtraSigner>) => {
+                                updateRow(
+                                  row.signers.map((s) => (s.id === signer.id ? { ...s, ...patch } : s))
+                                );
+                              };
+
+                              return (
+                                <div
+                                  key={signer.id}
+                                  className="p-3 rounded-lg border border-slate-200 bg-slate-50/70 space-y-2"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[11px] font-bold text-slate-700">
+                                      Kolom #{sIdx + 1}
+                                    </span>
+                                    {row.signers.length > 1 && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          updateRow(row.signers.filter((s) => s.id !== signer.id))
+                                        }
+                                        className="text-[11px] font-semibold text-rose-600 hover:underline cursor-pointer"
+                                      >
+                                        Hapus Kolom
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <input
+                                      type="text"
+                                      value={signer.topLabel || ''}
+                                      onChange={(e) => patchSigner({ topLabel: e.target.value })}
+                                      placeholder="Baris atas (opsional, mis. Mengetahui,)"
+                                      className="px-2.5 py-1.5 text-[11px] rounded border border-slate-300 bg-white"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={signer.title}
+                                      onChange={(e) => patchSigner({ title: e.target.value })}
+                                      placeholder="Jabatan (mis. Wali Kelas,)"
+                                      className="px-2.5 py-1.5 text-[11px] rounded border border-slate-300 bg-white"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={signer.name}
+                                      onChange={(e) => patchSigner({ name: e.target.value })}
+                                      placeholder="Nama lengkap & gelar"
+                                      className="sm:col-span-2 px-2.5 py-1.5 text-[11px] font-semibold rounded border border-slate-300 bg-white"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={signer.nipLabel ?? 'NIP.'}
+                                      onChange={(e) => patchSigner({ nipLabel: e.target.value })}
+                                      placeholder="Label (NIP. / NUPTK.)"
+                                      className="px-2.5 py-1.5 text-[11px] rounded border border-slate-300 bg-white"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={signer.nip || ''}
+                                      onChange={(e) => patchSigner({ nip: e.target.value })}
+                                      placeholder="Nomor NIP / Identitas"
+                                      className="px-2.5 py-1.5 text-[11px] rounded border border-slate-300 bg-white"
+                                    />
+                                  </div>
+
+                                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-slate-200/80">
+                                    <div className="flex items-center gap-1.5">
+                                      <label className="inline-flex items-center gap-1 px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-semibold cursor-pointer">
+                                        <ImagePlus className="w-3 h-3" />
+                                        <span>Unggah TTD</span>
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          onChange={(e) =>
+                                            handleExtraSignerFile(signer.id, e.target.files?.[0])
+                                          }
+                                          className="hidden"
+                                        />
+                                      </label>
+                                      {signer.signatureDataUrl && (
+                                        <button
+                                          type="button"
+                                          onClick={() => patchSigner({ signatureDataUrl: '' })}
+                                          className="px-2 py-1 rounded border border-rose-200 bg-white hover:bg-rose-50 text-[10px] font-semibold text-rose-700 cursor-pointer"
+                                        >
+                                          Hapus Gbr
+                                        </button>
+                                      )}
+                                    </div>
+                                    {signer.signatureDataUrl && (
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] text-slate-600 font-semibold">
+                                          Tinggi: {signer.signatureSize || 52}px
+                                        </span>
+                                        <input
+                                          type="range"
+                                          min={36}
+                                          max={140}
+                                          step={2}
+                                          value={signer.signatureSize || 52}
+                                          onChange={(e) =>
+                                            patchSigner({ signatureSize: Number(e.target.value) })
+                                          }
+                                          className="w-20 accent-indigo-600 cursor-pointer"
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           );

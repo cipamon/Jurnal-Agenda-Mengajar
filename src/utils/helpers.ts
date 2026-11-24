@@ -11,8 +11,13 @@ import type {
   PaperSize,
   PortalDatabase,
   PrintFontFamily,
+  ReportPageLayoutConfig,
+  ReportPageLayoutsMap,
   RowMarkerColor,
+  SignatureExtraRow,
+  SignatureExtraSigner,
   SignatureStampConfig,
+  SingleReportType,
   Student,
   StudentStatus,
   SystemSettings,
@@ -124,6 +129,8 @@ export interface PaperSizeMeta {
   label: string;
   shortLabel: string;
   dimensionsLabel: string;
+  widthMm: number;
+  heightMm: number;
   cssPageSize: string;
   jsPdfFormat: 'a4' | 'letter' | 'legal' | [number, number];
   defaultOrientation?: PaperOrientation;
@@ -135,6 +142,8 @@ export const PAPER_SIZE_OPTIONS: PaperSizeMeta[] = [
     label: 'A4 Standar Internasional (210 × 297 mm)',
     shortLabel: 'A4 (210 × 297 mm)',
     dimensionsLabel: '210 × 297 mm',
+    widthMm: 210,
+    heightMm: 297,
     cssPageSize: 'A4',
     jsPdfFormat: 'a4',
   },
@@ -143,6 +152,8 @@ export const PAPER_SIZE_OPTIONS: PaperSizeMeta[] = [
     label: 'F4 / Folio Dinas (215 × 330 mm)',
     shortLabel: 'F4 / Folio (215 × 330 mm)',
     dimensionsLabel: '215 × 330 mm',
+    widthMm: 215,
+    heightMm: 330,
     cssPageSize: '215mm 330mm',
     jsPdfFormat: [215, 330],
   },
@@ -151,6 +162,8 @@ export const PAPER_SIZE_OPTIONS: PaperSizeMeta[] = [
     label: 'Letter / Kuarto (215.9 × 279.4 mm)',
     shortLabel: 'Letter (216 × 279 mm)',
     dimensionsLabel: '215.9 × 279.4 mm',
+    widthMm: 215.9,
+    heightMm: 279.4,
     cssPageSize: 'letter',
     jsPdfFormat: 'letter',
   },
@@ -159,6 +172,8 @@ export const PAPER_SIZE_OPTIONS: PaperSizeMeta[] = [
     label: 'Legal (215.9 × 355.6 mm)',
     shortLabel: 'Legal (216 × 356 mm)',
     dimensionsLabel: '215.9 × 355.6 mm',
+    widthMm: 215.9,
+    heightMm: 355.6,
     cssPageSize: 'legal',
     jsPdfFormat: 'legal',
   },
@@ -166,6 +181,97 @@ export const PAPER_SIZE_OPTIONS: PaperSizeMeta[] = [
 
 export function getPaperSizeMeta(size?: PaperSize): PaperSizeMeta {
   return PAPER_SIZE_OPTIONS.find((p) => p.id === size) || PAPER_SIZE_OPTIONS[0];
+}
+
+export function getPaperDimensionsMm(
+  size?: PaperSize,
+  orientation: PaperOrientation = 'portrait'
+): { widthMm: number; heightMm: number } {
+  const meta = getPaperSizeMeta(size);
+  return orientation === 'landscape'
+    ? { widthMm: meta.heightMm, heightMm: meta.widthMm }
+    : { widthMm: meta.widthMm, heightMm: meta.heightMm };
+}
+
+export function getCssNamedPageName(
+  size?: PaperSize,
+  orientation: PaperOrientation = 'portrait'
+): string {
+  const meta = getPaperSizeMeta(size);
+  const safeSize = meta.id.toLowerCase();
+  const safeOrient = orientation === 'landscape' ? 'landscape' : 'portrait';
+  return `pg_${safeSize}_${safeOrient}`;
+}
+
+export const ALL_SINGLE_REPORT_META: Array<{
+  id: SingleReportType;
+  label: string;
+  shortLabel: string;
+}> = [
+  { id: 'jurnal', label: 'Jurnal Mengajar Guru', shortLabel: 'Jurnal Mengajar' },
+  { id: 'kehadiran', label: 'Presensi Harian Siswa', shortLabel: 'Presensi Harian' },
+  { id: 'rekap_presensi', label: 'Matriks Rekap Presensi Siswa', shortLabel: 'Matriks Presensi' },
+  { id: 'ketidakhadiran', label: 'Rekap Ketidakhadiran & Peringatan', shortLabel: 'Ketidakhadiran' },
+  { id: 'nilai', label: 'Daftar Nilai Akademik', shortLabel: 'Daftar Nilai' },
+  { id: 'remedial', label: 'Tindak Lanjut Remedial (< KKM)', shortLabel: 'Tindak Lanjut Remedial' },
+  { id: 'leger_kelas', label: 'Leger Rata-Rata Nilai Kelas', shortLabel: 'Leger Nilai Kelas' },
+  { id: 'daftar_siswa', label: 'Daftar Biodata Siswa Aktif', shortLabel: 'Biodata Siswa' },
+  { id: 'aktivitas_guru', label: 'Riwayat Aktivitas & Beban Mengajar Guru', shortLabel: 'Aktivitas Guru' },
+];
+
+export function resolveReportPageLayout(
+  settings: SystemSettings,
+  reportType: SingleReportType,
+  overrideLayouts?: Partial<Record<string, Partial<ReportPageLayoutConfig>>>,
+  pageKey?: string
+): { paperSize: PaperSize; orientation: PaperOrientation } {
+  const fallbackSize: PaperSize = settings.reportPaperSize || 'A4';
+  const fallbackOrient: PaperOrientation =
+    settings.reportOrientation === 'portrait' ? 'portrait' : 'landscape';
+
+  const savedForType = settings.reportPageLayouts?.[reportType];
+  const sessionForType = overrideLayouts?.[reportType];
+  const sessionForPage = pageKey ? overrideLayouts?.[pageKey] : undefined;
+
+  const paperSize: PaperSize =
+    sessionForPage?.paperSize ||
+    sessionForType?.paperSize ||
+    savedForType?.paperSize ||
+    fallbackSize;
+  const orientation: PaperOrientation =
+    sessionForPage?.orientation ||
+    sessionForType?.orientation ||
+    savedForType?.orientation ||
+    fallbackOrient;
+
+  return { paperSize, orientation };
+}
+
+export function normalizeExtraSignatureRows(rawRows: unknown): SignatureExtraRow[] {
+  if (!Array.isArray(rawRows)) return [];
+  return rawRows
+    .filter((r): r is SignatureExtraRow => Boolean(r && typeof r === 'object'))
+    .map((r, rIdx) => {
+      const signers: SignatureExtraSigner[] = Array.isArray(r.signers)
+        ? r.signers
+            .filter((s): s is SignatureExtraSigner => Boolean(s && typeof s === 'object'))
+            .slice(0, 3)
+            .map((s, sIdx) => ({
+              id: String(s.id || `sig-signer-${rIdx + 1}-${sIdx + 1}`),
+              topLabel: s.topLabel !== undefined ? String(s.topLabel) : '',
+              title: String(s.title ?? ''),
+              name: String(s.name ?? ''),
+              nipLabel: s.nipLabel !== undefined ? String(s.nipLabel) : 'NIP.',
+              nip: String(s.nip ?? ''),
+              signatureDataUrl: String(s.signatureDataUrl ?? ''),
+              signatureSize: Math.max(36, Math.min(200, Number(s.signatureSize ?? 52))),
+            }))
+        : [];
+      return {
+        id: String(r.id || `sig-row-${rIdx + 1}`),
+        signers,
+      };
+    });
 }
 
 export const USER_ROLE_LABELS: Record<UserRole, string> = {
@@ -357,6 +463,7 @@ export function normalizeSignatureStamp(
     teacherBlockOffsetX: Number(cfg?.teacherBlockOffsetX ?? 0),
     teacherBlockOffsetY: Number(cfg?.teacherBlockOffsetY ?? 0),
     stampTarget: cfg?.stampTarget === 'teacher' ? 'teacher' : 'principal',
+    extraRows: normalizeExtraSignatureRows(cfg?.extraRows),
   };
 }
 

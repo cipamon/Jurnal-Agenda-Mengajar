@@ -145,7 +145,7 @@ service cloud.firestore {
         && data.keys().hasOnly([
           'version', 'academicYear', 'semester', 'kkm', 'signatureCity',
           'principalTitle', 'principalName', 'principalNip', 'themeId',
-          'reportFontFamily', 'reportPaperSize', 'reportOrientation', 'lockReportFormat',
+          'reportFontFamily', 'reportPaperSize', 'reportOrientation', 'reportPageLayouts', 'lockReportFormat',
           'signatureStamp', 'webBrand', 'kopSurat',
           'teacherProfile', 'classes', 'subjects', 'examTypes', 'learningObjectives',
           'examWeights', 'useWeightedAverage', 'academicYears',
@@ -163,6 +163,7 @@ service cloud.firestore {
         && data.reportFontFamily in ['Times New Roman', 'Tahoma', 'Arial', 'Verdana', 'Calibri', 'Georgia']
         && data.reportPaperSize in ['A4', 'F4', 'Letter', 'Legal']
         && data.reportOrientation in ['portrait', 'landscape']
+        && (!('reportPageLayouts' in data) || data.reportPageLayouts is map)
         && data.lockReportFormat is bool
         && data.signatureStamp is map
         && data.webBrand is map

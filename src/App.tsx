@@ -1730,7 +1730,7 @@ export default function App() {
 
       {/* When StudentDetailModal is open, mark workspace no-print so Cetak Individu prints ONLY the student sheet */}
       <div
-        className={`relative z-10 lg:pl-64 flex flex-col min-h-screen min-w-0 ${
+        className={`relative z-10 lg:pl-64 print:pl-0 flex flex-col min-h-screen min-w-0 ${
           selectedStudentModal ? 'no-print' : ''
         }`}
       >
@@ -1769,7 +1769,7 @@ export default function App() {
           isSyncing={isSyncing}
         />
 
-        <main className="flex-1 min-w-0 p-3.5 sm:p-6 lg:p-8 max-w-[1440px] w-full mx-auto">
+        <main className="flex-1 min-w-0 p-3.5 sm:p-6 lg:p-8 max-w-[1440px] w-full mx-auto print:p-0 print:max-w-none">
           {activeMenu === 'dashboard' && (
             <DashboardView
               students={scoped.scopedActiveStudents}
@@ -1918,6 +1918,7 @@ export default function App() {
               initialTeacherFilter={reportPreset?.teacherId}
               onConsumePreset={() => setReportPreset(null)}
               settings={effectiveScopedSettings}
+              onUpdateSettings={currentUserRole === 'admin' ? handleUpdateSettings : undefined}
               onNotify={notify}
             />
           )}

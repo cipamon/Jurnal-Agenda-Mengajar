@@ -683,24 +683,29 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
     }
   };
 
-  const handleQuickExportJournalsWord = () => {
+  const handleQuickExportJournalsWord = async () => {
     const source =
       selectedIds.length > 0
         ? filteredJournals.filter((j) => selectedIds.includes(j.id))
         : filteredJournals;
-    exportReportToWord(students, source, [], settings, {
-      reportTypes: ['jurnal'],
-      selectedClasses: filterClass !== 'ALL' ? [filterClass] : settings.classes,
-      selectedSubject: 'ALL',
-      startDate: '',
-      endDate: '',
-      showKopSurat: true,
-      showPrincipalSig: false,
-      showTeacherSig: true,
-      orientation: settings.reportOrientation || 'landscape',
-      fontFamily: settings.reportFontFamily || settings.kopSurat.fontFamily || 'Times New Roman',
-    });
-    onNotify(`Dokumen Word (.doc) Riwayat Jurnal (${source.length} entri) berhasil diunduh.`);
+    try {
+      await exportReportToWord(students, source, [], settings, {
+        reportTypes: ['jurnal'],
+        selectedClasses: filterClass !== 'ALL' ? [filterClass] : settings.classes,
+        selectedSubject: 'ALL',
+        startDate: '',
+        endDate: '',
+        showKopSurat: true,
+        showPrincipalSig: false,
+        showTeacherSig: true,
+        paperSize: settings.reportPaperSize || 'A4',
+        orientation: settings.reportOrientation || 'landscape',
+        fontFamily: settings.reportFontFamily || settings.kopSurat.fontFamily || 'Times New Roman',
+      });
+      onNotify(`Dokumen Word (.doc) Riwayat Jurnal (${source.length} entri) berhasil diunduh.`);
+    } catch {
+      onNotify('Gagal mengekspor Dokumen Word Riwayat Jurnal.');
+    }
   };
 
   const handleQuickExportLedgerPdf = async () => {
@@ -725,20 +730,25 @@ export const JournalAttendanceView: React.FC<JournalAttendanceViewProps> = ({
     }
   };
 
-  const handleQuickExportLedgerWord = () => {
-    exportReportToWord(students, ledgerJournals, [], settings, {
-      reportTypes: ['kehadiran'],
-      selectedClasses: ledgerClass ? [ledgerClass] : settings.classes,
-      selectedSubject: ledgerSubject,
-      startDate: '',
-      endDate: '',
-      showKopSurat: true,
-      showPrincipalSig: false,
-      showTeacherSig: true,
-      orientation: 'landscape',
-      fontFamily: settings.reportFontFamily || settings.kopSurat.fontFamily || 'Times New Roman',
-    });
-    onNotify(`Dokumen Word (.doc) Leger Kehadiran kelas ${ledgerClass} berhasil diunduh.`);
+  const handleQuickExportLedgerWord = async () => {
+    try {
+      await exportReportToWord(students, ledgerJournals, [], settings, {
+        reportTypes: ['kehadiran'],
+        selectedClasses: ledgerClass ? [ledgerClass] : settings.classes,
+        selectedSubject: ledgerSubject,
+        startDate: '',
+        endDate: '',
+        showKopSurat: true,
+        showPrincipalSig: false,
+        showTeacherSig: true,
+        paperSize: settings.reportPaperSize || 'A4',
+        orientation: 'landscape',
+        fontFamily: settings.reportFontFamily || settings.kopSurat.fontFamily || 'Times New Roman',
+      });
+      onNotify(`Dokumen Word (.doc) Leger Kehadiran kelas ${ledgerClass} berhasil diunduh.`);
+    } catch {
+      onNotify('Gagal mengekspor Dokumen Word Leger Kehadiran.');
+    }
   };
 
   return (

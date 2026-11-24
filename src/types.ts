@@ -205,6 +205,29 @@ export interface TeacherProfile {
   signatureOffsetY?: number;
 }
 
+export interface ReportPageLayoutConfig {
+  paperSize?: PaperSize;
+  orientation: PaperOrientation;
+}
+
+export type ReportPageLayoutsMap = Partial<Record<SingleReportType, ReportPageLayoutConfig>>;
+
+export interface SignatureExtraSigner {
+  id: string;
+  topLabel?: string;
+  title: string;
+  name: string;
+  nipLabel?: string;
+  nip?: string;
+  signatureDataUrl?: string;
+  signatureSize?: number;
+}
+
+export interface SignatureExtraRow {
+  id: string;
+  signers: SignatureExtraSigner[];
+}
+
 export interface SignatureStampConfig {
   principalSignatureDataUrl?: string;
   teacherSignatureDataUrl?: string;
@@ -225,6 +248,7 @@ export interface SignatureStampConfig {
   teacherBlockOffsetX?: number; // px (-320 to 320)
   teacherBlockOffsetY?: number; // px (-80 to 120)
   stampTarget?: 'principal' | 'teacher';
+  extraRows?: SignatureExtraRow[];
 }
 
 export type DayOfWeek = 'Senin' | 'Selasa' | 'Rabu' | 'Kamis' | 'Jumat' | 'Sabtu';
@@ -266,6 +290,7 @@ export interface SystemSettings {
   reportFontFamily?: PrintFontFamily;
   reportPaperSize?: PaperSize;
   reportOrientation?: PaperOrientation;
+  reportPageLayouts?: ReportPageLayoutsMap;
   lockReportFormat?: boolean;
   signatureStamp?: SignatureStampConfig;
   webBrand?: WebBrandConfig;

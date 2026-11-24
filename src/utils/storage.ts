@@ -1,8 +1,18 @@
-import type { PortalDatabase, SessionState, SystemSettings } from '../types.ts';
+import type {
+  PaperOrientation,
+  PaperSize,
+  PortalDatabase,
+  ReportPageLayoutsMap,
+  SessionState,
+  SingleReportType,
+  SystemSettings,
+} from '../types.ts';
 import {
+  ALL_SINGLE_REPORT_META,
   DEFAULT_KOP_LINE_SIZES,
   DEFAULT_KOP_LINE_STYLES,
   formatStudentTtl,
+  normalizeExtraSignatureRows,
   parseTtlFields,
 } from './helpers.ts';
 import { createDefaultSettings, createSeedDatabase } from './seedData.ts';
@@ -38,6 +48,24 @@ export function migrateSettings(rawSettings?: Partial<SystemSettings> & { sheets
   const rawBrand = rawSettings.webBrand;
   const rawTeacher = rawSettings.teacherProfile || ({} as Partial<SystemSettings['teacherProfile']>);
 
+  const validPaperSizes = new Set<PaperSize>(['A4', 'F4', 'Letter', 'Legal']);
+  const validReportTypes = new Set<SingleReportType>(ALL_SINGLE_REPORT_META.map((m) => m.id));
+  const sanitizedPageLayouts: ReportPageLayoutsMap = {};
+  if (rawSettings.reportPageLayouts && typeof rawSettings.reportPageLayouts === 'object') {
+    Object.entries(rawSettings.reportPageLayouts).forEach(([k, val]) => {
+      if (!validReportTypes.has(k as SingleReportType) || !val || typeof val !== 'object') return;
+      const layoutVal = val as { paperSize?: unknown; orientation?: unknown };
+      const orient: PaperOrientation =
+        layoutVal.orientation === 'portrait' ? 'portrait' : 'landscape';
+      const pSize = validPaperSizes.has(layoutVal.paperSize as PaperSize)
+        ? (layoutVal.paperSize as PaperSize)
+        : undefined;
+      sanitizedPageLayouts[k as SingleReportType] = pSize
+        ? { paperSize: pSize, orientation: orient }
+        : { orientation: orient };
+    });
+  }
+
   return {
     ...defaults,
     ...restRaw,
@@ -45,6 +73,7 @@ export function migrateSettings(rawSettings?: Partial<SystemSettings> & { sheets
     reportFontFamily: rawSettings.reportFontFamily || rawKop.fontFamily || defaults.reportFontFamily,
     reportPaperSize: rawSettings.reportPaperSize || defaults.reportPaperSize || 'A4',
     reportOrientation: rawSettings.reportOrientation || defaults.reportOrientation || 'landscape',
+    reportPageLayouts: sanitizedPageLayouts,
     lockReportFormat:
       rawSettings.lockReportFormat !== undefined
         ? Boolean(rawSettings.lockReportFormat)
@@ -94,6 +123,7 @@ export function migrateSettings(rawSettings?: Partial<SystemSettings> & { sheets
       // Preserve explicit empty string '' if admin deliberately removed default stamp
       stampDataUrl:
         rawSig === undefined ? defaults.signatureStamp!.stampDataUrl : rawSig.stampDataUrl ?? '',
+      extraRows: normalizeExtraSignatureRows(rawSig?.extraRows),
     },
     kopSurat: {
       ...defaults.kopSurat,
