@@ -1,4 +1,4 @@
-import { Student, UserRole } from '../types';
+import type { Student, UserRole } from '../types.ts';
 
 export const DUMMY_STUDENT_MALE_PHOTO = '/assets/aistudio/image_9cd8fe77.png';
 export const DUMMY_STUDENT_FEMALE_PHOTO = '/assets/aistudio/image_a9207469.png';

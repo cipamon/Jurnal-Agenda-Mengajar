@@ -1,4 +1,4 @@
-import {
+import type {
   AppUser,
   AttendanceStatus,
   GradeRecord,
@@ -19,9 +19,9 @@ import {
   ThemeId,
   UserRole,
   WebBrandConfig,
-} from '../types';
-import { DEFAULT_WEB_LOGO } from './defaultAvatars';
-import { DEFAULT_SCHOOL_STAMP } from './defaultLogos';
+} from '../types.ts';
+import { DEFAULT_WEB_LOGO } from './defaultAvatars.ts';
+import { DEFAULT_SCHOOL_STAMP } from './defaultLogos.ts';
 
 export interface ThemePresetMeta {
   id: ThemeId;

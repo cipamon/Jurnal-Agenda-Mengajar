@@ -1,11 +1,10 @@
 import 'dotenv/config';
 import crypto from 'crypto';
-import express, { NextFunction, Request, Response } from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createServer as createViteServer } from 'vite';
-import {
+import type {
   AppUser,
   GradeRecord,
   JournalEntry,
@@ -16,9 +15,9 @@ import {
   TeacherProfile,
   TeachingScheduleItem,
   UserRole,
-} from './src/types';
-import { createSeedDatabase } from './src/utils/seedData';
-import { CURRENT_APP_SCHEMA_VERSION, migrateDatabase, migrateSettings } from './src/utils/storage';
+} from './src/types.ts';
+import { createSeedDatabase } from './src/utils/seedData.ts';
+import { CURRENT_APP_SCHEMA_VERSION, migrateDatabase, migrateSettings } from './src/utils/storage.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1749,7 +1748,19 @@ async function startServer() {
     }
   });
 
-  if (process.env.NODE_ENV !== 'production') {
+  app.all('/api/*', (_req, res) => {
+    res.status(404).json({ ok: false, error: 'Endpoint API tidak ditemukan.' });
+  });
+
+  const hasDistIndex = fs.existsSync(path.resolve(__dirname, 'dist', 'index.html'));
+  const isDevMode =
+    process.argv.includes('--dev') ||
+    (process.env.NODE_ENV !== 'production' &&
+      process.env.npm_lifecycle_event !== 'start' &&
+      !hasDistIndex);
+
+  if (isDevMode) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true, hmr: process.env.DISABLE_HMR !== 'true' },
       appType: 'spa',

@@ -1,4 +1,4 @@
-import {
+import type {
   AppUser,
   GradeRecord,
   JournalEntry,
@@ -9,7 +9,7 @@ import {
   TeacherProfile,
   TeachingScheduleItem,
   WebBrandConfig,
-} from '../types';
+} from '../types.ts';
 
 // Bearer token is stored strictly in JS memory (never in localStorage or sessionStorage)
 let inMemoryBearerToken: string | null = null;

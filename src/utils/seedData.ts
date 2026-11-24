@@ -1,4 +1,4 @@
-import {
+import type {
   AppUser,
   AttendanceStatus,
   GradeRecord,
@@ -7,9 +7,9 @@ import {
   RowMarkerColor,
   Student,
   SystemSettings,
-} from '../types';
-import { DEFAULT_WEB_LOGO } from './defaultAvatars';
-import { DEFAULT_LEFT_LOGO, DEFAULT_RIGHT_LOGO, DEFAULT_SCHOOL_STAMP } from './defaultLogos';
+} from '../types.ts';
+import { DEFAULT_WEB_LOGO } from './defaultAvatars.ts';
+import { DEFAULT_LEFT_LOGO, DEFAULT_RIGHT_LOGO, DEFAULT_SCHOOL_STAMP } from './defaultLogos.ts';
 
 export function createDefaultSettings(overrides?: Partial<SystemSettings>): SystemSettings {
   return {

@@ -71,8 +71,8 @@ export const DEFAULT_TEACHER_TTD =
   <path d="M44 68 C94 62, 146 60, 188 64" fill="none" stroke="#1e293b" stroke-width="1.8" stroke-linecap="round"/>
 </svg>`);
 
-import { getApiAuthToken } from './apiClient';
-import { normalizePhotoUrl } from './defaultAvatars';
+import { getApiAuthToken } from './apiClient.ts';
+import { normalizePhotoUrl } from './defaultAvatars.ts';
 
 export async function dataUrlToPngBase64(dataUrl: string, targetSize = 180): Promise<string | null> {
   const srcUrl = normalizePhotoUrl(dataUrl) || dataUrl;

@@ -1,11 +1,11 @@
-import { PortalDatabase, SessionState, SystemSettings } from '../types';
+import type { PortalDatabase, SessionState, SystemSettings } from '../types.ts';
 import {
   DEFAULT_KOP_LINE_SIZES,
   DEFAULT_KOP_LINE_STYLES,
   formatStudentTtl,
   parseTtlFields,
-} from './helpers';
-import { createDefaultSettings, createSeedDatabase } from './seedData';
+} from './helpers.ts';
+import { createDefaultSettings, createSeedDatabase } from './seedData.ts';
 
 const IDB_NAME = 'portal_eguru_v10_idb';
 const IDB_STORE = 'workspace_store';
