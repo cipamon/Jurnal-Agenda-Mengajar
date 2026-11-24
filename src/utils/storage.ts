@@ -10,8 +10,10 @@ import { createDefaultSettings, createSeedDatabase } from './seedData.ts';
 const IDB_NAME = 'portal_eguru_v10_idb';
 const IDB_STORE = 'workspace_store';
 const IDB_KEY = 'primary_db';
+const IDB_SAFETY_BACKUP_KEY = 'safety_backup_db';
 
 const LS_DB_KEY = 'portal_eguru_v10_data';
+const LS_SAFETY_BACKUP_KEY = 'portal_eguru_v10_safety_backup';
 const LS_SESSION_KEY = 'portal_eguru_v10_session';
 
 export const CURRENT_APP_SCHEMA_VERSION = '10.3.0';
@@ -162,6 +164,7 @@ export function migrateDatabase(raw: unknown): PortalDatabase | null {
   return {
     version: CURRENT_APP_SCHEMA_VERSION,
     lastSyncedAt: obj.lastSyncedAt ?? null,
+    lastModifiedAt: typeof obj.lastModifiedAt === 'string' ? obj.lastModifiedAt : undefined,
     students,
     journals,
     grades,
@@ -190,6 +193,60 @@ function openIDB(): Promise<IDBDatabase> {
   });
 }
 
+export async function loadLocalSafetyBackup(): Promise<PortalDatabase | null> {
+  try {
+    const db = await openIDB();
+    const idbData = await new Promise<PortalDatabase | null>((resolve) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const store = tx.objectStore(IDB_STORE);
+      const req = store.get(IDB_SAFETY_BACKUP_KEY);
+      req.onsuccess = () => resolve((req.result as PortalDatabase) || null);
+      req.onerror = () => resolve(null);
+    });
+    if (idbData && idbData.settings) {
+      const migrated = migrateDatabase(idbData);
+      if (migrated) return migrated;
+    }
+  } catch {
+    // Fallback to LocalStorage below
+  }
+
+  try {
+    const raw = localStorage.getItem(LS_SAFETY_BACKUP_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PortalDatabase;
+    return migrateDatabase(parsed);
+  } catch {
+    return null;
+  }
+}
+
+export async function saveLocalSafetyBackup(data: PortalDatabase): Promise<void> {
+  const safePayload: PortalDatabase = {
+    ...data,
+    version: CURRENT_APP_SCHEMA_VERSION,
+  };
+
+  try {
+    localStorage.setItem(LS_SAFETY_BACKUP_KEY, JSON.stringify(safePayload));
+  } catch {
+    // Ignore localStorage quota exceeded
+  }
+
+  try {
+    const db = await openIDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      const store = tx.objectStore(IDB_STORE);
+      const req = store.put(safePayload, IDB_SAFETY_BACKUP_KEY);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    // Best-effort IndexedDB write
+  }
+}
+
 export async function loadDatabase(): Promise<PortalDatabase | null> {
   try {
     const db = await openIDB();
@@ -210,12 +267,16 @@ export async function loadDatabase(): Promise<PortalDatabase | null> {
 
   try {
     const raw = localStorage.getItem(LS_DB_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as PortalDatabase;
-    return migrateDatabase(parsed);
+    if (raw) {
+      const parsed = JSON.parse(raw) as PortalDatabase;
+      const migrated = migrateDatabase(parsed);
+      if (migrated) return migrated;
+    }
   } catch {
-    return null;
+    // Fallback to safety backup below
   }
+
+  return loadLocalSafetyBackup();
 }
 
 export async function saveDatabase(data: PortalDatabase): Promise<void> {

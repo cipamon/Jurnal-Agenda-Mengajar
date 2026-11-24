@@ -283,6 +283,7 @@ export interface SystemSettings {
 export interface PortalDatabase {
   version: string;
   lastSyncedAt: string | null;
+  lastModifiedAt?: string;
   students: Student[];
   journals: JournalEntry[];
   grades: GradeRecord[];
@@ -290,6 +291,17 @@ export interface PortalDatabase {
   agendas?: TeacherAgendaItem[];
   users?: AppUser[];
   settings: SystemSettings;
+}
+
+export interface ServerBackupMeta {
+  filename: string;
+  createdAt: string;
+  reason: string;
+  sizeBytes: number;
+  schoolName: string;
+  studentCount: number;
+  journalCount: number;
+  gradeCount: number;
 }
 
 export interface SessionState {

@@ -3,6 +3,7 @@ import type {
   GradeRecord,
   JournalEntry,
   PortalDatabase,
+  ServerBackupMeta,
   Student,
   SystemSettings,
   TeacherAgendaItem,
@@ -260,4 +261,35 @@ export async function apiResetDemoWorkspace(): Promise<PortalDatabase> {
     }
   );
   return res.database;
+}
+
+export async function apiListServerBackups(): Promise<ServerBackupMeta[]> {
+  const res = await apiRequest<{ ok: boolean; backups: ServerBackupMeta[] }>(
+    '/api/workspace/backups',
+    { method: 'GET' }
+  );
+  return Array.isArray(res.backups) ? res.backups : [];
+}
+
+export async function apiCreateServerBackup(reason = 'manual'): Promise<{
+  backup: ServerBackupMeta;
+  backups: ServerBackupMeta[];
+}> {
+  const res = await apiRequest<{
+    ok: boolean;
+    backup: ServerBackupMeta;
+    backups: ServerBackupMeta[];
+  }>('/api/workspace/backup', {
+    method: 'POST',
+    body: { reason },
+  });
+  return { backup: res.backup, backups: res.backups || [] };
+}
+
+export async function apiDownloadServerBackup(filename: string): Promise<string> {
+  const res = await apiRequest<{ ok: boolean; content: string }>(
+    `/api/workspace/backups/${encodeURIComponent(filename)}`,
+    { method: 'GET' }
+  );
+  return res.content;
 }

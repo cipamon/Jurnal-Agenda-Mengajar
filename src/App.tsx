@@ -94,6 +94,7 @@ import {
   clearSession,
   loadDatabase,
   saveDatabase,
+  saveLocalSafetyBackup,
   saveSession,
 } from './utils/storage';
 
@@ -353,7 +354,11 @@ export default function App() {
   const updateDatabase = useCallback(
     (updater: (prev: PortalDatabase) => PortalDatabase): PortalDatabase => {
       const base = dbRef.current ?? createSeedDatabase();
-      const next = updater(base);
+      const updated = updater(base);
+      const next: PortalDatabase = {
+        ...updated,
+        lastModifiedAt: new Date().toISOString(),
+      };
       dbRef.current = next;
       setDb(next);
       void saveDatabase(next);
@@ -378,25 +383,14 @@ export default function App() {
     }
   }, [db, session, activeMenu]);
 
-  const handleGoogleLogin = async (payload?: {
+  const handleGoogleLogin = async (_payload?: {
     academicYear: string;
     semester: 'Ganjil' | 'Genap';
   }): Promise<string | null> => {
     setCloudAuthError(null);
     setApiAuthToken(null);
-    if (payload && dbRef.current) {
-      const validYear =
-        payload.academicYear && dbRef.current.settings.academicYears.includes(payload.academicYear);
-      if (validYear || payload.semester) {
-        dbRef.current = {
-          ...dbRef.current,
-          settings: {
-            ...dbRef.current.settings,
-            ...(validYear ? { academicYear: payload.academicYear } : {}),
-            ...(payload.semester ? { semester: payload.semester } : {}),
-          },
-        };
-      }
+    if (dbRef.current) {
+      void saveLocalSafetyBackup(dbRef.current);
     }
     try {
       const cred = await signInWithPopup(auth, googleProvider);
@@ -451,11 +445,26 @@ export default function App() {
       setCloudVerified(false);
     }
     try {
+      const prevLocalDb = dbRef.current;
+      if (prevLocalDb) {
+        void saveLocalSafetyBackup(prevLocalDb);
+      }
+
       const authRes = await apiLoginServer(payload);
       const workspaceDb = await apiFetchWorkspace();
-      dbRef.current = workspaceDb;
-      setDb(workspaceDb);
-      void saveDatabase(workspaceDb);
+
+      const localModifiedMs = prevLocalDb?.lastModifiedAt ? Date.parse(prevLocalDb.lastModifiedAt) : 0;
+      const serverSyncedMs = workspaceDb.lastSyncedAt ? Date.parse(workspaceDb.lastSyncedAt) : 0;
+      const shouldPreserveLocalLatest =
+        authRes.user.role === 'admin' &&
+        Boolean(prevLocalDb) &&
+        localModifiedMs > 0 &&
+        localModifiedMs > serverSyncedMs;
+
+      const activeDb = shouldPreserveLocalLatest && prevLocalDb ? prevLocalDb : workspaceDb;
+      dbRef.current = activeDb;
+      setDb(activeDb);
+      void saveDatabase(activeDb);
 
       const nextSession: SessionState = {
         isAuthenticated: true,
@@ -469,7 +478,9 @@ export default function App() {
       setSession(nextSession);
       setActiveMenu('dashboard');
       notify(
-        `Terhubung ke server sebagai ${authRes.user.name} (${USER_ROLE_LABELS[authRes.user.role]}).`
+        shouldPreserveLocalLatest
+          ? `Terhubung sebagai ${authRes.user.name}. Pengaturan & input terakhir di perangkat dipertahankan (Auto-Restore nonaktif).`
+          : `Terhubung ke server sebagai ${authRes.user.name} (${USER_ROLE_LABELS[authRes.user.role]}).`
       );
       return null;
     } catch (err) {
@@ -539,14 +550,24 @@ export default function App() {
     password: string
   ): Promise<string | null> => {
     try {
+      const prevLocalDb = dbRef.current;
+      if (prevLocalDb) {
+        void saveLocalSafetyBackup(prevLocalDb);
+      }
       const authRes = await apiLoginServer({ identifier, password });
       if (authRes.user.role !== 'admin') {
         return 'Akun tersebut bukan Admin Sistem.';
       }
       const workspaceDb = await apiFetchWorkspace();
-      dbRef.current = workspaceDb;
-      setDb(workspaceDb);
-      void saveDatabase(workspaceDb);
+      const localModifiedMs = prevLocalDb?.lastModifiedAt ? Date.parse(prevLocalDb.lastModifiedAt) : 0;
+      const serverSyncedMs = workspaceDb.lastSyncedAt ? Date.parse(workspaceDb.lastSyncedAt) : 0;
+      const shouldPreserveLocalLatest =
+        Boolean(prevLocalDb) && localModifiedMs > 0 && localModifiedMs > serverSyncedMs;
+
+      const activeDb = shouldPreserveLocalLatest && prevLocalDb ? prevLocalDb : workspaceDb;
+      dbRef.current = activeDb;
+      setDb(activeDb);
+      void saveDatabase(activeDb);
 
       setSession({
         isAuthenticated: true,
@@ -1274,11 +1295,13 @@ export default function App() {
     const base = dbRef.current ?? db ?? createSeedDatabase();
     const nextDb: PortalDatabase = {
       ...base,
+      lastModifiedAt: new Date().toISOString(),
       settings: nextSettings,
     };
     dbRef.current = nextDb;
     setDb(nextDb);
     await saveDatabase(nextDb);
+    void saveLocalSafetyBackup(nextDb);
 
     if (isCloudActive) {
       const savePromise = fsSaveSettings(nextSettings);
@@ -1927,23 +1950,31 @@ export default function App() {
             <SettingsView
               database={db}
               settings={db.settings}
+              isServerActive={isServerActive}
               onUpdateSettings={handleUpdateSettings}
               onRestoreDatabase={(restored) => {
                 if (currentUserRole !== 'admin') {
                   notify('Akses ditolak: hanya Admin Sistem yang dapat memulihkan cadangan.');
                   return;
                 }
-                dbRef.current = restored;
-                setDb(restored);
-                void saveDatabase(restored);
+                if (dbRef.current) {
+                  void saveLocalSafetyBackup(dbRef.current);
+                }
+                const stampedRestored: PortalDatabase = {
+                  ...restored,
+                  lastModifiedAt: new Date().toISOString(),
+                };
+                dbRef.current = stampedRestored;
+                setDb(stampedRestored);
+                void saveDatabase(stampedRestored);
                 if (isCloudActive) {
                   trackRemoteSave(
-                    fsReplaceEntireDatabase(restored),
+                    fsReplaceEntireDatabase(stampedRestored),
                     'Gagal memulihkan cadangan ke Firebase'
                   );
                 } else if (isServerActive) {
                   trackRemoteSave(
-                    apiRestoreWorkspace(restored).then((serverRestored) => {
+                    apiRestoreWorkspace(stampedRestored).then((serverRestored) => {
                       dbRef.current = serverRestored;
                       setDb(serverRestored);
                       void saveDatabase(serverRestored);

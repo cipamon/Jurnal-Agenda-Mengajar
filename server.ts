@@ -202,6 +202,127 @@ function toPublicAppUser(u: StoredServerUser): AppUser {
 const WORKSPACE_FILE = resolveInsideDataDir('workspace.json');
 const USERS_FILE = resolveInsideDataDir('users.json');
 const LEGACY_WORKSPACE_FILE = resolveInsideDataDir('guru_sman1nusantara.sch.id.json');
+const BACKUPS_DIR = path.resolve(DATA_DIR, 'backups');
+
+function ensureBackupsDir(): void {
+  ensureDataDir();
+  if (!fs.existsSync(BACKUPS_DIR)) {
+    fs.mkdirSync(BACKUPS_DIR, { recursive: true });
+  }
+}
+
+function resolveInsideBackupsDir(filename: string): string {
+  const cleaned = path.basename(String(filename || '').trim());
+  if (!cleaned || !/^[a-zA-Z0-9._-]+$/.test(cleaned) || !cleaned.endsWith('.json')) {
+    throw new Error('Nama file cadangan tidak valid.');
+  }
+  const resolved = path.resolve(BACKUPS_DIR, cleaned);
+  if (!resolved.startsWith(BACKUPS_DIR + path.sep)) {
+    throw new Error('Path cadangan di luar direktori yang diizinkan ditolak.');
+  }
+  return resolved;
+}
+
+interface ServerBackupSummary {
+  filename: string;
+  createdAt: string;
+  reason: string;
+  sizeBytes: number;
+  schoolName: string;
+  studentCount: number;
+  journalCount: number;
+  gradeCount: number;
+}
+
+function listServerBackups(): ServerBackupSummary[] {
+  ensureBackupsDir();
+  const entries = fs
+    .readdirSync(BACKUPS_DIR)
+    .filter((name) => name.endsWith('.json') && name.startsWith('backup_'))
+    .sort()
+    .reverse();
+
+  const list: ServerBackupSummary[] = [];
+  for (const name of entries.slice(0, 25)) {
+    try {
+      const fullPath = resolveInsideBackupsDir(name);
+      const stat = fs.statSync(fullPath);
+      const parsed = JSON.parse(fs.readFileSync(fullPath, 'utf-8')) as {
+        createdAt?: string;
+        reason?: string;
+        workspace?: WorkspaceStore;
+      };
+      const ws = parsed.workspace;
+      list.push({
+        filename: name,
+        createdAt: parsed.createdAt || stat.mtime.toISOString(),
+        reason: parsed.reason || 'snapshot',
+        sizeBytes: stat.size,
+        schoolName: ws?.settings?.webBrand?.schoolName || ws?.settings?.teacherProfile?.school || '-',
+        studentCount: Array.isArray(ws?.students) ? ws!.students.length : 0,
+        journalCount: Array.isArray(ws?.journals) ? ws!.journals.length : 0,
+        gradeCount: Array.isArray(ws?.grades) ? ws!.grades.length : 0,
+      });
+    } catch {
+      // skip unreadable backup entry
+    }
+  }
+  return list;
+}
+
+function createServerBackupSnapshot(reason = 'manual'): ServerBackupSummary | null {
+  try {
+    ensureBackupsDir();
+    if (!fs.existsSync(WORKSPACE_FILE)) return null;
+    const rawWs = JSON.parse(fs.readFileSync(WORKSPACE_FILE, 'utf-8')) as WorkspaceStore;
+    const rawUsers = fs.existsSync(USERS_FILE)
+      ? (JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8')) as UsersStore)
+      : null;
+
+    const safeReason = String(reason || 'manual').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 32);
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `backup_${stamp}_${safeReason}.json`;
+    const targetPath = resolveInsideBackupsDir(filename);
+
+    const payload = {
+      backupVersion: CURRENT_APP_SCHEMA_VERSION,
+      createdAt: new Date().toISOString(),
+      reason: safeReason,
+      workspace: rawWs,
+      users: rawUsers ? rawUsers.users.map(toPublicAppUser) : [],
+    };
+    writeJsonAtomic(targetPath, payload);
+
+    // Prune older snapshots beyond 25 while never removing newer backups
+    const allBackups = fs
+      .readdirSync(BACKUPS_DIR)
+      .filter((name) => name.endsWith('.json') && name.startsWith('backup_'))
+      .sort()
+      .reverse();
+    for (const oldFile of allBackups.slice(25)) {
+      try {
+        fs.unlinkSync(resolveInsideBackupsDir(oldFile));
+      } catch {
+        // ignore prune errors
+      }
+    }
+
+    const stat = fs.statSync(targetPath);
+    return {
+      filename,
+      createdAt: payload.createdAt,
+      reason: safeReason,
+      sizeBytes: stat.size,
+      schoolName:
+        rawWs?.settings?.webBrand?.schoolName || rawWs?.settings?.teacherProfile?.school || '-',
+      studentCount: Array.isArray(rawWs?.students) ? rawWs.students.length : 0,
+      journalCount: Array.isArray(rawWs?.journals) ? rawWs.journals.length : 0,
+      gradeCount: Array.isArray(rawWs?.grades) ? rawWs.grades.length : 0,
+    };
+  } catch {
+    return null;
+  }
+}
 
 function readLegacyDatabaseIfAvailable(): PortalDatabase | null {
   try {
@@ -232,7 +353,14 @@ function loadWorkspaceStore(): WorkspaceStore {
         };
       }
     } catch {
-      // fall back to legacy/seed below
+      // Preserve raw corrupt workspace file inside backups before falling back
+      try {
+        ensureBackupsDir();
+        const corruptName = `corrupt_workspace_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+        fs.copyFileSync(WORKSPACE_FILE, path.resolve(BACKUPS_DIR, corruptName));
+      } catch {
+        // ignore copy error
+      }
     }
   }
 
@@ -394,9 +522,10 @@ function requireRoles(allowed: UserRole[]) {
 }
 
 async function startServer() {
-  // Ensure initial stores exist cleanly at startup
+  // Ensure initial stores exist cleanly at startup and create boot backup snapshot
   loadWorkspaceStore();
   loadUsersStore();
+  createServerBackupSnapshot('boot');
 
   const app = express();
   app.use(express.json({ limit: '20mb' }));
@@ -584,9 +713,6 @@ async function startServer() {
             ? body.email.trim()
             : '';
       const password = typeof body.password === 'string' ? body.password : '';
-      const academicYear = typeof body.academicYear === 'string' ? body.academicYear.trim() : '';
-      const semester =
-        body.semester === 'Ganjil' || body.semester === 'Genap' ? body.semester : undefined;
 
       if (!identifier || !password) {
         res.status(400).json({ ok: false, error: 'Username/Email dan Password wajib diisi.' });
@@ -612,23 +738,7 @@ async function startServer() {
             return;
           }
 
-          if (academicYear || semester) {
-            const ws = loadWorkspaceStore();
-            if (
-              (academicYear && ws.settings.academicYears.includes(academicYear)) ||
-              semester
-            ) {
-              ws.settings = {
-                ...ws.settings,
-                ...(academicYear && ws.settings.academicYears.includes(academicYear)
-                  ? { academicYear }
-                  : {}),
-                ...(semester ? { semester } : {}),
-              };
-              saveWorkspaceStore(ws);
-            }
-          }
-
+          // Preserve last saved settings in workspace.json (do NOT overwrite academicYear/semester on login)
           const targetAdmin = storedAdmin || {
             id: 'usr-admin-env',
             username: envAdmin.username,
@@ -688,18 +798,7 @@ async function startServer() {
         return;
       }
 
-      if (matched.role === 'admin' && (academicYear || semester)) {
-        const ws = loadWorkspaceStore();
-        ws.settings = {
-          ...ws.settings,
-          ...(academicYear && ws.settings.academicYears.includes(academicYear)
-            ? { academicYear }
-            : {}),
-          ...(semester ? { semester } : {}),
-        };
-        saveWorkspaceStore(ws);
-      }
-
+      // Preserve last saved settings in workspace.json on login
       const token = signAuthToken({
         sub: matched.id,
         username: matched.username,
@@ -1612,6 +1711,51 @@ async function startServer() {
     }
   });
 
+  app.get('/api/workspace/backups', requireAuth, requireRoles(['admin']), (_req, res) => {
+    try {
+      res.json({ ok: true, backups: listServerBackups() });
+    } catch (err) {
+      res.status(500).json({
+        ok: false,
+        error: err instanceof Error ? err.message : 'Gagal membaca daftar cadangan server.',
+      });
+    }
+  });
+
+  app.post('/api/workspace/backup', requireAuth, requireRoles(['admin']), (req, res) => {
+    try {
+      const body = (req.body || {}) as { reason?: string };
+      const snapshot = createServerBackupSnapshot(body.reason || 'manual');
+      if (!snapshot) {
+        res.status(500).json({ ok: false, error: 'Gagal membuat cadangan server.' });
+        return;
+      }
+      res.json({ ok: true, backup: snapshot, backups: listServerBackups() });
+    } catch (err) {
+      res.status(500).json({
+        ok: false,
+        error: err instanceof Error ? err.message : 'Gagal membuat cadangan server.',
+      });
+    }
+  });
+
+  app.get('/api/workspace/backups/:filename', requireAuth, requireRoles(['admin']), (req, res) => {
+    try {
+      const targetPath = resolveInsideBackupsDir(req.params.filename);
+      if (!fs.existsSync(targetPath)) {
+        res.status(404).json({ ok: false, error: 'File cadangan tidak ditemukan.' });
+        return;
+      }
+      const content = fs.readFileSync(targetPath, 'utf-8');
+      res.json({ ok: true, content });
+    } catch (err) {
+      res.status(400).json({
+        ok: false,
+        error: err instanceof Error ? err.message : 'Gagal mengunduh cadangan server.',
+      });
+    }
+  });
+
   app.put('/api/workspace/restore', requireAuth, requireRoles(['admin']), (req, res) => {
     try {
       const body = req.body as { database?: PortalDatabase };
@@ -1620,6 +1764,9 @@ async function startServer() {
         res.status(400).json({ ok: false, error: 'Format cadangan database tidak valid.' });
         return;
       }
+
+      // Always create a safety backup snapshot before restoring
+      createServerBackupSnapshot('before_restore');
 
       const savedWs = saveWorkspaceStore({
         version: CURRENT_APP_SCHEMA_VERSION,
@@ -1695,6 +1842,9 @@ async function startServer() {
 
   app.post('/api/workspace/reset-demo', requireAuth, requireRoles(['admin']), (_req, res) => {
     try {
+      // Always create a safety backup snapshot before resetting to demo
+      createServerBackupSnapshot('before_reset');
+
       const fresh = createSeedDatabase();
       const savedWs = saveWorkspaceStore({
         version: CURRENT_APP_SCHEMA_VERSION,
