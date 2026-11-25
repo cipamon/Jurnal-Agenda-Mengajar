@@ -28,6 +28,7 @@ interface LoginViewProps {
   defaultSemester: 'Ganjil' | 'Genap';
   academicYears: string[];
   webBrand: WebBrandConfig;
+  hasCustomLocalSettings?: boolean;
   externalError?: string | null;
   onGoogleLogin?: (payload: {
     academicYear: string;
@@ -90,11 +91,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
   defaultSemester,
   academicYears,
   webBrand,
+  hasCustomLocalSettings = false,
   externalError,
   onGoogleLogin,
   onServerLogin,
   onClaimAdmin,
 }) => {
+  const hasCustomLocalSettingsRef = React.useRef(hasCustomLocalSettings);
+  hasCustomLocalSettingsRef.current = hasCustomLocalSettings;
   const [authStatus, setAuthStatus] = useState<ServerAuthStatus | null>(null);
   const [serverAvailable, setServerAvailable] = useState<boolean | null>(null);
   const [isCheckingServer, setIsCheckingServer] = useState<boolean>(true);
@@ -149,8 +153,10 @@ export const LoginView: React.FC<LoginViewProps> = ({
       if (isMountedCheck && !isMountedCheck()) return false;
       setAuthStatus(status);
       setServerAvailable(true);
-      if (status.academicYear) setAcademicYear(status.academicYear);
-      if (status.semester) setSemester(status.semester);
+      if (status.settingsConfigured || !hasCustomLocalSettingsRef.current) {
+        if (status.academicYear) setAcademicYear(status.academicYear);
+        if (status.semester) setSemester(status.semester);
+      }
       try {
         const saved = localStorage.getItem(LS_REMEMBERED_USERNAME);
         if (!saved && status.adminUsernameHint) {
@@ -353,9 +359,11 @@ export const LoginView: React.FC<LoginViewProps> = ({
     }
   };
 
-  const activeBrand = authStatus?.webBrand?.appName ? authStatus.webBrand : webBrand;
+  const preferServerMetadata = Boolean(authStatus?.settingsConfigured) || !hasCustomLocalSettings;
+  const activeBrand =
+    preferServerMetadata && authStatus?.webBrand?.appName ? authStatus.webBrand : webBrand;
   const activeYears =
-    authStatus?.academicYears && authStatus.academicYears.length > 0
+    preferServerMetadata && authStatus?.academicYears && authStatus.academicYears.length > 0
       ? authStatus.academicYears
       : academicYears;
   const displayError = error || externalError;

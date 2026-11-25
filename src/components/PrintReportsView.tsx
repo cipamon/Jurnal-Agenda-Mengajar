@@ -869,14 +869,15 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
       st: { bold: boolean; italic: boolean; underline: boolean }
     ): React.CSSProperties => ({
       fontSize: size,
+      lineHeight: 1.38,
       fontWeight: st.bold ? 700 : 400,
       fontStyle: st.italic ? 'italic' : 'normal',
       textDecoration: st.underline ? 'underline' : 'none',
     });
     const logoSlotSize = Math.max(normKop.leftLogoSize, normKop.rightLogoSize);
     return (
-      <div className="mb-5 pb-2 border-b-[3px] border-double border-slate-900">
-        <div className="flex items-center justify-between gap-4 pb-2 border-b border-slate-900">
+      <div className="mb-5 pb-[3px] border-b border-slate-950">
+        <div className="flex items-center justify-between gap-4 pb-2 border-b-[3px] border-slate-950">
           <div
             style={{ width: logoSlotSize, minHeight: normKop.leftLogoSize }}
             className="shrink-0 flex items-center justify-center"
@@ -892,39 +893,36 @@ export const PrintReportsView: React.FC<PrintReportsViewProps> = ({
           </div>
           <div
             style={{ fontFamily: getPrintFontCss(normKop.fontFamily) }}
-            className="flex-1 text-center leading-snug text-slate-950"
+            className="flex-1 min-w-0 text-center text-slate-950"
           >
-            {normKop.line1 && (
-              <p style={getLineCss(normKop.lineSizes.line1, normKop.lineStyles.line1)} className="tracking-wide">
-                {normKop.line1}
+            {normKop.line1?.trim() && (
+              <p style={getLineCss(normKop.lineSizes.line1, normKop.lineStyles.line1)}>
+                {normKop.line1.trim()}
               </p>
             )}
-            {normKop.line2 && (
+            {normKop.line2?.trim() && (
               <p style={getLineCss(normKop.lineSizes.line2, normKop.lineStyles.line2)}>
-                {normKop.line2}
+                {normKop.line2.trim()}
               </p>
             )}
-            {normKop.line3 && (
+            {normKop.line3?.trim() && (
               <p style={getLineCss(normKop.lineSizes.line3, normKop.lineStyles.line3)}>
-                {normKop.line3}
+                {normKop.line3.trim()}
               </p>
             )}
-            {normKop.line4 && (
-              <p
-                style={getLineCss(normKop.lineSizes.line4, normKop.lineStyles.line4)}
-                className="tracking-wide mt-0.5"
-              >
-                {normKop.line4}
+            {normKop.line4?.trim() && (
+              <p style={getLineCss(normKop.lineSizes.line4, normKop.lineStyles.line4)}>
+                {normKop.line4.trim()}
               </p>
             )}
-            {normKop.line5 && (
+            {normKop.line5?.trim() && (
               <p style={getLineCss(normKop.lineSizes.line5, normKop.lineStyles.line5)}>
-                {normKop.line5}
+                {normKop.line5.trim()}
               </p>
             )}
-            {normKop.line6 && (
+            {normKop.line6?.trim() && (
               <p style={getLineCss(normKop.lineSizes.line6, normKop.lineStyles.line6)}>
-                {normKop.line6}
+                {normKop.line6.trim()}
               </p>
             )}
           </div>

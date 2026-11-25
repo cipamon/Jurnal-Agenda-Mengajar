@@ -110,6 +110,9 @@ export default function App() {
   const [cloudAuthError, setCloudAuthError] = useState<string | null>(null);
   const verifyingUidRef = useRef<string | null>(null);
   const pendingCloudSaveRef = useRef<Promise<unknown> | null>(null);
+  const settingsRevisionRef = useRef(0);
+  const settingsSaveInFlightCountRef = useRef(0);
+  const settingsSaveQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
   const [localThemeOverride, setLocalThemeOverride] = useState<ThemeId | null>(() => {
     try {
       return (localStorage.getItem(LS_LOCAL_THEME_KEY) as ThemeId) || null;
@@ -284,7 +287,17 @@ export default function App() {
       userEmail: session.email,
       initialLocalFallback: baseFallback,
       onSync: (syncedDb) => {
-        setDb(syncedDb);
+        const currentLocal = dbRef.current;
+        const resolvedDb =
+          settingsSaveInFlightCountRef.current > 0 && currentLocal
+            ? {
+                ...syncedDb,
+                settings: currentLocal.settings,
+                lastModifiedAt: currentLocal.lastModifiedAt || syncedDb.lastModifiedAt,
+              }
+            : syncedDb;
+        dbRef.current = resolvedDb;
+        setDb(resolvedDb);
         setCloudUsersSynced(true);
       },
     });
@@ -463,13 +476,55 @@ export default function App() {
 
       const localModifiedMs = prevLocalDb?.lastModifiedAt ? Date.parse(prevLocalDb.lastModifiedAt) : 0;
       const serverSyncedMs = workspaceDb.lastSyncedAt ? Date.parse(workspaceDb.lastSyncedAt) : 0;
-      const shouldPreserveLocalLatest =
-        authRes.user.role === 'admin' &&
-        Boolean(prevLocalDb) &&
-        localModifiedMs > 0 &&
-        localModifiedMs > serverSyncedMs;
+      const localSettingsMs = prevLocalDb?.settings?.updatedAt
+        ? Date.parse(prevLocalDb.settings.updatedAt)
+        : 0;
+      const serverSettingsMs = workspaceDb.settings?.updatedAt
+        ? Date.parse(workspaceDb.settings.updatedAt)
+        : 0;
 
-      const activeDb = shouldPreserveLocalLatest && prevLocalDb ? prevLocalDb : workspaceDb;
+      let activeDb: PortalDatabase = {
+        ...workspaceDb,
+        lastModifiedAt: workspaceDb.lastModifiedAt || workspaceDb.lastSyncedAt || undefined,
+      };
+      let preservedMode: 'none' | 'full' | 'settings' = 'none';
+
+      if (authRes.user.role === 'admin' && prevLocalDb) {
+        if (localModifiedMs > 0 && localModifiedMs > serverSyncedMs) {
+          try {
+            const pushed = await apiRestoreWorkspace(prevLocalDb);
+            activeDb = {
+              ...pushed,
+              lastModifiedAt: pushed.lastSyncedAt || prevLocalDb.lastModifiedAt || undefined,
+            };
+            preservedMode = 'full';
+          } catch {
+            activeDb = prevLocalDb;
+            preservedMode = 'full';
+          }
+        } else if (
+          localSettingsMs > serverSettingsMs ||
+          (serverSettingsMs === 0 && Boolean(prevLocalDb.settings?.updatedAt))
+        ) {
+          try {
+            const savedSettings = await apiSaveSettings(prevLocalDb.settings);
+            activeDb = {
+              ...workspaceDb,
+              settings: savedSettings,
+              lastModifiedAt: savedSettings.updatedAt || workspaceDb.lastSyncedAt || undefined,
+            };
+            preservedMode = 'settings';
+          } catch {
+            activeDb = {
+              ...workspaceDb,
+              settings: prevLocalDb.settings,
+              lastModifiedAt: prevLocalDb.settings.updatedAt || workspaceDb.lastSyncedAt || undefined,
+            };
+            preservedMode = 'settings';
+          }
+        }
+      }
+
       dbRef.current = activeDb;
       setDb(activeDb);
       void saveDatabase(activeDb);
@@ -486,8 +541,8 @@ export default function App() {
       setSession(nextSession);
       setActiveMenu('dashboard');
       notify(
-        shouldPreserveLocalLatest
-          ? `Terhubung sebagai ${authRes.user.name}. Pengaturan & input terakhir di perangkat dipertahankan (Auto-Restore nonaktif).`
+        preservedMode !== 'none'
+          ? `Terhubung sebagai ${authRes.user.name}. Pengaturan & data terbaru disinkronkan ke server.`
           : `Terhubung ke server sebagai ${authRes.user.name} (${USER_ROLE_LABELS[authRes.user.role]}).`
       );
       return null;
@@ -515,6 +570,11 @@ export default function App() {
       setCloudVerified(false);
     }
     try {
+      const prevLocalDb = dbRef.current;
+      if (prevLocalDb) {
+        void saveLocalSafetyBackup(prevLocalDb);
+      }
+
       const authRes = await apiClaimAdmin({
         username: payload.username,
         password: payload.password,
@@ -524,9 +584,50 @@ export default function App() {
         semester: payload.semester,
       });
       const workspaceDb = await apiFetchWorkspace();
-      dbRef.current = workspaceDb;
-      setDb(workspaceDb);
-      void saveDatabase(workspaceDb);
+
+      let activeDb: PortalDatabase = {
+        ...workspaceDb,
+        lastModifiedAt: workspaceDb.lastModifiedAt || workspaceDb.lastSyncedAt || undefined,
+      };
+      const localModifiedMs = prevLocalDb?.lastModifiedAt ? Date.parse(prevLocalDb.lastModifiedAt) : 0;
+      const localSettingsMs = prevLocalDb?.settings?.updatedAt
+        ? Date.parse(prevLocalDb.settings.updatedAt)
+        : 0;
+      const serverSyncedMs = workspaceDb.lastSyncedAt ? Date.parse(workspaceDb.lastSyncedAt) : 0;
+      const serverSettingsMs = workspaceDb.settings?.updatedAt
+        ? Date.parse(workspaceDb.settings.updatedAt)
+        : 0;
+
+      if (prevLocalDb && localModifiedMs > 0 && localModifiedMs > serverSyncedMs) {
+        try {
+          const pushed = await apiRestoreWorkspace(prevLocalDb);
+          activeDb = {
+            ...pushed,
+            lastModifiedAt: pushed.lastSyncedAt || prevLocalDb.lastModifiedAt || undefined,
+          };
+        } catch {
+          activeDb = prevLocalDb;
+        }
+      } else if (prevLocalDb && localSettingsMs > serverSettingsMs) {
+        try {
+          const savedSettings = await apiSaveSettings(prevLocalDb.settings);
+          activeDb = {
+            ...workspaceDb,
+            settings: savedSettings,
+            lastModifiedAt: savedSettings.updatedAt || workspaceDb.lastSyncedAt || undefined,
+          };
+        } catch {
+          activeDb = {
+            ...workspaceDb,
+            settings: prevLocalDb.settings,
+            lastModifiedAt: prevLocalDb.settings.updatedAt || workspaceDb.lastSyncedAt || undefined,
+          };
+        }
+      }
+
+      dbRef.current = activeDb;
+      setDb(activeDb);
+      void saveDatabase(activeDb);
 
       const nextSession: SessionState = {
         isAuthenticated: true,
@@ -569,10 +670,48 @@ export default function App() {
       const workspaceDb = await apiFetchWorkspace();
       const localModifiedMs = prevLocalDb?.lastModifiedAt ? Date.parse(prevLocalDb.lastModifiedAt) : 0;
       const serverSyncedMs = workspaceDb.lastSyncedAt ? Date.parse(workspaceDb.lastSyncedAt) : 0;
-      const shouldPreserveLocalLatest =
-        Boolean(prevLocalDb) && localModifiedMs > 0 && localModifiedMs > serverSyncedMs;
+      const localSettingsMs = prevLocalDb?.settings?.updatedAt
+        ? Date.parse(prevLocalDb.settings.updatedAt)
+        : 0;
+      const serverSettingsMs = workspaceDb.settings?.updatedAt
+        ? Date.parse(workspaceDb.settings.updatedAt)
+        : 0;
 
-      const activeDb = shouldPreserveLocalLatest && prevLocalDb ? prevLocalDb : workspaceDb;
+      let activeDb: PortalDatabase = {
+        ...workspaceDb,
+        lastModifiedAt: workspaceDb.lastModifiedAt || workspaceDb.lastSyncedAt || undefined,
+      };
+      if (prevLocalDb && localModifiedMs > 0 && localModifiedMs > serverSyncedMs) {
+        try {
+          const pushed = await apiRestoreWorkspace(prevLocalDb);
+          activeDb = {
+            ...pushed,
+            lastModifiedAt: pushed.lastSyncedAt || prevLocalDb.lastModifiedAt || undefined,
+          };
+        } catch {
+          activeDb = prevLocalDb;
+        }
+      } else if (
+        prevLocalDb &&
+        (localSettingsMs > serverSettingsMs ||
+          (serverSettingsMs === 0 && Boolean(prevLocalDb.settings?.updatedAt)))
+      ) {
+        try {
+          const savedSettings = await apiSaveSettings(prevLocalDb.settings);
+          activeDb = {
+            ...workspaceDb,
+            settings: savedSettings,
+            lastModifiedAt: savedSettings.updatedAt || workspaceDb.lastSyncedAt || undefined,
+          };
+        } catch {
+          activeDb = {
+            ...workspaceDb,
+            settings: prevLocalDb.settings,
+            lastModifiedAt: prevLocalDb.settings.updatedAt || workspaceDb.lastSyncedAt || undefined,
+          };
+        }
+      }
+
       dbRef.current = activeDb;
       setDb(activeDb);
       void saveDatabase(activeDb);
@@ -1251,6 +1390,7 @@ export default function App() {
           });
           updatedSettings = {
             ...prev.settings,
+            updatedAt: new Date().toISOString(),
             classes: Array.from(extraClasses),
           };
           if (updatedSettings.classes.length !== prev.settings.classes.length) {
@@ -1301,61 +1441,91 @@ export default function App() {
       return false;
     }
     const base = dbRef.current ?? db ?? createSeedDatabase();
+    const nowIso = new Date().toISOString();
+    const stampedSettings: SystemSettings = {
+      ...nextSettings,
+      updatedAt: nowIso,
+    };
+
+    if (stampedSettings.themeId && stampedSettings.themeId !== base.settings.themeId) {
+      try {
+        localStorage.setItem(LS_LOCAL_THEME_KEY, stampedSettings.themeId);
+      } catch {
+        // ignore
+      }
+      setLocalThemeOverride(stampedSettings.themeId);
+    }
+
+    const myRevision = ++settingsRevisionRef.current;
     const nextDb: PortalDatabase = {
       ...base,
-      lastModifiedAt: new Date().toISOString(),
-      settings: nextSettings,
+      lastModifiedAt: nowIso,
+      settings: stampedSettings,
     };
     dbRef.current = nextDb;
     setDb(nextDb);
     await saveDatabase(nextDb);
     void saveLocalSafetyBackup(nextDb);
 
-    if (isCloudActive) {
-      const savePromise = fsSaveSettings(nextSettings);
-      pendingCloudSaveRef.current = savePromise;
+    const runRemoteSave = async (): Promise<boolean> => {
+      settingsSaveInFlightCountRef.current += 1;
       try {
-        await savePromise;
-        return true;
-      } catch (err) {
-        const msg =
-          err instanceof Error
-            ? err.message
-            : 'Gagal menyinkronkan pengaturan ke Firebase Firestore.';
-        notify(`Gagal menyimpan ke Firebase: ${msg}`);
-        return false;
-      } finally {
-        if (pendingCloudSaveRef.current === savePromise) {
-          pendingCloudSaveRef.current = null;
+        if (isCloudActive) {
+          const savePromise = fsSaveSettings(stampedSettings);
+          pendingCloudSaveRef.current = savePromise;
+          try {
+            await savePromise;
+            return true;
+          } catch (err) {
+            const msg =
+              err instanceof Error
+                ? err
+                : 'Gagal menyinkronkan pengaturan ke Firebase Firestore.';
+            notify(`Gagal menyimpan ke Firebase: ${msg instanceof Error ? msg.message : msg}`);
+            return false;
+          } finally {
+            if (pendingCloudSaveRef.current === savePromise) {
+              pendingCloudSaveRef.current = null;
+            }
+          }
         }
-      }
-    }
 
-    if (isServerActive) {
-      const savePromise = apiSaveSettings(nextSettings);
-      pendingCloudSaveRef.current = savePromise;
-      try {
-        const savedSettings = await savePromise;
-        const confirmedDb: PortalDatabase = {
-          ...(dbRef.current ?? nextDb),
-          settings: savedSettings,
-        };
-        dbRef.current = confirmedDb;
-        setDb(confirmedDb);
-        await saveDatabase(confirmedDb);
-        return true;
-      } catch (err) {
-        const msg =
-          err instanceof Error ? err.message : 'Gagal menyimpan pengaturan ke server backend.';
-        notify(`Gagal menyimpan ke server: ${msg}`);
-        return false;
-      } finally {
-        if (pendingCloudSaveRef.current === savePromise) {
-          pendingCloudSaveRef.current = null;
+        if (isServerActive) {
+          const savePromise = apiSaveSettings(stampedSettings);
+          pendingCloudSaveRef.current = savePromise;
+          try {
+            const savedSettings = await savePromise;
+            if (myRevision === settingsRevisionRef.current) {
+              const latestBase = dbRef.current ?? nextDb;
+              const confirmedDb: PortalDatabase = {
+                ...latestBase,
+                settings: savedSettings,
+              };
+              dbRef.current = confirmedDb;
+              setDb(confirmedDb);
+              await saveDatabase(confirmedDb);
+            }
+            return true;
+          } catch (err) {
+            const msg =
+              err instanceof Error ? err.message : 'Gagal menyimpan pengaturan ke server backend.';
+            notify(`Gagal menyimpan ke server: ${msg}`);
+            return false;
+          } finally {
+            if (pendingCloudSaveRef.current === savePromise) {
+              pendingCloudSaveRef.current = null;
+            }
+          }
         }
+        return true;
+      } finally {
+        settingsSaveInFlightCountRef.current = Math.max(0, settingsSaveInFlightCountRef.current - 1);
       }
-    }
-    return true;
+    };
+
+    const queued = settingsSaveQueueRef.current.then(runRemoteSave, runRemoteSave);
+    settingsSaveQueueRef.current = queued.catch(() => false);
+    return queued;
   };
 
   const handleUpdateUsers = (nextUsers: AppUser[]) => {
@@ -1437,6 +1607,12 @@ export default function App() {
     if (isServerActive) {
       try {
         const serverFresh = await apiResetDemoWorkspace();
+        try {
+          localStorage.removeItem(LS_LOCAL_THEME_KEY);
+        } catch {
+          // ignore
+        }
+        setLocalThemeOverride(null);
         dbRef.current = serverFresh;
         setDb(serverFresh);
         await saveDatabase(serverFresh);
@@ -1451,7 +1627,15 @@ export default function App() {
       return;
     }
 
-    const fresh = createSeedDatabase();
+    const freshSeed = createSeedDatabase();
+    const fresh: PortalDatabase = {
+      ...freshSeed,
+      lastModifiedAt: new Date().toISOString(),
+      settings: {
+        ...freshSeed.settings,
+        updatedAt: new Date().toISOString(),
+      },
+    };
     if (isCloudActive && session?.email) {
       const hasCurrentAdmin = (fresh.users || []).some(
         (u) => u.email.toLowerCase() === session.email.toLowerCase()
@@ -1478,6 +1662,12 @@ export default function App() {
       }
       void fsReplaceEntireDatabase(fresh);
     }
+    try {
+      localStorage.removeItem(LS_LOCAL_THEME_KEY);
+    } catch {
+      // ignore
+    }
+    setLocalThemeOverride(null);
     dbRef.current = fresh;
     setDb(fresh);
     void saveDatabase(fresh);
@@ -1508,6 +1698,7 @@ export default function App() {
         defaultSemester={db.settings.semester}
         academicYears={db.settings.academicYears}
         webBrand={webBrand}
+        hasCustomLocalSettings={Boolean(db.settings.updatedAt)}
         externalError={cloudAuthError}
         onGoogleLogin={handleGoogleLogin}
         onServerLogin={handleServerLogin}
@@ -1625,9 +1816,11 @@ export default function App() {
           activeUser.id === 'usr-guru-1' ||
           activeUser.email.toLowerCase() === prev.settings.teacherProfile.email.toLowerCase());
 
-      const nextSettings = {
+      const nextSettings: SystemSettings = {
         ...prev.settings,
-        ...(shouldSyncLegacyTeacherProfile ? { teacherProfile: sanitizedTp } : {}),
+        ...(shouldSyncLegacyTeacherProfile
+          ? { teacherProfile: sanitizedTp, updatedAt: new Date().toISOString() }
+          : {}),
       };
       if (shouldSyncLegacyTeacherProfile) resolvedNextSettings = nextSettings;
 
@@ -1750,10 +1943,14 @@ export default function App() {
             setLocalThemeOverride(themeId);
             if (currentUserRole === 'admin') {
               const latestSettings = dbRef.current?.settings ?? db.settings;
-              const nextSettings = { ...latestSettings, themeId };
+              const nextSettings: SystemSettings = {
+                ...latestSettings,
+                themeId,
+                updatedAt: new Date().toISOString(),
+              };
               updateDatabase((prev) => ({
                 ...prev,
-                settings: { ...prev.settings, themeId },
+                settings: { ...prev.settings, themeId, updatedAt: nextSettings.updatedAt },
               }));
               if (isCloudActive) {
                 trackRemoteSave(fsSaveSettings(nextSettings), 'Gagal menyimpan tema ke Firebase');
@@ -1969,10 +2166,23 @@ export default function App() {
                 if (dbRef.current) {
                   void saveLocalSafetyBackup(dbRef.current);
                 }
+                const nowIso = new Date().toISOString();
                 const stampedRestored: PortalDatabase = {
                   ...restored,
-                  lastModifiedAt: new Date().toISOString(),
+                  lastModifiedAt: nowIso,
+                  settings: {
+                    ...restored.settings,
+                    updatedAt: nowIso,
+                  },
                 };
+                if (stampedRestored.settings.themeId) {
+                  try {
+                    localStorage.setItem(LS_LOCAL_THEME_KEY, stampedRestored.settings.themeId);
+                  } catch {
+                    // ignore
+                  }
+                  setLocalThemeOverride(stampedRestored.settings.themeId);
+                }
                 dbRef.current = stampedRestored;
                 setDb(stampedRestored);
                 void saveDatabase(stampedRestored);

@@ -141,6 +141,10 @@ export function migrateSettings(rawSettings?: Partial<SystemSettings> & { sheets
       ...defaults.teacherProfile,
       ...rawTeacher,
     },
+    updatedAt:
+      typeof rawSettings.updatedAt === 'string' && rawSettings.updatedAt.trim()
+        ? rawSettings.updatedAt
+        : undefined,
   };
 }
 

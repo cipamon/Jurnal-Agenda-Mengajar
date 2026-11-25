@@ -303,6 +303,7 @@ export interface SystemSettings {
   examWeights?: Record<string, number>;
   useWeightedAverage?: boolean;
   academicYears: string[];
+  updatedAt?: string;
 }
 
 export interface PortalDatabase {

@@ -19,15 +19,32 @@ import type {
 import { createSeedDatabase } from './src/utils/seedData.ts';
 import { CURRENT_APP_SCHEMA_VERSION, migrateDatabase, migrateSettings } from './src/utils/storage.ts';
 
-const __filename = fileURLToPath(import.meta.url);
+const __filename =
+  typeof import.meta !== 'undefined' && import.meta.url
+    ? fileURLToPath(import.meta.url)
+    : path.resolve(process.cwd(), 'server.ts');
 const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT) || 3000;
 const IS_VERCEL = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
-const BUNDLED_DATA_DIR = path.resolve(__dirname, '.data');
+const IS_NETLIFY = Boolean(
+  process.env.PORTAL_NETLIFY_FUNCTION ||
+    process.env.NETLIFY ||
+    process.env.NETLIFY_LOCAL ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.LAMBDA_TASK_ROOT
+);
+const IS_SERVERLESS = IS_VERCEL || IS_NETLIFY;
+const candidateDataDirs = [
+  path.resolve(__dirname, '.data'),
+  path.resolve(process.cwd(), '.data'),
+  path.resolve(__dirname, '..', '..', '.data'),
+];
+const BUNDLED_DATA_DIR =
+  candidateDataDirs.find((dir) => fs.existsSync(dir)) || path.resolve(__dirname, '.data');
 const DATA_DIR = process.env.PORTAL_DATA_DIR
   ? path.resolve(process.env.PORTAL_DATA_DIR)
-  : IS_VERCEL
+  : IS_SERVERLESS
     ? path.resolve('/tmp', 'portal-eguru-data')
     : BUNDLED_DATA_DIR;
 
@@ -371,7 +388,7 @@ function loadWorkspaceStore(): WorkspaceStore {
   }
 
   let bundledSource: PortalDatabase | null = null;
-  if (IS_VERCEL) {
+  if (IS_SERVERLESS) {
     try {
       const bundledWsFile = path.resolve(BUNDLED_DATA_DIR, 'workspace.json');
       if (fs.existsSync(bundledWsFile)) {
@@ -430,6 +447,30 @@ function loadUsersStore(): UsersStore {
       }
     } catch {
       // fall through to initialize
+    }
+  }
+
+  if (IS_SERVERLESS) {
+    try {
+      const bundledUsersFile = path.resolve(BUNDLED_DATA_DIR, 'users.json');
+      if (fs.existsSync(bundledUsersFile)) {
+        const parsed = JSON.parse(fs.readFileSync(bundledUsersFile, 'utf-8')) as Partial<UsersStore>;
+        if (parsed && Array.isArray(parsed.users)) {
+          const bundledStore: UsersStore = {
+            adminClaimed: Boolean(parsed.adminClaimed),
+            users: parsed.users.map((u) => ({
+              ...u,
+              username: deriveUsername(u.username, u.email, u.id),
+              passwordSalt: String(u.passwordSalt || ''),
+              passwordHash: String(u.passwordHash || ''),
+            })),
+          };
+          writeJsonAtomic(USERS_FILE, bundledStore);
+          return bundledStore;
+        }
+      }
+    } catch {
+      // fall through to seed initialization
     }
   }
 
@@ -543,17 +584,30 @@ export async function createApiApp(): Promise<express.Express> {
   // Ensure initial stores exist cleanly at startup and create boot backup snapshot
   loadWorkspaceStore();
   loadUsersStore();
-  if (!IS_VERCEL) {
+  if (!IS_SERVERLESS) {
     createServerBackupSnapshot('boot');
   }
 
   const app = express();
   app.use(express.json({ limit: '20mb' }));
+  app.use((req, _res, next) => {
+    if (req.url.startsWith('/.netlify/functions/api')) {
+      const stripped = req.url.slice('/.netlify/functions/api'.length) || '/';
+      req.url = stripped.startsWith('/api')
+        ? stripped
+        : `/api${stripped.startsWith('/') ? stripped : `/${stripped}`}`;
+    }
+    next();
+  });
 
   app.get('/api/health', (_req, res) => {
     res.json({
       ok: true,
-      mode: IS_VERCEL ? 'vercel-serverless' : 'fullstack',
+      mode: IS_VERCEL
+        ? 'vercel-serverless'
+        : IS_NETLIFY
+          ? 'netlify-serverless'
+          : 'fullstack',
       service: 'Portal E-Guru v10.3',
       timestamp: new Date().toISOString(),
     });
@@ -568,7 +622,8 @@ export async function createApiApp(): Promise<express.Express> {
       ok: true,
       adminConfigured: envAdmin.enabled || usersStore.adminClaimed,
       envAdminManaged: envAdmin.enabled,
-      ephemeralStorage: Boolean(IS_VERCEL && !process.env.PORTAL_DATA_DIR),
+      ephemeralStorage: Boolean(IS_SERVERLESS && !process.env.PORTAL_DATA_DIR),
+      settingsConfigured: Boolean(ws.settings.updatedAt),
       adminUsernameHint: envAdmin.enabled
         ? envAdmin.username
         : primaryAdmin?.username || 'admin',
@@ -696,6 +751,7 @@ export async function createApiApp(): Promise<express.Express> {
             ? { academicYear: reqAcademicYear }
             : {}),
           ...(reqSemester ? { semester: reqSemester } : {}),
+          updatedAt: nowIso,
         });
         saveWorkspaceStore(workspace);
       }
@@ -910,7 +966,10 @@ export async function createApiApp(): Promise<express.Express> {
         return;
       }
       const ws = loadWorkspaceStore();
-      ws.settings = sanitizeSettingsForServer(body.settings);
+      ws.settings = sanitizeSettingsForServer({
+        ...body.settings,
+        updatedAt: new Date().toISOString(),
+      });
       const saved = saveWorkspaceStore(ws);
       res.json({ ok: true, settings: saved.settings, lastSyncedAt: saved.lastSyncedAt });
     } catch (err) {
@@ -1672,6 +1731,7 @@ export async function createApiApp(): Promise<express.Express> {
       ) {
         ws.settings = sanitizeSettingsForServer({
           ...ws.settings,
+          updatedAt: new Date().toISOString(),
           teacherProfile: {
             ...ws.settings.teacherProfile,
             name: updatedUser.name,
@@ -1867,15 +1927,19 @@ export async function createApiApp(): Promise<express.Express> {
       createServerBackupSnapshot('before_reset');
 
       const fresh = createSeedDatabase();
+      const nowIso = new Date().toISOString();
       const savedWs = saveWorkspaceStore({
         version: CURRENT_APP_SCHEMA_VERSION,
-        lastSyncedAt: new Date().toISOString(),
+        lastSyncedAt: nowIso,
         students: fresh.students,
         journals: fresh.journals,
         grades: fresh.grades,
         schedules: fresh.schedules || [],
         agendas: fresh.agendas || [],
-        settings: fresh.settings,
+        settings: {
+          ...fresh.settings,
+          updatedAt: nowIso,
+        },
       });
 
       // Keep existing Admin login credentials so Admin is never locked out after reset
@@ -1959,7 +2023,7 @@ async function startStandaloneServer() {
 
 let isDirectMain = false;
 try {
-  if (!IS_VERCEL && process.argv[1]) {
+  if (!IS_SERVERLESS && process.argv[1]) {
     isDirectMain = fs.realpathSync(path.resolve(process.argv[1])) === fs.realpathSync(__filename);
   }
 } catch {

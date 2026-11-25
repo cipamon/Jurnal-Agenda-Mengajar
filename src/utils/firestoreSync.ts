@@ -310,18 +310,67 @@ function buildSettingsPayload(slimSettings: SystemSettings, uid: string) {
     webBrand: stripUndefinedDeep(slimSettings.webBrand || {}),
     kopSurat: stripUndefinedDeep(slimSettings.kopSurat || {}),
     teacherProfile: stripUndefinedDeep(slimSettings.teacherProfile || {}),
-    classes: (slimSettings.classes || []).slice(0, 200),
-    subjects: (slimSettings.subjects || []).slice(0, 200),
-    examTypes: (slimSettings.examTypes || []).slice(0, 100),
+    classes: (slimSettings.classes || []).map((c) => String(c || '').slice(0, 160)).slice(0, 200),
+    subjects: (slimSettings.subjects || []).map((s) => String(s || '').slice(0, 160)).slice(0, 200),
+    examTypes: (slimSettings.examTypes || []).map((e) => String(e || '').slice(0, 160)).slice(0, 100),
     learningObjectives: (slimSettings.learningObjectives || [])
       .map((item) => String(item || '').slice(0, 160))
       .slice(0, 200),
     examWeights: stripUndefinedDeep(slimSettings.examWeights || {}),
     useWeightedAverage: Boolean(slimSettings.useWeightedAverage),
-    academicYears: (slimSettings.academicYears || []).slice(0, 50),
+    academicYears: (slimSettings.academicYears || []).map((y) => String(y || '').slice(0, 160)).slice(0, 50),
     updatedAt: serverTimestamp(),
     updatedByUid: uid,
   };
+}
+
+async function prepareSlimSettingsAndAssets(rawSettings: SystemSettings): Promise<{
+  slimSettings: SystemSettings;
+  safeAssets: Partial<Record<AssetSlotKey, string>>;
+}> {
+  const { slimSettings, assets } = extractSettingsAndAssets(rawSettings);
+  const safeAssets: Partial<Record<AssetSlotKey, string>> = {};
+
+  for (const key of Object.keys(assets) as AssetSlotKey[]) {
+    const val = assets[key];
+    if (!val) continue;
+    const safe = await shrinkDataUrlIfNeeded(val, 880000);
+    if (!safe) {
+      throw new Error(
+        `Gambar aset (${key}) terlalu besar atau formatnya tidak dapat dikompresi untuk disimpan ke Firebase (maks. 880 KB).`
+      );
+    }
+    safeAssets[key] = safe;
+  }
+
+  const shrinkExtraRowsTo = async (limitChars: number) => {
+    if (!slimSettings.signatureStamp?.extraRows || slimSettings.signatureStamp.extraRows.length === 0) {
+      return;
+    }
+    slimSettings.signatureStamp.extraRows = await Promise.all(
+      slimSettings.signatureStamp.extraRows.map(async (row) => ({
+        ...row,
+        signers: await Promise.all(
+          row.signers.map(async (signer) => ({
+            ...signer,
+            signatureDataUrl: signer.signatureDataUrl
+              ? await shrinkDataUrlIfNeeded(signer.signatureDataUrl, limitChars)
+              : '',
+          }))
+        ),
+      }))
+    );
+  };
+
+  await shrinkExtraRowsTo(85000);
+  if (JSON.stringify(slimSettings).length > 880000) {
+    await shrinkExtraRowsTo(36000);
+  }
+  if (JSON.stringify(slimSettings).length > 900000) {
+    await shrinkExtraRowsTo(16000);
+  }
+
+  return { slimSettings, safeAssets };
 }
 
 async function buildStudentPayloads(student: Student) {
@@ -670,22 +719,7 @@ export async function fsInitializeDatabaseOnce(
   sourceDb: PortalDatabase,
   uid: string
 ): Promise<void> {
-  const { slimSettings, assets } = extractSettingsAndAssets(sourceDb.settings);
-  if (slimSettings.signatureStamp?.extraRows && slimSettings.signatureStamp.extraRows.length > 0) {
-    slimSettings.signatureStamp.extraRows = await Promise.all(
-      slimSettings.signatureStamp.extraRows.map(async (row) => ({
-        ...row,
-        signers: await Promise.all(
-          row.signers.map(async (signer) => ({
-            ...signer,
-            signatureDataUrl: signer.signatureDataUrl
-              ? await shrinkDataUrlIfNeeded(signer.signatureDataUrl, 85000)
-              : '',
-          }))
-        ),
-      }))
-    );
-  }
+  const { slimSettings, safeAssets } = await prepareSlimSettingsAndAssets(sourceDb.settings);
   const phase1Ops: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
 
   // 1. Settings
@@ -694,9 +728,8 @@ export async function fsInitializeDatabaseOnce(
   });
 
   // 2. School Assets
-  for (const key of Object.keys(assets) as AssetSlotKey[]) {
-    if (!assets[key]) continue;
-    const safeDataUrl = await shrinkDataUrlIfNeeded(assets[key], 880000);
+  for (const key of Object.keys(safeAssets) as AssetSlotKey[]) {
+    const safeDataUrl = safeAssets[key];
     if (!safeDataUrl) continue;
     phase1Ops.push((batch) => {
       batch.set(doc(db, 'schoolAssets', key), {
@@ -838,9 +871,11 @@ export function subscribeToSchoolWorkspace(opts: {
       };
     });
 
+    const syncedModifiedAt = hydratedSettings.updatedAt || undefined;
     const merged: PortalDatabase = {
       version: CURRENT_APP_SCHEMA_VERSION,
       lastSyncedAt: new Date().toISOString(),
+      ...(syncedModifiedAt ? { lastModifiedAt: syncedModifiedAt } : {}),
       settings: hydratedSettings,
       students,
       journals: journalsList,
@@ -861,7 +896,11 @@ export function subscribeToSchoolWorkspace(opts: {
       doc(db, 'settings', 'school'),
       (snap) => {
         if (snap.exists()) {
-          rawSettings = snap.data() as SystemSettings;
+          const data = snap.data() as SystemSettings & { updatedAt?: unknown };
+          rawSettings = {
+            ...data,
+            updatedAt: data.updatedAt ? tsToIso(data.updatedAt) : undefined,
+          };
         }
         hasSettings = true;
         emitMerged();
@@ -1123,42 +1162,24 @@ export async function fsSaveSettings(nextSettings: SystemSettings): Promise<void
   if (!uid) {
     throw new Error('Sesi Firebase belum aktif. Silakan masuk ulang dengan akun Google Admin.');
   }
-  const { slimSettings, assets } = extractSettingsAndAssets(nextSettings);
-  if (slimSettings.signatureStamp?.extraRows && slimSettings.signatureStamp.extraRows.length > 0) {
-    slimSettings.signatureStamp.extraRows = await Promise.all(
-      slimSettings.signatureStamp.extraRows.map(async (row) => ({
-        ...row,
-        signers: await Promise.all(
-          row.signers.map(async (signer) => ({
-            ...signer,
-            signatureDataUrl: signer.signatureDataUrl
-              ? await shrinkDataUrlIfNeeded(signer.signatureDataUrl, 85000)
-              : '',
-          }))
-        ),
-      }))
-    );
-  }
+  const { slimSettings, safeAssets } = await prepareSlimSettingsAndAssets(nextSettings);
   const ops: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
 
   ops.push((batch) => {
     batch.set(doc(db, 'settings', 'school'), buildSettingsPayload(slimSettings, uid));
   });
 
-  for (const key of Object.keys(assets) as AssetSlotKey[]) {
-    const val = assets[key];
-    if (val) {
-      const safe = await shrinkDataUrlIfNeeded(val, 880000);
-      if (safe) {
-        ops.push((batch) => {
-          batch.set(doc(db, 'schoolAssets', key), {
-            id: key,
-            dataUrl: safe,
-            updatedAt: serverTimestamp(),
-            updatedByUid: uid,
-          });
+  for (const key of Object.keys(safeAssets) as AssetSlotKey[]) {
+    const safe = safeAssets[key];
+    if (safe) {
+      ops.push((batch) => {
+        batch.set(doc(db, 'schoolAssets', key), {
+          id: key,
+          dataUrl: safe,
+          updatedAt: serverTimestamp(),
+          updatedByUid: uid,
         });
-      }
+      });
     }
   }
 

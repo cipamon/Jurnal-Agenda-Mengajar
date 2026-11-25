@@ -114,6 +114,7 @@ export interface ServerAuthStatus {
   adminConfigured: boolean;
   envAdminManaged: boolean;
   ephemeralStorage?: boolean;
+  settingsConfigured?: boolean;
   adminUsernameHint: string;
   webBrand?: WebBrandConfig;
   academicYear?: string;

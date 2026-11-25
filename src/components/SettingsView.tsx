@@ -450,10 +450,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isSavingFormat, setIsSavingFormat] = useState(false);
   const [isSavingKop, setIsSavingKop] = useState(false);
   const [isSavingBrand, setIsSavingBrand] = useState(false);
+  const [isSavingSection1, setIsSavingSection1] = useState(false);
+  const [isSavingSig, setIsSavingSig] = useState(false);
+
+  const latestSettingsRef = useRef<SystemSettings>(settings);
+  const latestDraftRef = useRef<SystemSettings>(draft);
+  latestDraftRef.current = draft;
+  const onUpdateSettingsRef = useRef(onUpdateSettings);
+  onUpdateSettingsRef.current = onUpdateSettings;
+
+  const sigSaveTimerRef = useRef<number | null>(null);
+  const brandSizeTimerRef = useRef<number | null>(null);
+  const weightSaveTimerRef = useRef<number | null>(null);
 
   const prevSettingsRef = useRef<SystemSettings>(settings);
   const prevSavedKopJsonRef = useRef<string>(JSON.stringify(settings.kopSurat));
   const prevSavedBrandRef = useRef<string>(JSON.stringify(normalizeWebBrand(settings)));
+  const prevSavedSigRef = useRef<string>(JSON.stringify(normalizeSignatureStamp(settings)));
+  const getSection1Signature = (s: SystemSettings) =>
+    JSON.stringify({
+      academicYear: s.academicYear,
+      semester: s.semester,
+      kkm: s.kkm,
+      signatureCity: s.signatureCity,
+      principalTitle: s.principalTitle,
+      principalName: s.principalName,
+      principalNip: s.principalNip,
+    });
   const getFormatSignature = (s: SystemSettings) =>
     JSON.stringify({
       reportFontFamily: s.reportFontFamily || 'Times New Roman',
@@ -463,6 +486,59 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       lockReportFormat: s.lockReportFormat ?? true,
     });
   const prevSavedFormatRef = useRef<string>(getFormatSignature(settings));
+  const prevSavedSection1Ref = useRef<string>(getSection1Signature(settings));
+
+  const updateDraft = (updater: (prev: SystemSettings) => SystemSettings) => {
+    setDraft((prev) => {
+      const next = updater(prev);
+      latestDraftRef.current = next;
+      return next;
+    });
+  };
+
+  const commitSectionPatch = async (patch: Partial<SystemSettings>): Promise<boolean> => {
+    const merged: SystemSettings = {
+      ...latestSettingsRef.current,
+      ...patch,
+    };
+    latestSettingsRef.current = merged;
+    const ok = await onUpdateSettingsRef.current(merged);
+    return ok !== false;
+  };
+
+  const flushPendingDebouncedSaves = (): Partial<SystemSettings> => {
+    const pendingPatch: Partial<SystemSettings> = {};
+    if (sigSaveTimerRef.current !== null) {
+      window.clearTimeout(sigSaveTimerRef.current);
+      sigSaveTimerRef.current = null;
+      pendingPatch.signatureStamp = normalizeSignatureStamp(latestDraftRef.current);
+    }
+    if (brandSizeTimerRef.current !== null) {
+      window.clearTimeout(brandSizeTimerRef.current);
+      brandSizeTimerRef.current = null;
+      pendingPatch.webBrand = normalizeWebBrand(latestDraftRef.current);
+    }
+    if (weightSaveTimerRef.current !== null) {
+      window.clearTimeout(weightSaveTimerRef.current);
+      weightSaveTimerRef.current = null;
+      pendingPatch.examWeights = latestDraftRef.current.examWeights;
+    }
+    return pendingPatch;
+  };
+
+  useEffect(() => {
+    return () => {
+      const pendingPatch = flushPendingDebouncedSaves();
+      if (Object.keys(pendingPatch).length > 0) {
+        const merged: SystemSettings = {
+          ...latestSettingsRef.current,
+          ...pendingPatch,
+        };
+        latestSettingsRef.current = merged;
+        void onUpdateSettingsRef.current(merged);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!isServerActive) {
@@ -483,10 +559,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   }, [isServerActive]);
 
   useEffect(() => {
+    latestSettingsRef.current = settings;
     const prevSaved = prevSettingsRef.current;
     const nextSavedKopJson = JSON.stringify(settings.kopSurat);
     const nextSavedFormatJson = getFormatSignature(settings);
     const nextSavedBrandJson = JSON.stringify(normalizeWebBrand(settings));
+    const nextSavedSigJson = JSON.stringify(normalizeSignatureStamp(settings));
+    const nextSavedSection1Json = getSection1Signature(settings);
 
     // Preserve ALL user-edited keys in draft so background sync/snapshots never overwrite unsaved edits
     setDraft((prev) => {
@@ -496,7 +575,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       const prevDraftRec = prev as unknown as Record<string, unknown>;
 
       for (const key of Object.keys(nextSavedRec)) {
-        if (key === 'kopSurat' || key === 'webBrand') continue;
+        if (key === 'kopSurat' || key === 'webBrand' || key === 'signatureStamp') continue;
         const isCleanLocally =
           JSON.stringify(prevDraftRec[key]) === JSON.stringify(prevSavedRec[key]);
         if (isCleanLocally) {
@@ -509,72 +588,147 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       const hasUnsavedFormat =
         !isFormatLockedUi && getFormatSignature(prev) !== prevSavedFormatRef.current;
       const hasUnsavedBrand =
+        brandSizeTimerRef.current !== null ||
         JSON.stringify(normalizeWebBrand(prev)) !== prevSavedBrandRef.current;
+      const hasUnsavedSig =
+        Boolean(dragOriginRef.current) ||
+        sigSaveTimerRef.current !== null ||
+        JSON.stringify(normalizeSignatureStamp(prev)) !== prevSavedSigRef.current;
 
       const result = merged as unknown as SystemSettings;
-      return {
+      const nextDraft: SystemSettings = {
         ...result,
         kopSurat: hasUnsavedKop ? prev.kopSurat : settings.kopSurat,
         webBrand: hasUnsavedBrand ? prev.webBrand : settings.webBrand,
+        signatureStamp: hasUnsavedSig ? prev.signatureStamp : settings.signatureStamp,
         reportFontFamily: hasUnsavedFormat ? prev.reportFontFamily : result.reportFontFamily,
         reportPaperSize: hasUnsavedFormat ? prev.reportPaperSize : result.reportPaperSize,
         reportOrientation: hasUnsavedFormat ? prev.reportOrientation : result.reportOrientation,
         reportPageLayouts: hasUnsavedFormat ? prev.reportPageLayouts : result.reportPageLayouts,
         lockReportFormat: hasUnsavedFormat ? prev.lockReportFormat : result.lockReportFormat,
       };
+      latestDraftRef.current = nextDraft;
+      return nextDraft;
     });
 
     prevSettingsRef.current = settings;
     prevSavedKopJsonRef.current = nextSavedKopJson;
     prevSavedFormatRef.current = nextSavedFormatJson;
     prevSavedBrandRef.current = nextSavedBrandJson;
+    prevSavedSigRef.current = nextSavedSigJson;
+    prevSavedSection1Ref.current = nextSavedSection1Json;
   }, [settings, isFormatLockedUi, isKopLockedUi]);
 
   const normBrand = normalizeWebBrand(draft);
   const activeThemeId: ThemeId = draft.themeId || 'neomorphic';
+  const isSection1Dirty = getSection1Signature(draft) !== getSection1Signature(settings);
   const isKopDirty = JSON.stringify(draft.kopSurat) !== JSON.stringify(settings.kopSurat);
   const isFormatDirty = getFormatSignature(draft) !== getFormatSignature(settings);
   const isBrandDirty =
     JSON.stringify(normBrand) !== JSON.stringify(normalizeWebBrand(settings));
+  const isSigDirty =
+    JSON.stringify(normalizeSignatureStamp(draft)) !==
+    JSON.stringify(normalizeSignatureStamp(settings));
+
+  const commitSigStamp = async (nextSigStamp: ReturnType<typeof normalizeSignatureStamp>): Promise<boolean> => {
+    if (sigSaveTimerRef.current !== null) {
+      window.clearTimeout(sigSaveTimerRef.current);
+      sigSaveTimerRef.current = null;
+    }
+    setIsSavingSig(true);
+    try {
+      const ok = await commitSectionPatch({ signatureStamp: nextSigStamp });
+      if (ok) {
+        prevSavedSigRef.current = JSON.stringify(nextSigStamp);
+      }
+      return ok;
+    } finally {
+      setIsSavingSig(false);
+    }
+  };
+
+  const scheduleSigStampSave = (nextSigStamp: ReturnType<typeof normalizeSignatureStamp>) => {
+    if (sigSaveTimerRef.current !== null) {
+      window.clearTimeout(sigSaveTimerRef.current);
+    }
+    sigSaveTimerRef.current = window.setTimeout(() => {
+      sigSaveTimerRef.current = null;
+      void commitSigStamp(normalizeSignatureStamp(latestDraftRef.current));
+    }, 400);
+    // Keep reference check clean
+    void nextSigStamp;
+  };
 
   const handleSaveAll = async (e: React.FormEvent) => {
     e.preventDefault();
-    const ok = await onUpdateSettings(draft);
+    flushPendingDebouncedSaves();
+    const currentDraft = latestDraftRef.current;
+    latestSettingsRef.current = currentDraft;
+    const ok = await onUpdateSettingsRef.current(currentDraft);
     if (ok === false) return;
-    prevSavedKopJsonRef.current = JSON.stringify(draft.kopSurat);
-    prevSavedFormatRef.current = getFormatSignature(draft);
+    prevSavedKopJsonRef.current = JSON.stringify(currentDraft.kopSurat);
+    prevSavedFormatRef.current = getFormatSignature(currentDraft);
+    prevSavedBrandRef.current = JSON.stringify(normalizeWebBrand(currentDraft));
+    prevSavedSigRef.current = JSON.stringify(normalizeSignatureStamp(currentDraft));
+    prevSavedSection1Ref.current = getSection1Signature(currentDraft);
     setIsFormatLockedUi(true);
     setIsKopLockedUi(true);
     onNotify(
-      draft.lockReportFormat === false
+      currentDraft.lockReportFormat === false
         ? 'Pengaturan sistem, format kertas/huruf (Mode Fleksibel), identitas web, dan Kop Surat berhasil disimpan.'
         : 'Pengaturan sistem, format kertas/huruf, identitas web, dan Kop Surat berhasil disimpan & dikunci.'
     );
   };
 
+  const handleSaveSection1 = async () => {
+    setIsSavingSection1(true);
+    try {
+      const d = latestDraftRef.current;
+      const patch: Partial<SystemSettings> = {
+        academicYear: d.academicYear,
+        semester: d.semester,
+        kkm: d.kkm,
+        signatureCity: d.signatureCity,
+        principalTitle: d.principalTitle,
+        principalName: d.principalName,
+        principalNip: d.principalNip,
+      };
+      const ok = await commitSectionPatch(patch);
+      if (!ok) return;
+      prevSavedSection1Ref.current = getSection1Signature({ ...latestSettingsRef.current, ...patch });
+      onNotify('Periode aktif & biodata Pejabat Penandatangan berhasil disimpan.');
+    } finally {
+      setIsSavingSection1(false);
+    }
+  };
+
   const handleSaveFormatDokumen = async () => {
     setIsSavingFormat(true);
     try {
-      const targetFont = draft.reportFontFamily || 'Times New Roman';
-      const shouldLockFormat = draft.lockReportFormat ?? true;
+      const d = latestDraftRef.current;
+      const baseSettings = latestSettingsRef.current;
+      const targetFont = d.reportFontFamily || 'Times New Roman';
+      const shouldLockFormat = d.lockReportFormat ?? true;
       const nextKop = syncKopFontWithStandard
-        ? { ...settings.kopSurat, fontFamily: targetFont }
-        : settings.kopSurat;
-      const next: SystemSettings = {
-        ...settings,
+        ? { ...baseSettings.kopSurat, fontFamily: targetFont }
+        : baseSettings.kopSurat;
+      const patch: Partial<SystemSettings> = {
         reportFontFamily: targetFont,
-        reportPaperSize: draft.reportPaperSize || 'A4',
-        reportOrientation: draft.reportOrientation || 'landscape',
-        reportPageLayouts: draft.reportPageLayouts || {},
+        reportPaperSize: d.reportPaperSize || 'A4',
+        reportOrientation: d.reportOrientation || 'landscape',
+        reportPageLayouts: d.reportPageLayouts || {},
         lockReportFormat: shouldLockFormat,
-        kopSurat: nextKop,
+        ...(syncKopFontWithStandard ? { kopSurat: nextKop } : {}),
       };
-      const ok = await onUpdateSettings(next);
-      if (ok === false) return;
-      prevSavedFormatRef.current = getFormatSignature(next);
+      const ok = await commitSectionPatch(patch);
+      if (!ok) return;
+      prevSavedFormatRef.current = getFormatSignature({ ...baseSettings, ...patch });
       if (syncKopFontWithStandard) {
         prevSavedKopJsonRef.current = JSON.stringify(nextKop);
-        setDraft((prev) => ({ ...prev, kopSurat: { ...prev.kopSurat, fontFamily: targetFont } }));
+        updateDraft((prev) => ({
+          ...prev,
+          kopSurat: { ...prev.kopSurat, fontFamily: targetFont },
+        }));
       }
       setIsFormatLockedUi(true);
       onNotify(
@@ -588,13 +742,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleResetFormatDraft = () => {
-    setDraft((prev) => ({
+    const baseSettings = latestSettingsRef.current;
+    updateDraft((prev) => ({
       ...prev,
-      reportFontFamily: settings.reportFontFamily || 'Times New Roman',
-      reportPaperSize: settings.reportPaperSize || 'A4',
-      reportOrientation: settings.reportOrientation || 'landscape',
-      reportPageLayouts: settings.reportPageLayouts || {},
-      lockReportFormat: settings.lockReportFormat ?? true,
+      reportFontFamily: baseSettings.reportFontFamily || 'Times New Roman',
+      reportPaperSize: baseSettings.reportPaperSize || 'A4',
+      reportOrientation: baseSettings.reportOrientation || 'landscape',
+      reportPageLayouts: baseSettings.reportPageLayouts || {},
+      lockReportFormat: baseSettings.lockReportFormat ?? true,
     }));
     setIsFormatLockedUi(true);
     onNotify('Perubahan format dokumen dibatalkan dan panel dikunci kembali.');
@@ -603,13 +758,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleSaveKopSurat = async () => {
     setIsSavingKop(true);
     try {
-      const next: SystemSettings = {
-        ...settings,
-        kopSurat: draft.kopSurat,
-      };
-      const ok = await onUpdateSettings(next);
-      if (ok === false) return;
-      prevSavedKopJsonRef.current = JSON.stringify(draft.kopSurat);
+      const nextKop = latestDraftRef.current.kopSurat;
+      const ok = await commitSectionPatch({ kopSurat: nextKop });
+      if (!ok) return;
+      prevSavedKopJsonRef.current = JSON.stringify(nextKop);
       setIsKopLockedUi(true);
       onNotify('Pengaturan Kop Surat berhasil disimpan dan langsung dikunci.');
     } finally {
@@ -618,9 +770,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleResetKopDraft = () => {
-    setDraft((prev) => ({
+    updateDraft((prev) => ({
       ...prev,
-      kopSurat: settings.kopSurat,
+      kopSurat: latestSettingsRef.current.kopSurat,
     }));
     setIsKopLockedUi(true);
     onNotify('Perubahan Kop Surat dibatalkan dan panel dikunci kembali.');
@@ -632,7 +784,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     reader.onload = () => {
       const result = typeof reader.result === 'string' ? reader.result : '';
       if (!result) return;
-      setDraft((prev) => ({
+      updateDraft((prev) => ({
         ...prev,
         kopSurat: {
           ...prev.kopSurat,
@@ -644,21 +796,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleSaveWebBrand = async () => {
+    if (brandSizeTimerRef.current !== null) {
+      window.clearTimeout(brandSizeTimerRef.current);
+      brandSizeTimerRef.current = null;
+    }
     setIsSavingBrand(true);
     try {
-      const cleanBrand = normalizeWebBrand({ ...settings, webBrand: normBrand });
-      const next: SystemSettings = {
-        ...settings,
+      const baseSettings = latestSettingsRef.current;
+      const currentBrand = normalizeWebBrand(latestDraftRef.current);
+      const cleanBrand = normalizeWebBrand({ ...baseSettings, webBrand: currentBrand });
+      const patch: Partial<SystemSettings> = {
         webBrand: cleanBrand,
         teacherProfile: {
-          ...settings.teacherProfile,
-          school: cleanBrand.schoolName || settings.teacherProfile.school,
+          ...baseSettings.teacherProfile,
+          school: cleanBrand.schoolName || baseSettings.teacherProfile.school,
         },
       };
-      const ok = await onUpdateSettings(next);
-      if (ok === false) return;
+      const ok = await commitSectionPatch(patch);
+      if (!ok) return;
       prevSavedBrandRef.current = JSON.stringify(cleanBrand);
-      setDraft((prev) => ({
+      updateDraft((prev) => ({
         ...prev,
         webBrand: cleanBrand,
         teacherProfile: {
@@ -679,15 +836,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       const result = typeof reader.result === 'string' ? reader.result : '';
       if (!result) return;
       const nextBrand = {
-        ...normBrand,
+        ...normalizeWebBrand(latestDraftRef.current),
         webLogoDataUrl: result,
       };
-      setDraft((prev) => ({
+      updateDraft((prev) => ({
         ...prev,
         webBrand: nextBrand,
       }));
-      const ok = await onUpdateSettings({ ...settings, webBrand: nextBrand });
-      if (ok !== false) {
+      const ok = await commitSectionPatch({ webBrand: nextBrand });
+      if (ok) {
         prevSavedBrandRef.current = JSON.stringify(nextBrand);
         onNotify('Logo portal & favicon berhasil diunggah dan disimpan.');
       }
@@ -724,18 +881,39 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-4 sm:px-6 py-4 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-bold">Periode Aktif & Pejabat Penandatangan</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base font-bold">Periode Aktif & Pejabat Penandatangan</h2>
+              {isSection1Dirty ? (
+                <span className="text-xs font-bold text-amber-300">· Belum Disimpan</span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-300">
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Tersinkron</span>
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-300">
               Tahun ajaran, semester aktif, standar KKM, serta biodata Kepala Sekolah untuk lembar resmi
             </p>
           </div>
-          <button
-            type="submit"
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap min-h-[40px]"
-          >
-            <Save className="w-4 h-4" />
-            <span>Simpan Semua Pengaturan</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <button
+              type="button"
+              disabled={isSavingSection1 || !isSection1Dirty}
+              onClick={handleSaveSection1}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white text-xs font-semibold cursor-pointer whitespace-nowrap min-h-[40px]"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>{isSavingSection1 ? 'Menyimpan...' : 'Simpan Periode & Pejabat'}</span>
+            </button>
+            <button
+              type="submit"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer whitespace-nowrap min-h-[40px]"
+            >
+              <Save className="w-4 h-4" />
+              <span>Simpan Semua Pengaturan</span>
+            </button>
+          </div>
         </div>
 
         <div className="p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1007,14 +1185,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <button
                   type="button"
                   onClick={async () => {
+                    if (brandSizeTimerRef.current !== null) {
+                      window.clearTimeout(brandSizeTimerRef.current);
+                      brandSizeTimerRef.current = null;
+                    }
                     const nextBrand = {
-                      ...normBrand,
+                      ...normalizeWebBrand(latestDraftRef.current),
                       webLogoDataUrl: DEFAULT_WEB_LOGO,
                       webLogoSize: 36,
                     };
-                    setDraft((prev) => ({ ...prev, webBrand: nextBrand }));
-                    const ok = await onUpdateSettings({ ...settings, webBrand: nextBrand });
-                    if (ok !== false) {
+                    updateDraft((prev) => ({ ...prev, webBrand: nextBrand }));
+                    const ok = await commitSectionPatch({ webBrand: nextBrand });
+                    if (ok) {
                       prevSavedBrandRef.current = JSON.stringify(nextBrand);
                       onNotify('Logo & ukuran web dikembalikan ke default.');
                     }
@@ -1034,9 +1216,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   step={2}
                   value={normBrand.webLogoSize}
                   onChange={(e) => {
-                    const nextBrand = { ...normBrand, webLogoSize: Number(e.target.value) };
-                    setDraft((prev) => ({ ...prev, webBrand: nextBrand }));
-                    onUpdateSettings({ ...settings, webBrand: nextBrand });
+                    const nextBrand = {
+                      ...normalizeWebBrand(latestDraftRef.current),
+                      webLogoSize: Number(e.target.value),
+                    };
+                    updateDraft((prev) => ({ ...prev, webBrand: nextBrand }));
+                    if (brandSizeTimerRef.current !== null) {
+                      window.clearTimeout(brandSizeTimerRef.current);
+                    }
+                    brandSizeTimerRef.current = window.setTimeout(() => {
+                      brandSizeTimerRef.current = null;
+                      const latestBrand = normalizeWebBrand(latestDraftRef.current);
+                      void commitSectionPatch({ webBrand: latestBrand }).then((ok) => {
+                        if (ok) prevSavedBrandRef.current = JSON.stringify(latestBrand);
+                      });
+                    }, 350);
                   }}
                   className="flex-1 accent-indigo-600 cursor-pointer"
                 />
@@ -1047,9 +1241,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   value={normBrand.webLogoSize}
                   onChange={(e) => {
                     const val = Math.max(24, Math.min(80, Number(e.target.value) || 36));
-                    const nextBrand = { ...normBrand, webLogoSize: val };
-                    setDraft((prev) => ({ ...prev, webBrand: nextBrand }));
-                    onUpdateSettings({ ...settings, webBrand: nextBrand });
+                    const nextBrand = {
+                      ...normalizeWebBrand(latestDraftRef.current),
+                      webLogoSize: val,
+                    };
+                    updateDraft((prev) => ({ ...prev, webBrand: nextBrand }));
+                    if (brandSizeTimerRef.current !== null) {
+                      window.clearTimeout(brandSizeTimerRef.current);
+                    }
+                    brandSizeTimerRef.current = window.setTimeout(() => {
+                      brandSizeTimerRef.current = null;
+                      const latestBrand = normalizeWebBrand(latestDraftRef.current);
+                      void commitSectionPatch({ webBrand: latestBrand }).then((ok) => {
+                        if (ok) prevSavedBrandRef.current = JSON.stringify(latestBrand);
+                      });
+                    }, 350);
                   }}
                   className="w-14 px-1.5 py-1 text-xs font-mono text-center rounded-md border border-slate-300 bg-white tabular-nums"
                 />
@@ -1133,8 +1339,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 key={preset.id}
                 type="button"
                 onClick={() => {
-                  setDraft((prev) => ({ ...prev, themeId: preset.id }));
-                  onUpdateSettings({ ...settings, themeId: preset.id });
+                  updateDraft((prev) => ({ ...prev, themeId: preset.id }));
+                  void commitSectionPatch({ themeId: preset.id });
                   onNotify(`Tema tampilan diubah ke "${preset.name}".`);
                 }}
                 className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2.5 ${
@@ -2004,8 +2210,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   Pratinjau Langsung Kop Surat Bergaris Ganda ({normKop.fontFamily} · Logo Kiri {normKop.leftLogoSize}px · Logo Kanan {normKop.rightLogoSize}px):
                 </p>
                 <div className="eguru-paper-preview eguru-scroll border border-slate-200 p-4 sm:p-5 rounded-lg bg-white overflow-x-auto">
-                  <div className="min-w-[540px] sm:min-w-0 pb-2 border-b-[3px] border-double border-slate-900">
-                    <div className="flex items-center justify-between gap-4 pb-2 border-b border-slate-900">
+                  <div className="min-w-[540px] sm:min-w-0 pb-[3px] border-b border-slate-950">
+                    <div className="flex items-center justify-between gap-4 pb-2 border-b-[3px] border-slate-950">
                       <div
                         style={{ width: logoSlotSize, minHeight: normKop.leftLogoSize }}
                         className="shrink-0 flex items-center justify-center"
@@ -2021,36 +2227,38 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       </div>
                       <div
                         style={{ fontFamily: getPrintFontCss(normKop.fontFamily) }}
-                        className="flex-1 text-center leading-snug text-slate-950"
+                        className="flex-1 min-w-0 text-center text-slate-950"
                       >
                         {(
                           [
-                            { key: 'line1', text: normKop.line1, mt: false },
-                            { key: 'line2', text: normKop.line2, mt: false },
-                            { key: 'line3', text: normKop.line3, mt: false },
-                            { key: 'line4', text: normKop.line4, mt: true },
-                            { key: 'line5', text: normKop.line5, mt: false },
-                            { key: 'line6', text: normKop.line6, mt: false },
-                          ] as { key: keyof KopSuratLineSizes; text: string; mt: boolean }[]
-                        ).map(
-                          (ln) =>
-                            ln.text && (
+                            { key: 'line1', text: normKop.line1 },
+                            { key: 'line2', text: normKop.line2 },
+                            { key: 'line3', text: normKop.line3 },
+                            { key: 'line4', text: normKop.line4 },
+                            { key: 'line5', text: normKop.line5 },
+                            { key: 'line6', text: normKop.line6 },
+                          ] as { key: keyof KopSuratLineSizes; text: string }[]
+                        ).map((ln) => {
+                          const cleaned = (ln.text || '').trim();
+                          return (
+                            cleaned && (
                               <p
                                 key={ln.key}
                                 style={{
                                   fontSize: normKop.lineSizes[ln.key],
+                                  lineHeight: 1.38,
                                   fontWeight: normKop.lineStyles[ln.key].bold ? 700 : 400,
                                   fontStyle: normKop.lineStyles[ln.key].italic ? 'italic' : 'normal',
                                   textDecoration: normKop.lineStyles[ln.key].underline
                                     ? 'underline'
                                     : 'none',
                                 }}
-                                className={ln.mt ? 'mt-0.5' : ''}
                               >
-                                {ln.text}
+                                {cleaned}
                               </p>
                             )
-                        )}
+                          );
+                        })}
                       </div>
                       <div
                         style={{ width: logoSlotSize, minHeight: normKop.rightLogoSize }}
@@ -2122,27 +2330,57 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-4 sm:px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h3 className="text-base font-bold text-slate-900">
-              Tanda Tangan Digital, Stempel Sekolah &amp; Font Laporan Default
-            </h3>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-base font-bold text-slate-900">
+                Tanda Tangan Digital, Stempel Sekolah &amp; Font Laporan Default
+              </h3>
+              {isSavingSig ? (
+                <span className="text-xs font-bold text-indigo-700">· Menyimpan...</span>
+              ) : isSigDirty ? (
+                <span className="text-xs font-bold text-amber-700">· Belum Disimpan</span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700">
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Tersimpan</span>
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-500">
               Unggah/tempel tautan TTD Kepala Sekolah, TTD Guru Mapel, dan Stempel Instansi serta atur jenis huruf standar untuk cetak &amp; unduh PDF
             </p>
           </div>
+          <button
+            type="button"
+            disabled={isSavingSig}
+            onClick={() => {
+              void commitSigStamp(normalizeSignatureStamp(latestDraftRef.current)).then((ok) => {
+                if (ok) onNotify('Pengaturan TTD, Stempel & baris pengesahan berhasil disimpan.');
+              });
+            }}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs font-semibold cursor-pointer whitespace-nowrap shadow-sm min-h-[40px]"
+          >
+            <Save className="w-3.5 h-3.5" />
+            <span>{isSavingSig ? 'Menyimpan...' : 'Simpan TTD & Stempel'}</span>
+          </button>
         </div>
 
         {(() => {
           const sigStamp = normalizeSignatureStamp(draft);
-          const updateSigStamp = (patch: Partial<typeof sigStamp>) => {
-            const nextSigStamp = { ...sigStamp, ...patch };
-            setDraft((prev) => ({
+          const updateSigStamp = (
+            patch: Partial<typeof sigStamp>,
+            mode: 'debounce' | 'immediate' | 'draft-only' = 'debounce'
+          ) => {
+            const baseSig = normalizeSignatureStamp(latestDraftRef.current);
+            const nextSigStamp = { ...baseSig, ...patch };
+            updateDraft((prev) => ({
               ...prev,
               signatureStamp: nextSigStamp,
             }));
-            onUpdateSettings({
-              ...settings,
-              signatureStamp: nextSigStamp,
-            });
+            if (mode === 'immediate') {
+              void commitSigStamp(nextSigStamp);
+            } else if (mode === 'debounce') {
+              scheduleSigStampSave(nextSigStamp);
+            }
           };
 
           const handleAssetFile = (
@@ -2153,7 +2391,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             const reader = new FileReader();
             reader.onload = () => {
               if (typeof reader.result === 'string') {
-                updateSigStamp({ [field]: reader.result });
+                updateSigStamp({ [field]: reader.result }, 'immediate');
                 onNotify('Gambar tanda tangan/stempel berhasil diunggah.');
               }
             };
@@ -2224,13 +2462,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             if (origin.target === 'resizeSig') {
               const delta = Math.round((dx + dy) / 2);
               const nextSize = Math.max(40, Math.min(280, (origin.initSize ?? sigStamp.signatureSize) + delta));
-              updateSigStamp({ signatureSize: nextSize });
+              updateSigStamp({ signatureSize: nextSize }, 'draft-only');
               return;
             }
             if (origin.target === 'resizeStamp') {
               const delta = Math.round((dx + dy) / 2);
               const nextSize = Math.max(40, Math.min(280, (origin.initSize ?? sigStamp.stampSize) + delta));
-              updateSigStamp({ stampSize: nextSize });
+              updateSigStamp({ stampSize: nextSize }, 'draft-only');
               return;
             }
 
@@ -2243,15 +2481,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             const nextY = Math.max(minY, Math.min(maxY, origin.initOffY + dy));
 
             if (origin.target === 'principalSig') {
-              updateSigStamp({ principalSigOffsetX: nextX, principalSigOffsetY: nextY });
+              updateSigStamp({ principalSigOffsetX: nextX, principalSigOffsetY: nextY }, 'draft-only');
             } else if (origin.target === 'teacherSig') {
-              updateSigStamp({ teacherSigOffsetX: nextX, teacherSigOffsetY: nextY });
+              updateSigStamp({ teacherSigOffsetX: nextX, teacherSigOffsetY: nextY }, 'draft-only');
             } else if (origin.target === 'stamp') {
-              updateSigStamp({ stampOffsetX: nextX, stampOffsetY: nextY });
+              updateSigStamp({ stampOffsetX: nextX, stampOffsetY: nextY }, 'draft-only');
             } else if (origin.target === 'principalBlock') {
-              updateSigStamp({ principalBlockOffsetX: nextX, principalBlockOffsetY: nextY });
+              updateSigStamp({ principalBlockOffsetX: nextX, principalBlockOffsetY: nextY }, 'draft-only');
             } else {
-              updateSigStamp({ teacherBlockOffsetX: nextX, teacherBlockOffsetY: nextY });
+              updateSigStamp({ teacherBlockOffsetX: nextX, teacherBlockOffsetY: nextY }, 'draft-only');
             }
           };
 
@@ -2262,18 +2500,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             e.preventDefault();
             e.stopPropagation();
             const step = e.deltaY < 0 ? 4 : -4;
+            const currentSig = normalizeSignatureStamp(latestDraftRef.current);
             if (kind === 'sig') {
-              const next = Math.max(40, Math.min(280, sigStamp.signatureSize + step));
-              updateSigStamp({ signatureSize: next });
+              const next = Math.max(40, Math.min(280, currentSig.signatureSize + step));
+              updateSigStamp({ signatureSize: next }, 'debounce');
             } else {
-              const next = Math.max(40, Math.min(280, sigStamp.stampSize + step));
-              updateSigStamp({ stampSize: next });
+              const next = Math.max(40, Math.min(280, currentSig.stampSize + step));
+              updateSigStamp({ stampSize: next }, 'debounce');
             }
           };
 
           const stopSigDrag = () => {
+            if (!dragOriginRef.current) return;
             dragOriginRef.current = null;
             setDragTarget(null);
+            void commitSigStamp(normalizeSignatureStamp(latestDraftRef.current));
           };
 
           const activeFont: PrintFontFamily =
@@ -2360,7 +2601,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <select
                     value={sigStamp.stampTarget}
                     onChange={(e) =>
-                      updateSigStamp({ stampTarget: e.target.value as 'principal' | 'teacher' })
+                      updateSigStamp({ stampTarget: e.target.value as 'principal' | 'teacher' }, 'immediate')
                     }
                     className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
                   >
@@ -2375,7 +2616,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <input
                       type="checkbox"
                       checked={sigStamp.showPrincipalSigImgDefault !== false}
-                      onChange={(e) => updateSigStamp({ showPrincipalSigImgDefault: e.target.checked })}
+                      onChange={(e) =>
+                        updateSigStamp({ showPrincipalSigImgDefault: e.target.checked }, 'immediate')
+                      }
                       className="rounded border-slate-300 text-indigo-600"
                     />
                     <span>Gbr TTD Kepsek</span>
@@ -2384,7 +2627,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <input
                       type="checkbox"
                       checked={sigStamp.showStampDefault}
-                      onChange={(e) => updateSigStamp({ showStampDefault: e.target.checked })}
+                      onChange={(e) =>
+                        updateSigStamp({ showStampDefault: e.target.checked }, 'immediate')
+                      }
                       className="rounded border-slate-300 text-indigo-600"
                     />
                     <span>Gbr Stempel Sekolah</span>
@@ -2393,7 +2638,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <input
                       type="checkbox"
                       checked={sigStamp.showTeacherSigImgDefault !== false}
-                      onChange={(e) => updateSigStamp({ showTeacherSigImgDefault: e.target.checked })}
+                      onChange={(e) =>
+                        updateSigStamp({ showTeacherSigImgDefault: e.target.checked }, 'immediate')
+                      }
                       className="rounded border-slate-300 text-indigo-600"
                     />
                     <span>Gbr TTD Guru Mapel</span>
@@ -2475,7 +2722,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </label>
                           <button
                             type="button"
-                            onClick={() => updateSigStamp({ [box.field]: box.defaultUrl })}
+                            onClick={() => updateSigStamp({ [box.field]: box.defaultUrl }, 'immediate')}
                             className="px-2 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 text-[11px] font-medium text-slate-700 cursor-pointer whitespace-nowrap"
                           >
                             {box.defaultLabel}
@@ -2483,7 +2730,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           {box.val && (
                             <button
                               type="button"
-                              onClick={() => updateSigStamp({ [box.field]: '' })}
+                              onClick={() => updateSigStamp({ [box.field]: '' }, 'immediate')}
                               className="px-2 py-1 rounded border border-rose-200 bg-white hover:bg-rose-50 text-[11px] font-medium text-rose-700 cursor-pointer whitespace-nowrap"
                             >
                               Hapus
@@ -2552,12 +2799,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        updateSigStamp({
-                          principalBlockOffsetX: 0,
-                          principalBlockOffsetY: 0,
-                          teacherBlockOffsetX: 0,
-                          teacherBlockOffsetY: 0,
-                        });
+                        updateSigStamp(
+                          {
+                            principalBlockOffsetX: 0,
+                            principalBlockOffsetY: 0,
+                            teacherBlockOffsetX: 0,
+                            teacherBlockOffsetY: 0,
+                          },
+                          'immediate'
+                        );
                         onNotify('Blok pengesahan dikembalikan ke sejajar kiri-kanan default.');
                       }}
                       className="px-2.5 py-1 rounded-md border border-slate-300 bg-white hover:bg-slate-100 text-[11px] font-semibold text-slate-700 cursor-pointer whitespace-nowrap"
@@ -2567,12 +2817,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        updateSigStamp({
-                          principalBlockOffsetX: 290,
-                          principalBlockOffsetY: 0,
-                          teacherBlockOffsetX: -290,
-                          teacherBlockOffsetY: 0,
-                        });
+                        updateSigStamp(
+                          {
+                            principalBlockOffsetX: 290,
+                            principalBlockOffsetY: 0,
+                            teacherBlockOffsetX: -290,
+                            teacherBlockOffsetY: 0,
+                          },
+                          'immediate'
+                        );
                         onNotify('Posisi blok pengesahan Kepala Sekolah & Guru ditukar sisi.');
                       }}
                       className="px-2.5 py-1 rounded-md border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-[11px] font-semibold text-indigo-700 cursor-pointer whitespace-nowrap"
@@ -2683,18 +2936,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      updateSigStamp({
-                        principalSigOffsetX: 0,
-                        principalSigOffsetY: 0,
-                        teacherSigOffsetX: 0,
-                        teacherSigOffsetY: 0,
-                        stampOffsetX: 0,
-                        stampOffsetY: 0,
-                        principalBlockOffsetX: 0,
-                        principalBlockOffsetY: 0,
-                        teacherBlockOffsetX: 0,
-                        teacherBlockOffsetY: 0,
-                      });
+                      updateSigStamp(
+                        {
+                          principalSigOffsetX: 0,
+                          principalSigOffsetY: 0,
+                          teacherSigOffsetX: 0,
+                          teacherSigOffsetY: 0,
+                          stampOffsetX: 0,
+                          stampOffsetY: 0,
+                          principalBlockOffsetX: 0,
+                          principalBlockOffsetY: 0,
+                          teacherBlockOffsetX: 0,
+                          teacherBlockOffsetY: 0,
+                        },
+                        'immediate'
+                      );
                       onNotify('Semua posisi blok pengesahan, TTD & stempel dikembalikan ke default (0, 0).');
                     }}
                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-[11px] font-semibold text-slate-700 cursor-pointer whitespace-nowrap"
@@ -3001,7 +3257,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           },
                         ],
                       };
-                      updateSigStamp({ extraRows: [...sigStamp.extraRows, newRow] });
+                      updateSigStamp({ extraRows: [...sigStamp.extraRows, newRow] }, 'immediate');
                       onNotify('Baris tanda tangan tambahan baru ditambahkan.');
                     }}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer"
@@ -3018,11 +3274,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 ) : (
                   <div className="space-y-4">
                     {sigStamp.extraRows.map((row, rowIdx) => {
-                      const updateRow = (nextSigners: SignatureExtraSigner[]) => {
-                        const nextRows = sigStamp.extraRows.map((r) =>
+                      const updateRow = (
+                        nextSigners: SignatureExtraSigner[],
+                        mode: 'debounce' | 'immediate' = 'debounce'
+                      ) => {
+                        const currentRows = normalizeSignatureStamp(latestDraftRef.current).extraRows;
+                        const nextRows = currentRows.map((r) =>
                           r.id === row.id ? { ...r, signers: nextSigners } : r
                         );
-                        updateSigStamp({ extraRows: nextRows });
+                        updateSigStamp({ extraRows: nextRows }, mode);
                       };
 
                       const handleExtraSignerFile = (signerId: string, file?: File) => {
@@ -3030,10 +3290,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         const reader = new FileReader();
                         reader.onload = () => {
                           if (typeof reader.result === 'string') {
+                            const latestRow =
+                              normalizeSignatureStamp(latestDraftRef.current).extraRows.find(
+                                (r) => r.id === row.id
+                              ) || row;
                             updateRow(
-                              row.signers.map((s) =>
+                              latestRow.signers.map((s) =>
                                 s.id === signerId ? { ...s, signatureDataUrl: reader.result as string } : s
-                              )
+                              ),
+                              'immediate'
                             );
                             onNotify('TTD penandatangan tambahan berhasil diunggah.');
                           }
@@ -3055,19 +3320,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 <button
                                   type="button"
                                   onClick={() =>
-                                    updateRow([
-                                      ...row.signers,
-                                      {
-                                        id: generateId('sig'),
-                                        topLabel: '',
-                                        title: 'Wali Kelas,',
-                                        name: 'Nama Penandatangan',
-                                        nipLabel: 'NIP.',
-                                        nip: '-',
-                                        signatureDataUrl: '',
-                                        signatureSize: 52,
-                                      },
-                                    ])
+                                    updateRow(
+                                      [
+                                        ...row.signers,
+                                        {
+                                          id: generateId('sig'),
+                                          topLabel: '',
+                                          title: 'Wali Kelas,',
+                                          name: 'Nama Penandatangan',
+                                          nipLabel: 'NIP.',
+                                          nip: '-',
+                                          signatureDataUrl: '',
+                                          signatureSize: 52,
+                                        },
+                                      ],
+                                      'immediate'
+                                    )
                                   }
                                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-[11px] font-semibold text-indigo-700 cursor-pointer"
                                 >
@@ -3078,9 +3346,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  updateSigStamp({
-                                    extraRows: sigStamp.extraRows.filter((r) => r.id !== row.id),
-                                  });
+                                  const currentRows = normalizeSignatureStamp(latestDraftRef.current).extraRows;
+                                  updateSigStamp(
+                                    {
+                                      extraRows: currentRows.filter((r) => r.id !== row.id),
+                                    },
+                                    'immediate'
+                                  );
                                 }}
                                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-rose-200 bg-rose-50 hover:bg-rose-100 text-[11px] font-semibold text-rose-700 cursor-pointer"
                               >
@@ -3100,9 +3372,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             }`}
                           >
                             {row.signers.map((signer, sIdx) => {
-                              const patchSigner = (patch: Partial<SignatureExtraSigner>) => {
+                              const patchSigner = (
+                                patch: Partial<SignatureExtraSigner>,
+                                mode: 'debounce' | 'immediate' = 'debounce'
+                              ) => {
+                                const latestRow =
+                                  normalizeSignatureStamp(latestDraftRef.current).extraRows.find(
+                                    (r) => r.id === row.id
+                                  ) || row;
                                 updateRow(
-                                  row.signers.map((s) => (s.id === signer.id ? { ...s, ...patch } : s))
+                                  latestRow.signers.map((s) =>
+                                    s.id === signer.id ? { ...s, ...patch } : s
+                                  ),
+                                  mode
                                 );
                               };
 
@@ -3119,7 +3401,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       <button
                                         type="button"
                                         onClick={() =>
-                                          updateRow(row.signers.filter((s) => s.id !== signer.id))
+                                          updateRow(
+                                            row.signers.filter((s) => s.id !== signer.id),
+                                            'immediate'
+                                          )
                                         }
                                         className="text-[11px] font-semibold text-rose-600 hover:underline cursor-pointer"
                                       >
@@ -3183,7 +3468,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       {signer.signatureDataUrl && (
                                         <button
                                           type="button"
-                                          onClick={() => patchSigner({ signatureDataUrl: '' })}
+                                          onClick={() => patchSigner({ signatureDataUrl: '' }, 'immediate')}
                                           className="px-2 py-1 rounded border border-rose-200 bg-white hover:bg-rose-50 text-[10px] font-semibold text-rose-700 cursor-pointer"
                                         >
                                           Hapus Gbr
@@ -3235,9 +3520,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           placeholder="Contoh: XI IPA 2"
           onItemClick={onViewClass}
           onChange={(classes) => {
-            const next = { ...draft, classes };
-            setDraft(next);
-            onUpdateSettings(next);
+            updateDraft((prev) => ({ ...prev, classes }));
+            void commitSectionPatch({ classes });
           }}
         />
         <MasterListCard
@@ -3247,9 +3531,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           placeholder="Contoh: Matematika Lanjut"
           onItemClick={onViewSubject}
           onChange={(subjects) => {
-            const next = { ...draft, subjects };
-            setDraft(next);
-            onUpdateSettings(next);
+            updateDraft((prev) => ({ ...prev, subjects }));
+            void commitSectionPatch({ subjects });
           }}
         />
         <MasterListCard
@@ -3258,9 +3541,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           items={draft.examTypes}
           placeholder="Contoh: Remedial 1"
           onChange={(examTypes) => {
-            const next = { ...draft, examTypes };
-            setDraft(next);
-            onUpdateSettings(next);
+            updateDraft((prev) => ({ ...prev, examTypes }));
+            void commitSectionPatch({ examTypes });
           }}
         />
         <MasterListCard
@@ -3269,9 +3551,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           items={draft.academicYears}
           placeholder="Contoh: 2027/2028"
           onChange={(academicYears) => {
-            const next = { ...draft, academicYears };
-            setDraft(next);
-            onUpdateSettings(next);
+            updateDraft((prev) => ({ ...prev, academicYears }));
+            void commitSectionPatch({ academicYears });
           }}
         />
       </section>
@@ -3286,9 +3567,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           items={draft.learningObjectives || []}
           placeholder="Contoh: Memahami konsep dasar dan penerapannya dalam studi kasus"
           onChange={(learningObjectives) => {
-            const next = { ...draft, learningObjectives };
-            setDraft(next);
-            onUpdateSettings(next);
+            updateDraft((prev) => ({ ...prev, learningObjectives }));
+            void commitSectionPatch({ learningObjectives });
           }}
         />
       </section>
@@ -3312,12 +3592,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 type="checkbox"
                 checked={Boolean(draft.useWeightedAverage)}
                 onChange={(e) => {
-                  const next: SystemSettings = {
-                    ...draft,
-                    useWeightedAverage: e.target.checked,
-                  };
-                  setDraft(next);
-                  onUpdateSettings(next);
+                  const checked = e.target.checked;
+                  updateDraft((prev) => ({ ...prev, useWeightedAverage: checked }));
+                  void commitSectionPatch({ useWeightedAverage: checked });
                 }}
                 className="rounded border-slate-300 text-indigo-600"
               />
@@ -3326,20 +3603,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <button
               type="button"
               onClick={() => {
-                if (draft.examTypes.length === 0) return;
-                const count = draft.examTypes.length;
+                if (weightSaveTimerRef.current !== null) {
+                  window.clearTimeout(weightSaveTimerRef.current);
+                  weightSaveTimerRef.current = null;
+                }
+                const currentTypes = latestDraftRef.current.examTypes;
+                if (currentTypes.length === 0) return;
+                const count = currentTypes.length;
                 const base = Math.floor(100 / count);
                 const rem = 100 - base * count;
                 const nextWeights: Record<string, number> = {};
-                draft.examTypes.forEach((ex, idx) => {
+                currentTypes.forEach((ex, idx) => {
                   nextWeights[ex] = base + (idx < rem ? 1 : 0);
                 });
-                const next: SystemSettings = {
-                  ...draft,
-                  examWeights: nextWeights,
-                };
-                setDraft(next);
-                onUpdateSettings(next);
+                updateDraft((prev) => ({ ...prev, examWeights: nextWeights }));
+                void commitSectionPatch({ examWeights: nextWeights });
                 onNotify('Bobot penilaian dibagi rata menjadi total 100%.');
               }}
               className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 cursor-pointer whitespace-nowrap min-h-[36px]"
@@ -3379,15 +3657,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               const raw = Number(e.target.value);
                               const clamped = Number.isNaN(raw) ? 0 : Math.max(0, Math.min(100, raw));
                               const nextWeights = {
-                                ...(draft.examWeights || {}),
+                                ...(latestDraftRef.current.examWeights || {}),
                                 [ex]: clamped,
                               };
-                              const next: SystemSettings = {
-                                ...draft,
-                                examWeights: nextWeights,
-                              };
-                              setDraft(next);
-                              onUpdateSettings(next);
+                              updateDraft((prev) => ({ ...prev, examWeights: nextWeights }));
+                              if (weightSaveTimerRef.current !== null) {
+                                window.clearTimeout(weightSaveTimerRef.current);
+                              }
+                              weightSaveTimerRef.current = window.setTimeout(() => {
+                                weightSaveTimerRef.current = null;
+                                void commitSectionPatch({
+                                  examWeights: latestDraftRef.current.examWeights,
+                                });
+                              }, 350);
                             }}
                             className="w-full px-2.5 py-1.5 text-sm font-bold tabular-nums rounded-md border border-slate-300 bg-white disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600"
                           />

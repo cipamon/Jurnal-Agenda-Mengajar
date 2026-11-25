@@ -7,6 +7,8 @@ import {
   AttendanceStatus,
   GradeRecord,
   JournalEntry,
+  KopSuratConfig,
+  KopSuratLineSizes,
   KopSuratTextStyle,
   PaperOrientation,
   PaperSize,
@@ -1455,6 +1457,168 @@ function drawExtraSignatureRowsPdf(
   }
 }
 
+function drawPdfKopSurat(params: {
+  doc: jsPDF;
+  kopSurat: KopSuratConfig;
+  leftPng: string | null;
+  rightPng: string | null;
+  leftAspect?: number;
+  rightAspect?: number;
+  marginX: number;
+  pageWidth: number;
+  topY?: number;
+  bodyFont: 'times' | 'helvetica';
+}): number {
+  const {
+    doc,
+    kopSurat,
+    leftPng,
+    rightPng,
+    leftAspect = 1,
+    rightAspect = 1,
+    marginX,
+    pageWidth,
+    topY = 12,
+    bodyFont,
+  } = params;
+
+  const normKop = normalizeKopSurat(kopSurat);
+  const kopFont = mapPrintFontToJsPdf(normKop.fontFamily);
+  const printableWidth = pageWidth - marginX * 2;
+  const centerX = pageWidth / 2;
+
+  const logoPxToMm = (px: number) => Math.round((px / 64) * 19.2 * 10) / 10;
+  const leftBoxMm = leftPng ? Math.max(7, Math.min(48, logoPxToMm(normKop.leftLogoSize))) : 0;
+  const rightBoxMm = rightPng ? Math.max(7, Math.min(48, logoPxToMm(normKop.rightLogoSize))) : 0;
+  const maxLogoSlotMm = Math.max(leftBoxMm, rightBoxMm);
+
+  const fitLogo = (boxMm: number, aspect: number) => {
+    if (boxMm <= 0) return { w: 0, h: 0 };
+    const safeAspect = aspect > 0.1 && aspect < 10 ? aspect : 1;
+    if (safeAspect >= 1) {
+      return { w: boxMm, h: Math.round((boxMm / safeAspect) * 100) / 100 };
+    }
+    return { w: Math.round(boxMm * safeAspect * 100) / 100, h: boxMm };
+  };
+
+  const leftDim = fitLogo(leftBoxMm, leftAspect);
+  const rightDim = fitLogo(rightBoxMm, rightAspect);
+
+  const sideReserveMm = maxLogoSlotMm > 0 ? maxLogoSlotMm + 6 : 2;
+  const maxCenteredTextW = Math.max(68, printableWidth - sideReserveMm * 2);
+
+  const pxToPt = (px: number) => Math.round(px * 0.78 * 10) / 10;
+  const ptToMm = (pt: number) => pt * 0.352778;
+  const toJsPdfStyle = (st: KopSuratTextStyle) =>
+    st.bold && st.italic ? 'bolditalic' : st.bold ? 'bold' : st.italic ? 'italic' : 'normal';
+
+  const rawLines: Array<{
+    key: keyof KopSuratLineSizes;
+    text: string;
+  }> = (
+    [
+      { key: 'line1', text: (normKop.line1 || '').trim() },
+      { key: 'line2', text: (normKop.line2 || '').trim() },
+      { key: 'line3', text: (normKop.line3 || '').trim() },
+      { key: 'line4', text: (normKop.line4 || '').trim() },
+      { key: 'line5', text: (normKop.line5 || '').trim() },
+      { key: 'line6', text: (normKop.line6 || '').trim() },
+    ] as Array<{ key: keyof KopSuratLineSizes; text: string }>
+  ).filter((ln) => ln.text.length > 0);
+
+  interface LaidOutSubLine {
+    text: string;
+    fontStyle: 'normal' | 'bold' | 'italic' | 'bolditalic';
+    pt: number;
+    underline: boolean;
+    boxTopOffsetMm: number;
+    baselineOffsetMm: number;
+  }
+
+  const laidOutLines: LaidOutSubLine[] = [];
+  let textCursorMm = 0;
+
+  rawLines.forEach((ln) => {
+    const basePt = pxToPt(normKop.lineSizes[ln.key]);
+    const st = normKop.lineStyles[ln.key];
+    const fontStyle = toJsPdfStyle(st);
+
+    doc.setFont(kopFont, fontStyle);
+    doc.setFontSize(basePt);
+    const naturalW = doc.getTextWidth(ln.text);
+
+    let effectivePt = basePt;
+    let wrappedParts: string[] = [ln.text];
+
+    if (naturalW > maxCenteredTextW) {
+      const ratio = maxCenteredTextW / naturalW;
+      if (ratio >= 0.84) {
+        effectivePt = Math.max(6.2, Math.floor(basePt * ratio * 10) / 10);
+      } else {
+        doc.setFontSize(basePt);
+        const split = doc.splitTextToSize(ln.text, maxCenteredTextW) as string[];
+        wrappedParts = split.length > 0 ? split : [ln.text];
+      }
+    }
+
+    const emMm = ptToMm(effectivePt);
+    const subBoxHeightMm = Math.max(3.5, emMm * 1.38);
+    const baselineInBoxMm = emMm * 0.96;
+
+    wrappedParts.forEach((partText) => {
+      laidOutLines.push({
+        text: partText,
+        fontStyle,
+        pt: effectivePt,
+        underline: st.underline,
+        boxTopOffsetMm: textCursorMm,
+        baselineOffsetMm: baselineInBoxMm,
+      });
+      textCursorMm += subBoxHeightMm;
+    });
+  });
+
+  const totalTextHeightMm = textCursorMm;
+  const blockHeightMm = Math.max(totalTextHeightMm, leftDim.h, rightDim.h, 16);
+  const textStartY = topY + (blockHeightMm - totalTextHeightMm) / 2;
+
+  if (leftPng && leftDim.w > 0 && leftDim.h > 0) {
+    const leftX = marginX + 2 + (maxLogoSlotMm - leftDim.w) / 2;
+    const leftY = topY + (blockHeightMm - leftDim.h) / 2;
+    doc.addImage(leftPng, 'PNG', leftX, leftY, leftDim.w, leftDim.h);
+  }
+  if (rightPng && rightDim.w > 0 && rightDim.h > 0) {
+    const rightSlotLeft = pageWidth - marginX - 2 - maxLogoSlotMm;
+    const rightX = rightSlotLeft + (maxLogoSlotMm - rightDim.w) / 2;
+    const rightY = topY + (blockHeightMm - rightDim.h) / 2;
+    doc.addImage(rightPng, 'PNG', rightX, rightY, rightDim.w, rightDim.h);
+  }
+
+  doc.setTextColor(15, 23, 42);
+  for (const sub of laidOutLines) {
+    const baselineY = textStartY + sub.boxTopOffsetMm + sub.baselineOffsetMm;
+    doc.setFont(kopFont, sub.fontStyle);
+    doc.setFontSize(sub.pt);
+    doc.text(sub.text, centerX, baselineY, { align: 'center' });
+    if (sub.underline) {
+      const w = doc.getTextWidth(sub.text);
+      doc.setLineWidth(0.25);
+      doc.setDrawColor(15, 23, 42);
+      doc.line(centerX - w / 2, baselineY + 0.75, centerX + w / 2, baselineY + 0.75);
+    }
+  }
+
+  const ruleY = topY + blockHeightMm + 2.4;
+  doc.setDrawColor(15, 23, 42);
+  doc.setLineWidth(0.8);
+  doc.line(marginX, ruleY, pageWidth - marginX, ruleY);
+  doc.setLineWidth(0.25);
+  doc.line(marginX, ruleY + 1.15, pageWidth - marginX, ruleY + 1.15);
+
+  doc.setFont(bodyFont, 'normal');
+  return ruleY + 6.2;
+}
+
 export async function exportReportToPdf(
   students: Student[],
   journals: JournalEntry[],
@@ -1503,9 +1667,11 @@ export async function exportReportToPdf(
       prepareExtraSignatureRows(effectiveExtraRows),
     ]);
 
-  const [principalAspect, teacherAspect] = await Promise.all([
+  const [principalAspect, teacherAspect, leftLogoAspect, rightLogoAspect] = await Promise.all([
     getPngAspectRatio(principalSigPng),
     getPngAspectRatio(teacherSigPng),
+    getPngAspectRatio(leftPng),
+    getPngAspectRatio(rightPng),
   ]);
 
   const docNumberClean = (opts.documentNumber || '').trim();
@@ -1529,65 +1695,18 @@ export async function exportReportToPdf(
     if (!doc) return 12;
     let cursorY = 12;
     if (opts.showKopSurat) {
-      const normKop = normalizeKopSurat(settings.kopSurat);
-      const kopFont = mapPrintFontToJsPdf(normKop.fontFamily);
-
-      const leftLogoMm = Math.round((normKop.leftLogoSize / 64) * 20 * 10) / 10;
-      const rightLogoMm = Math.round((normKop.rightLogoSize / 64) * 20 * 10) / 10;
-      const maxLogoMm = Math.max(leftLogoMm, rightLogoMm, 20);
-
-      if (leftPng) {
-        doc.addImage(leftPng, 'PNG', marginX + 2, cursorY, leftLogoMm, leftLogoMm);
-      }
-      if (rightPng) {
-        doc.addImage(
-          rightPng,
-          'PNG',
-          pageWidth - marginX - rightLogoMm - 2,
-          cursorY,
-          rightLogoMm,
-          rightLogoMm
-        );
-      }
-
-      const pxToPt = (px: number) => Math.round(px * 0.85 * 10) / 10;
-      const toJsPdfStyle = (st: KopSuratTextStyle) =>
-        st.bold && st.italic ? 'bolditalic' : st.bold ? 'bold' : st.italic ? 'italic' : 'normal';
-
-      const centerX = pageWidth / 2;
-      const drawStyledCenteredLine = (
-        text: string,
-        yPos: number,
-        fontSizePx: number,
-        st: KopSuratTextStyle
-      ) => {
-        if (!text || !doc) return;
-        const pt = pxToPt(fontSizePx);
-        doc.setFont(kopFont, toJsPdfStyle(st));
-        doc.setFontSize(pt);
-        doc.text(text, centerX, yPos, { align: 'center' });
-        if (st.underline) {
-          const w = doc.getTextWidth(text);
-          doc.setLineWidth(0.25);
-          doc.line(centerX - w / 2, yPos + 0.7, centerX + w / 2, yPos + 0.7);
-        }
-      };
-
-      drawStyledCenteredLine(normKop.line1, cursorY + 3, normKop.lineSizes.line1, normKop.lineStyles.line1);
-      drawStyledCenteredLine(normKop.line2, cursorY + 7.8, normKop.lineSizes.line2, normKop.lineStyles.line2);
-      drawStyledCenteredLine(normKop.line3, cursorY + 12.2, normKop.lineSizes.line3, normKop.lineStyles.line3);
-      drawStyledCenteredLine(normKop.line4, cursorY + 17.2, normKop.lineSizes.line4, normKop.lineStyles.line4);
-      drawStyledCenteredLine(normKop.line5, cursorY + 21.4, normKop.lineSizes.line5, normKop.lineStyles.line5);
-      drawStyledCenteredLine(normKop.line6, cursorY + 25.0, normKop.lineSizes.line6, normKop.lineStyles.line6);
-
-      const headerHeight = Math.max(27.5, maxLogoMm + 3);
-      cursorY += headerHeight;
-      doc.setLineWidth(0.8);
-      doc.line(marginX, cursorY, pageWidth - marginX, cursorY);
-      doc.setLineWidth(0.25);
-      doc.line(marginX, cursorY + 1.1, pageWidth - marginX, cursorY + 1.1);
-      cursorY += 6;
-      doc.setFont(pdfFont, 'normal');
+      cursorY = drawPdfKopSurat({
+        doc,
+        kopSurat: settings.kopSurat,
+        leftPng,
+        rightPng,
+        leftAspect: leftLogoAspect,
+        rightAspect: rightLogoAspect,
+        marginX,
+        pageWidth,
+        topY: 12,
+        bodyFont: pdfFont,
+      });
     }
     if (docNumberClean) {
       doc.setFont(pdfFont, 'normal');
@@ -2658,9 +2777,11 @@ export async function exportStudentIndividualPdf(
         : Promise.resolve(null),
       prepareExtraSignatureRows(sigStamp.extraRows),
     ]);
-  const [principalAspect, teacherAspect] = await Promise.all([
+  const [principalAspect, teacherAspect, leftLogoAspect, rightLogoAspect] = await Promise.all([
     getPngAspectRatio(principalSigPng),
     getPngAspectRatio(teacherSigPng),
+    getPngAspectRatio(leftPng),
+    getPngAspectRatio(rightPng),
   ]);
   const qrPng = opts?.showQrVerification
     ? await createVerificationQrPng(
@@ -2675,46 +2796,19 @@ export async function exportStudentIndividualPdf(
     );
   }
 
-  let y = 12;
-  const leftLogoMm = Math.round((normKop.leftLogoSize / 64) * 20 * 10) / 10;
-  const rightLogoMm = Math.round((normKop.rightLogoSize / 64) * 20 * 10) / 10;
-  const maxLogoMm = Math.max(leftLogoMm, rightLogoMm, 20);
-
-  if (leftPng) doc.addImage(leftPng, 'PNG', marginX + 2, y, leftLogoMm, leftLogoMm);
-  if (rightPng) {
-    doc.addImage(rightPng, 'PNG', pageWidth - marginX - rightLogoMm - 2, y, rightLogoMm, rightLogoMm);
-  }
-
-  const pxToPt = (px: number) => Math.round(px * 0.85 * 10) / 10;
-  const toJsPdfStyle = (st: KopSuratTextStyle) =>
-    st.bold && st.italic ? 'bolditalic' : st.bold ? 'bold' : st.italic ? 'italic' : 'normal';
   const centerX = pageWidth / 2;
-
-  const drawKopLine = (text: string, yPos: number, sizePx: number, st: KopSuratTextStyle) => {
-    if (!text) return;
-    doc.setFont(kopFont, toJsPdfStyle(st));
-    doc.setFontSize(pxToPt(sizePx));
-    doc.text(text, centerX, yPos, { align: 'center' });
-    if (st.underline) {
-      const w = doc.getTextWidth(text);
-      doc.setLineWidth(0.25);
-      doc.line(centerX - w / 2, yPos + 0.7, centerX + w / 2, yPos + 0.7);
-    }
-  };
-
-  drawKopLine(normKop.line1, y + 3, normKop.lineSizes.line1, normKop.lineStyles.line1);
-  drawKopLine(normKop.line2, y + 7.8, normKop.lineSizes.line2, normKop.lineStyles.line2);
-  drawKopLine(normKop.line3, y + 12.2, normKop.lineSizes.line3, normKop.lineStyles.line3);
-  drawKopLine(normKop.line4, y + 17.2, normKop.lineSizes.line4, normKop.lineStyles.line4);
-  drawKopLine(normKop.line5, y + 21.4, normKop.lineSizes.line5, normKop.lineStyles.line5);
-  drawKopLine(normKop.line6, y + 25.0, normKop.lineSizes.line6, normKop.lineStyles.line6);
-
-  y += Math.max(27.5, maxLogoMm + 3);
-  doc.setLineWidth(0.8);
-  doc.line(marginX, y, pageWidth - marginX, y);
-  doc.setLineWidth(0.25);
-  doc.line(marginX, y + 1.1, pageWidth - marginX, y + 1.1);
-  y += 7;
+  let y = drawPdfKopSurat({
+    doc,
+    kopSurat: settings.kopSurat,
+    leftPng,
+    rightPng,
+    leftAspect: leftLogoAspect,
+    rightAspect: rightLogoAspect,
+    marginX,
+    pageWidth,
+    topY: 12,
+    bodyFont,
+  }) + 1;
 
   doc.setFont(bodyFont, 'bold');
   doc.setFontSize(11.5);
@@ -3057,49 +3151,27 @@ export async function exportCustomImportedReportToPdf(
       prepareExtraSignatureRows(effectiveExtraRows),
     ]);
 
-  const [principalAspect, teacherAspect] = await Promise.all([
+  const [principalAspect, teacherAspect, leftLogoAspect, rightLogoAspect] = await Promise.all([
     getPngAspectRatio(principalSigPng),
     getPngAspectRatio(teacherSigPng),
+    getPngAspectRatio(leftPng),
+    getPngAspectRatio(rightPng),
   ]);
 
   let y = 12;
   if (opts.showKopSurat) {
-    const normKop = normalizeKopSurat(settings.kopSurat);
-    const kopFont = mapPrintFontToJsPdf(normKop.fontFamily);
-    const leftLogoMm = Math.round((normKop.leftLogoSize / 64) * 20 * 10) / 10;
-    const rightLogoMm = Math.round((normKop.rightLogoSize / 64) * 20 * 10) / 10;
-    const maxLogoMm = Math.max(leftLogoMm, rightLogoMm, 20);
-    if (leftPng) doc.addImage(leftPng, 'PNG', marginX + 2, y, leftLogoMm, leftLogoMm);
-    if (rightPng) {
-      doc.addImage(rightPng, 'PNG', pageWidth - marginX - rightLogoMm - 2, y, rightLogoMm, rightLogoMm);
-    }
-    const pxToPt = (px: number) => Math.round(px * 0.85 * 10) / 10;
-    const toJsPdfStyle = (st: KopSuratTextStyle) =>
-      st.bold && st.italic ? 'bolditalic' : st.bold ? 'bold' : st.italic ? 'italic' : 'normal';
-    const centerX = pageWidth / 2;
-    const drawLine = (text: string, yPos: number, sizePx: number, st: KopSuratTextStyle) => {
-      if (!text) return;
-      doc.setFont(kopFont, toJsPdfStyle(st));
-      doc.setFontSize(pxToPt(sizePx));
-      doc.text(text, centerX, yPos, { align: 'center' });
-      if (st.underline) {
-        const w = doc.getTextWidth(text);
-        doc.setLineWidth(0.25);
-        doc.line(centerX - w / 2, yPos + 0.7, centerX + w / 2, yPos + 0.7);
-      }
-    };
-    drawLine(normKop.line1, y + 3, normKop.lineSizes.line1, normKop.lineStyles.line1);
-    drawLine(normKop.line2, y + 7.8, normKop.lineSizes.line2, normKop.lineStyles.line2);
-    drawLine(normKop.line3, y + 12.2, normKop.lineSizes.line3, normKop.lineStyles.line3);
-    drawLine(normKop.line4, y + 17.2, normKop.lineSizes.line4, normKop.lineStyles.line4);
-    drawLine(normKop.line5, y + 21.4, normKop.lineSizes.line5, normKop.lineStyles.line5);
-    drawLine(normKop.line6, y + 25.0, normKop.lineSizes.line6, normKop.lineStyles.line6);
-    y += Math.max(27.5, maxLogoMm + 3);
-    doc.setLineWidth(0.8);
-    doc.line(marginX, y, pageWidth - marginX, y);
-    doc.setLineWidth(0.25);
-    doc.line(marginX, y + 1.1, pageWidth - marginX, y + 1.1);
-    y += 6;
+    y = drawPdfKopSurat({
+      doc,
+      kopSurat: settings.kopSurat,
+      leftPng,
+      rightPng,
+      leftAspect: leftLogoAspect,
+      rightAspect: rightLogoAspect,
+      marginX,
+      pageWidth,
+      topY: 12,
+      bodyFont: pdfFont,
+    });
   }
 
   doc.setFont(pdfFont, 'normal');
@@ -3333,21 +3405,23 @@ export async function exportReportToWord(
     sizePx: number,
     style: KopSuratTextStyle
   ) => {
-    if (!text) return '';
+    const cleaned = (text || '').trim();
+    if (!cleaned) return '';
     const weight = style.bold ? 'font-weight:bold;' : 'font-weight:normal;';
     const italic = style.italic ? 'font-style:italic;' : '';
     const underline = style.underline ? 'text-decoration:underline;' : '';
-    return `<div style="font-size:${sizePx}px;line-height:1.25;${weight}${italic}${underline}">${escapeHtml(text)}</div>`;
+    return `<div style="font-size:${sizePx}px;line-height:1.38;margin:0;padding:0;${weight}${italic}${underline}">${escapeHtml(cleaned)}</div>`;
   };
 
+  const wordKopSlotPx = Math.max(normKop.leftLogoSize, normKop.rightLogoSize) + 12;
   const kopHtml = opts.showKopSurat
     ? `
-      <table style="width:100%;border-collapse:collapse;border:none;border-bottom:3px double #0f172a;padding-bottom:6px;margin-bottom:10px;font-family:${escapeHtml(kopFontCss)};">
+      <table style="width:100%;border-collapse:collapse;border:none;margin-bottom:10px;font-family:${escapeHtml(kopFontCss)};">
         <tr>
-          <td style="width:${normKop.leftLogoSize + 12}px;vertical-align:middle;text-align:center;border:none;padding:2px;">
+          <td style="width:${wordKopSlotPx}px;vertical-align:middle;text-align:center;border:none;border-bottom:3px solid #0f172a;padding:2px 2px 8px 2px;">
             ${leftPng ? `<img src="${leftPng}" width="${normKop.leftLogoSize}" height="${normKop.leftLogoSize}" style="object-fit:contain;" />` : ''}
           </td>
-          <td style="text-align:center;vertical-align:middle;border:none;padding:2px 6px;">
+          <td style="text-align:center;vertical-align:middle;border:none;border-bottom:3px solid #0f172a;padding:2px 8px 8px 8px;">
             ${formatKopLineHtml(normKop.line1, normKop.lineSizes.line1, normKop.lineStyles.line1)}
             ${formatKopLineHtml(normKop.line2, normKop.lineSizes.line2, normKop.lineStyles.line2)}
             ${formatKopLineHtml(normKop.line3, normKop.lineSizes.line3, normKop.lineStyles.line3)}
@@ -3355,9 +3429,12 @@ export async function exportReportToWord(
             ${formatKopLineHtml(normKop.line5, normKop.lineSizes.line5, normKop.lineStyles.line5)}
             ${formatKopLineHtml(normKop.line6, normKop.lineSizes.line6, normKop.lineStyles.line6)}
           </td>
-          <td style="width:${normKop.rightLogoSize + 12}px;vertical-align:middle;text-align:center;border:none;padding:2px;">
+          <td style="width:${wordKopSlotPx}px;vertical-align:middle;text-align:center;border:none;border-bottom:3px solid #0f172a;padding:2px 2px 8px 2px;">
             ${rightPng ? `<img src="${rightPng}" width="${normKop.rightLogoSize}" height="${normKop.rightLogoSize}" style="object-fit:contain;" />` : ''}
           </td>
+        </tr>
+        <tr>
+          <td colspan="3" style="height:3px;font-size:1px;line-height:1px;padding:0;border:none;border-bottom:1px solid #0f172a;">&nbsp;</td>
         </tr>
       </table>`
     : '';
